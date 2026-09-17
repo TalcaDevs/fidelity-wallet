@@ -25,12 +25,16 @@ jobs:
       - name: 🟢 Configurar Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20' # Recomendado para MVP actual
+          node-version: '22.x' # pnpm v11 requires Node >= 22.13
           cache: 'pnpm'
 
       - name: 🧩 Instalar dependencias
         # Falla si alguien olvidó commitear el pnpm-lock.yaml actualizado
         run: pnpm install --frozen-lockfile
+
+      - name: 🗄️ Generar Prisma Client
+        # Necesario para que TypeScript no falle al buscar tipos de @prisma/client
+        run: pnpm --filter backend exec prisma generate
 
       - name: 🔒 Auditoría de Seguridad
         # Evaluamos solo dependencias de producción para no bloquear el PR por una vulnerabilidad en una librería de testing
