@@ -20,7 +20,7 @@ jobs:
       - name: 📦 Instalar pnpm
         uses: pnpm/action-setup@v3
         with:
-          version: 8 # Ajusta a la versión que usen en su equipo
+          version: 11 # Actualizado para hacer match con el pnpm-lock.yaml local
 
       - name: 🟢 Configurar Node.js
         uses: actions/setup-node@v4
