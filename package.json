@@ -1,0 +1,16 @@
+{
+  "name": "wallet-fidelity-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "build": "pnpm -r run build",
+    "start": "pnpm -r run start",
+    "test": "pnpm -r run test",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "pnpm -r run lint"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
