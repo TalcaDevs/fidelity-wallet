@@ -1,1 +1,16 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-brand-blue: #087BD7;
+  --color-brand-yellow: #D69E09;
+  --color-brand-orange: #D66409;
+  --color-brand-slate: #2F4557;
+  --color-brand-olive: #574C2F;
+}
+
+@layer base {
+  body {
+    @apply transition-colors duration-300 ease-in-out;
+  }
+}
