@@ -3,7 +3,7 @@ CREATE TYPE "ScanType" AS ENUM ('STAMP_ADDED', 'REWARD_REDEEMED');
 
 -- CreateTable
 CREATE TABLE "Merchant" (
-    "id" UUID NOT NULL DEFAULT auth.uid(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "name" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -13,7 +13,7 @@ CREATE TABLE "Merchant" (
 
 -- CreateTable
 CREATE TABLE "Promotion" (
-    "id" UUID NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "merchantId" UUID NOT NULL,
     "name" TEXT NOT NULL,
     "targetStamps" INTEGER NOT NULL,
@@ -26,7 +26,7 @@ CREATE TABLE "Promotion" (
 
 -- CreateTable
 CREATE TABLE "Customer" (
-    "id" UUID NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "rut" TEXT,
     "phone" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -36,7 +36,7 @@ CREATE TABLE "Customer" (
 
 -- CreateTable
 CREATE TABLE "Pass" (
-    "id" UUID NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "customerId" UUID NOT NULL,
     "merchantId" UUID NOT NULL,
     "stampsCount" INTEGER NOT NULL DEFAULT 0,
@@ -49,7 +49,7 @@ CREATE TABLE "Pass" (
 
 -- CreateTable
 CREATE TABLE "Scan" (
-    "id" UUID NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "passId" UUID NOT NULL,
     "merchantId" UUID NOT NULL,
     "type" "ScanType" NOT NULL,

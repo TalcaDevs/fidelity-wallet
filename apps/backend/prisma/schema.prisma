@@ -8,7 +8,7 @@ datasource db {
 }
 
 model Merchant {
-  id         String      @id @default(dbgenerated("auth.uid()")) @db.Uuid
+  id         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name       String
   email      String      @unique
   promotions Promotion[]
@@ -18,7 +18,7 @@ model Merchant {
 }
 
 model Promotion {
-  id           String   @id @default(uuid()) @db.Uuid
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   merchantId   String   @db.Uuid
   merchant     Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   name         String
@@ -29,7 +29,7 @@ model Promotion {
 }
 
 model Customer {
-  id        String   @id @default(uuid()) @db.Uuid
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   rut       String?  @unique
   phone     String?  @unique
   passes    Pass[]
@@ -40,7 +40,7 @@ model Customer {
 }
 
 model Pass {
-  id          String   @id @default(uuid()) @db.Uuid
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   customerId  String   @db.Uuid
   customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   merchantId  String   @db.Uuid
@@ -55,7 +55,7 @@ model Pass {
 }
 
 model Scan {
-  id         String   @id @default(uuid()) @db.Uuid
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   passId     String   @db.Uuid
   pass       Pass     @relation(fields: [passId], references: [id], onDelete: Cascade)
   merchantId String   @db.Uuid

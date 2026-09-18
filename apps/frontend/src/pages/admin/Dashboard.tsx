@@ -1,57 +1,17 @@
-import { useEffect, useState, useCallback } from 'react';
-import { supabase } from '../../lib/supabase';
+import { useEffect } from 'react';
+import type { Session } from '@supabase/supabase-js';
+import { useDashboardStats } from '../../hooks/useDashboardStats';
 
-export function Dashboard({ session }: { session: any }) {
-  // Real Data State
-  const [activePasses, setActivePasses] = useState(0);
-  const [stampsDelivered, setStampsDelivered] = useState(0);
-  const [rewardsRedeemed, setRewardsRedeemed] = useState(0);
-  const [recentScans, setRecentScans] = useState<any[]>([]);
-
-  const fetchDashboardData = useCallback(async (merchantId: string) => {
-    try {
-      // 1. Fetch Active Passes Count
-      const { count: passesCount } = await supabase
-        .from('Pass')
-        .select('*', { count: 'exact', head: true })
-        .eq('merchantId', merchantId);
-      setActivePasses(passesCount || 0);
-
-      // 2. Fetch Stamps Delivered (ScanType = STAMP_ADDED)
-      const { count: stampsCount } = await supabase
-        .from('Scan')
-        .select('*', { count: 'exact', head: true })
-        .eq('merchantId', merchantId)
-        .eq('type', 'STAMP_ADDED');
-      setStampsDelivered(stampsCount || 0);
-
-      // 3. Fetch Rewards Redeemed (ScanType = REWARD_REDEEMED)
-      const { count: rewardsCount } = await supabase
-        .from('Scan')
-        .select('*', { count: 'exact', head: true })
-        .eq('merchantId', merchantId)
-        .eq('type', 'REWARD_REDEEMED');
-      setRewardsRedeemed(rewardsCount || 0);
-
-      // 4. Fetch Recent Activity
-      const { data: scans } = await supabase
-        .from('Scan')
-        .select('id, type, createdAt, pass:Pass(customer:Customer(rut, phone))')
-        .eq('merchantId', merchantId)
-        .order('createdAt', { ascending: false })
-        .limit(5);
-
-      setRecentScans(scans || []);
-    } catch (error) {
-      console.error("Error fetching dashboard data:", error);
-    }
-  }, []);
+export function Dashboard({ session }: { session: Session | null }) {
+  const { stats, loading, error, fetchStats } = useDashboardStats();
 
   useEffect(() => {
     if (session?.user?.id) {
-      fetchDashboardData(session.user.id);
+      fetchStats(session.user.id);
     }
-  }, [session, fetchDashboardData]);
+  }, [session, fetchStats]);
+
+  const { activePasses, stampsDelivered, rewardsRedeemed, recentScans } = stats;
 
   return (
     <>
@@ -59,6 +19,12 @@ export function Dashboard({ session }: { session: any }) {
         <h1 className="text-4xl font-extrabold tracking-tight mb-2">Bienvenido, {session?.user?.email || 'Local'}</h1>
         <p className="text-slate-500 dark:text-slate-400 text-lg">Aquí tienes un resumen del rendimiento de tu programa de lealtad hoy.</p>
       </header>
+
+      {error && (
+        <div className="mb-8 p-4 bg-red-50 text-red-600 rounded-2xl border border-red-100">
+          Error al cargar los datos del dashboard. Por favor, intenta de nuevo.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
         {/* Card 1 - Pases */}

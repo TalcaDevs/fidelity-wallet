@@ -5,6 +5,7 @@ export function PromotionSettings({ onClose, merchantId, promoId }: { onClose: (
   const [targetStamps, setTargetStamps] = useState(8);
   const [rewardName, setRewardName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchPromotion = useCallback(async () => {
     const { data } = await supabase
@@ -28,13 +29,13 @@ export function PromotionSettings({ onClose, merchantId, promoId }: { onClose: (
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+    setError(null);
     
     try {
       if (promoId) {
         await supabase.from('Promotion').update({ targetStamps, rewardName }).eq('id', promoId);
       } else {
         await supabase.from('Promotion').insert([{ 
-          id: crypto.randomUUID(),
           merchantId, 
           targetStamps, 
           rewardName, 
@@ -42,8 +43,9 @@ export function PromotionSettings({ onClose, merchantId, promoId }: { onClose: (
         }]);
       }
       onClose();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setError(err.message || 'Error al guardar la promoción');
     } finally {
       setIsSaving(false);
     }
@@ -51,6 +53,11 @@ export function PromotionSettings({ onClose, merchantId, promoId }: { onClose: (
 
   return (
     <div className="bg-white dark:bg-brand-slate rounded-3xl border border-slate-100 dark:border-brand-slate/50 shadow-2xl shadow-brand-blue/10 dark:shadow-black/50 p-8 max-w-xl w-[450px] relative">
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-2xl text-sm border border-red-100">
+          {error}
+        </div>
+      )}
       <button 
         onClick={onClose}
         className="absolute top-6 right-6 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"

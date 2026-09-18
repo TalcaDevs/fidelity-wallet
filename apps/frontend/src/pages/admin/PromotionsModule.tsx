@@ -1,21 +1,39 @@
 import { useEffect, useState, useCallback } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 import { PromotionSettings } from './PromotionSettings';
 
-export function PromotionsModule({ session }: { session: any }) {
-  const [promotions, setPromotions] = useState<any[]>([]);
+export interface Promotion {
+  id: string;
+  merchantId: string;
+  name: string;
+  targetStamps: number;
+  rewardName: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export function PromotionsModule({ session }: { session: Session | null }) {
+  const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPromoId, setEditingPromoId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchPromotions = useCallback(async (merchantId: string) => {
-    const { data } = await supabase
-      .from('Promotion')
-      .select('*')
-      .eq('merchantId', merchantId)
-      .order('createdAt', { ascending: false });
-    
-    if (data) {
-      setPromotions(data);
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('Promotion')
+        .select('*')
+        .eq('merchantId', merchantId)
+        .order('createdAt', { ascending: false });
+      
+      if (fetchError) throw fetchError;
+      if (data) {
+        setPromotions(data);
+      }
+    } catch (err: any) {
+      console.error('Error fetching promotions:', err);
+      setError('Error al cargar las promociones');
     }
   }, []);
 
@@ -31,8 +49,15 @@ export function PromotionsModule({ session }: { session: any }) {
   };
 
   const togglePromotionStatus = async (promoId: string, currentStatus: boolean) => {
-    await supabase.from('Promotion').update({ isActive: !currentStatus }).eq('id', promoId);
-    if (session?.user?.id) fetchPromotions(session.user.id);
+    try {
+      setError(null);
+      const { error: updateError } = await supabase.from('Promotion').update({ isActive: !currentStatus }).eq('id', promoId);
+      if (updateError) throw updateError;
+      if (session?.user?.id) fetchPromotions(session.user.id);
+    } catch (err: any) {
+      console.error('Error toggling status:', err);
+      setError('Error al actualizar el estado de la promoción');
+    }
   };
 
   return (
@@ -66,6 +91,12 @@ export function PromotionsModule({ session }: { session: any }) {
           Nueva Promoción
         </button>
       </header>
+
+      {error && (
+        <div className="mb-8 p-4 bg-red-50 text-red-600 rounded-2xl border border-red-100">
+          {error}
+        </div>
+      )}
 
       <div className="bg-white dark:bg-slate-800 rounded-[2rem] border border-slate-200/60 dark:border-slate-700/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.1)] overflow-hidden">
         <div className="overflow-x-auto">

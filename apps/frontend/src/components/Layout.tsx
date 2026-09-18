@@ -1,25 +1,27 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import type { Session } from '@supabase/supabase-js';
 
-export function Layout({ session }: { session: any }) {
-  const [isDarkMode, setIsDarkMode] = useState(() => 
-    window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-  );
+export function Layout({ session }: { session: Session | null }) {
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('theme');
+    if (saved) return saved === 'dark';
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
 
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
-    }
-  }, []);
-
-  const toggleDarkMode = () => {
-    setIsDarkMode(!isDarkMode);
-    if (!isDarkMode) {
-      document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
+  }, [isDarkMode]);
+
+  const toggleDarkMode = () => {
+    const nextTheme = !isDarkMode;
+    setIsDarkMode(nextTheme);
+    localStorage.setItem('theme', nextTheme ? 'dark' : 'light');
   };
 
   const handleLogout = async () => {
