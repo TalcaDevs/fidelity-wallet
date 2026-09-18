@@ -26,7 +26,7 @@ describe('PromotionsModule Component', () => {
 
   it('renders promotions and handles modal toggle', async () => {
     const mockSession = { user: { id: 'test-uuid', email: 'test@local.com' } };
-    render(<PromotionsModule session={mockSession} />);
+    render(<PromotionsModule session={mockSession as any} />);
     
     expect(screen.getByText(/Promociones Activas/i)).toBeInTheDocument();
     

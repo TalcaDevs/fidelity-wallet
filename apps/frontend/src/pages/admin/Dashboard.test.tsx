@@ -36,7 +36,7 @@ describe('Dashboard Component', () => {
 
   it('renders without crashing and shows loading skeleton or empty state', async () => {
     const mockSession = { user: { id: 'test-uuid', email: 'test@local.com' } };
-    render(<Dashboard session={mockSession} />);
+    render(<Dashboard session={mockSession as any} />);
     
     expect(screen.getByText(/Bienvenido, test@local.com/i)).toBeInTheDocument();
     expect(screen.getByText(/Pases Activos/i)).toBeInTheDocument();

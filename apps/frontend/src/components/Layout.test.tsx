@@ -37,7 +37,7 @@ describe('Layout Component', () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <Routes>
-          <Route path="/" element={<Layout session={mockSession} />}>
+          <Route path="/" element={<Layout session={mockSession as any} />}>
             <Route index element={<div>Página Principal</div>} />
           </Route>
         </Routes>
@@ -58,7 +58,7 @@ describe('Layout Component', () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <Routes>
-          <Route path="/" element={<Layout session={{}} />} />
+          <Route path="/" element={<Layout session={{} as any} />} />
         </Routes>
       </MemoryRouter>
     );

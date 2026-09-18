@@ -66,12 +66,14 @@ export function PromotionsModule({ session }: { session: Session | null }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60 backdrop-blur-sm transition-opacity">
           <div className="animate-in fade-in zoom-in-95 duration-200">
             <PromotionSettings 
-              merchantId={session?.user?.id} 
+              merchantId={session?.user?.id || ''} 
               promoId={editingPromoId}
               onClose={() => {
                 setIsModalOpen(false);
                 setEditingPromoId(null);
-                fetchPromotions(session?.user?.id);
+                if (session?.user?.id) {
+                  fetchPromotions(session.user.id);
+                }
               }} 
             />
           </div>

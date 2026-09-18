@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
 
 export function Dashboard({ session }: { session: Session | null }) {
-  const { stats, loading, error, fetchStats } = useDashboardStats();
+  const { stats, error, fetchStats } = useDashboardStats();
 
   useEffect(() => {
     if (session?.user?.id) {
