@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
 
-export function SupabaseAuth({ onLogin }: { onLogin: () => void }) {
+export function SupabaseAuth() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -11,8 +11,8 @@ export function SupabaseAuth({ onLogin }: { onLogin: () => void }) {
     e.preventDefault();
     setIsLoading(true);
     setErrorMsg('');
-    
-    const { data, error } = await supabase.auth.signInWithPassword({
+
+    const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -21,8 +21,6 @@ export function SupabaseAuth({ onLogin }: { onLogin: () => void }) {
 
     if (error) {
       setErrorMsg(error.message);
-    } else if (data?.session) {
-      onLogin();
     }
   };
 
