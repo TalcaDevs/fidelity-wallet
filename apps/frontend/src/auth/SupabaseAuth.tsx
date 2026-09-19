@@ -21,7 +21,7 @@ export function SupabaseAuth({ onLogin }: { onLogin: () => void }) {
 
     if (error) {
       setErrorMsg(error.message);
-    } else if (data.session) {
+    } else if (data?.session) {
       onLogin();
     }
   };

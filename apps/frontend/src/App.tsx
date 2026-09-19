@@ -12,18 +12,21 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (error) console.error("Session Error:", error);
+      setSession(data?.session || null);
       setLoading(false);
     });
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      if (data?.subscription) {
+        data.subscription.unsubscribe();
+      }
+    };
   }, []);
 
   if (loading) {
