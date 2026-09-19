@@ -6,3 +6,65 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+model Merchant {
+  id         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String
+  email      String      @unique
+  promotions Promotion[]
+  passes     Pass[]
+  scans      Scan[]
+  createdAt  DateTime    @default(now())
+}
+
+model Promotion {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  merchantId   String   @db.Uuid
+  merchant     Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  name         String
+  targetStamps Int
+  rewardName   String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+}
+
+model Customer {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rut       String?  @unique
+  phone     String?  @unique
+  passes    Pass[]
+  createdAt DateTime @default(now())
+
+  @@index([rut])
+  @@index([phone])
+}
+
+model Pass {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId  String   @db.Uuid
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  merchantId  String   @db.Uuid
+  merchant    Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  stampsCount Int      @default(0)
+  passToken   String   @unique
+  scans       Scan[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([customerId, merchantId])
+}
+
+model Scan {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  passId     String   @db.Uuid
+  pass       Pass     @relation(fields: [passId], references: [id], onDelete: Cascade)
+  merchantId String   @db.Uuid
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  type       ScanType
+  createdAt  DateTime @default(now())
+}
+
+enum ScanType {
+  STAMP_ADDED
+  REWARD_REDEEMED
+}
