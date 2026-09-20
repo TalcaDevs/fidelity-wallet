@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { StatCard } from '../../components/ui/StatCard';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
+import { maskIdentifier } from '../../lib/maskIdentifier';
 
 const PASSES_ICON = <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>;
 const STAMPS_ICON = <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>;
@@ -72,8 +73,8 @@ export function Dashboard({ session }: { session: Session | null }) {
             <p className="text-slate-500 dark:text-slate-400">No hay actividad reciente.</p>
           ) : (
             recentScans.map((scan) => {
-              const customer = scan.pass?.customer;
-              const identifier = customer?.rut || customer?.phone || 'Anónimo';
+              const customer = scan.customer;
+              const identifier = maskIdentifier(customer?.rut) ?? maskIdentifier(customer?.phone) ?? 'Anónimo';
               const isReward = scan.type === 'REWARD_REDEEMED';
               return (
                 <div key={scan.id} className="flex items-center justify-between p-5 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border border-transparent hover:border-slate-100 dark:hover:border-slate-700">

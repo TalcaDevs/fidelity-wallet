@@ -20,6 +20,11 @@ const COLOR_STYLES: Record<StatCardColor, { glow: string; iconBg: string; iconTe
   },
 };
 
+const FOOTNOTE_STYLES: Record<'positive' | 'neutral', string> = {
+  positive: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10',
+  neutral: 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700',
+};
+
 export function StatCard({
   title,
   value,
@@ -50,21 +55,17 @@ export function StatCard({
       </div>
       {loading ? (
         <div className="h-[60px] flex items-center relative z-10">
-          <div className="h-10 w-24 rounded-xl bg-slate-100 dark:bg-slate-700 animate-pulse" />
+          <div data-testid="stat-skeleton" className="h-10 w-24 rounded-xl bg-slate-100 dark:bg-slate-700 animate-pulse" />
         </div>
       ) : (
         <p className="text-6xl font-black mb-3 relative z-10 tracking-tight text-slate-900 dark:text-white">{value}</p>
       )}
-      {footnoteTone === 'positive' ? (
-        <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 flex items-center relative z-10 bg-emerald-50 dark:bg-emerald-500/10 inline-flex px-3 py-1 rounded-full">
+      <p className={`text-sm font-semibold relative z-10 inline-flex items-center px-3 py-1 rounded-full ${FOOTNOTE_STYLES[footnoteTone]}`}>
+        {footnoteTone === 'positive' && (
           <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
-          {footnote}
-        </p>
-      ) : (
-        <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 flex items-center relative z-10 bg-slate-100 dark:bg-slate-700 inline-flex px-3 py-1 rounded-full">
-          {footnote}
-        </p>
-      )}
+        )}
+        {footnote}
+      </p>
     </div>
   );
 }

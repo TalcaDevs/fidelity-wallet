@@ -17,6 +17,7 @@ describe('StatCard', () => {
       <StatCard title="Pases Activos" value={42} icon={<span />} color="blue" footnote="Total acumulado" loading />
     );
     expect(screen.getByText('Pases Activos')).toBeInTheDocument();
+    expect(screen.getByTestId('stat-skeleton')).toBeInTheDocument();
     expect(screen.queryByText('42')).not.toBeInTheDocument();
   });
 

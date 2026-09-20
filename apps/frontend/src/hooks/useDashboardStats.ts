@@ -1,14 +1,7 @@
 import { useState, useCallback } from 'react';
-import { fetchDashboardStats, type DashboardStats } from '../services/dashboardService';
+import { fetchDashboardStats, EMPTY_STATS, type DashboardStats } from '../services/dashboardService';
 
 export type { DashboardStats };
-
-const EMPTY_STATS: DashboardStats = {
-  activePasses: 0,
-  stampsDelivered: 0,
-  rewardsRedeemed: 0,
-  recentScans: [],
-};
 
 export function useDashboardStats() {
   const [stats, setStats] = useState<DashboardStats>(EMPTY_STATS);

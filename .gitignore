@@ -9,3 +9,4 @@ HANDOFF.md
 scratch_triggers.sql
 *.mjs
 *.tsbuildinfo
+.claude/

@@ -1,8 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { createPromotion, getPromotion, updatePromotion } from '../../services/promotionsService';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
+import { useToast } from '../../hooks/useToast';
 
 export function PromotionSettings({ onClose, merchantId, promoId }: { onClose: () => void, merchantId: string, promoId?: string | null }) {
+  const { notifySuccess } = useToast();
+  const [name, setName] = useState('');
   const [targetStamps, setTargetStamps] = useState(8);
   const [rewardName, setRewardName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -13,6 +16,7 @@ export function PromotionSettings({ onClose, merchantId, promoId }: { onClose: (
     try {
       const data = await getPromotion(promoId);
       if (data) {
+        setName(data.name);
         setTargetStamps(data.targetStamps);
         setRewardName(data.rewardName);
       }
@@ -34,11 +38,13 @@ export function PromotionSettings({ onClose, merchantId, promoId }: { onClose: (
     setError(null);
 
     try {
-      const values = { targetStamps, rewardName };
+      const values = { name: name.trim(), targetStamps, rewardName: rewardName.trim() };
       if (promoId) {
         await updatePromotion(promoId, values);
+        notifySuccess('Promoción actualizada.');
       } else {
         await createPromotion(merchantId, values);
+        notifySuccess('Promoción creada.');
       }
       onClose();
     } catch (err) {
@@ -68,6 +74,23 @@ export function PromotionSettings({ onClose, merchantId, promoId }: { onClose: (
       </div>
 
       <form onSubmit={handleSave} className="space-y-8">
+        <div>
+          <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 uppercase tracking-wider">
+            Nombre de la Promoción
+          </label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-4 focus:ring-brand-blue/20 focus:border-brand-blue transition-all text-slate-800 dark:text-slate-100 font-medium text-lg placeholder-slate-400"
+            placeholder="ej. Tarjeta de café, Promo verano..."
+            required
+          />
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-3 font-medium">
+            Te sirve para distinguir esta promoción de las demás en tu lista.
+          </p>
+        </div>
+
         <div>
           <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 uppercase tracking-wider">
             Nombre del Premio
