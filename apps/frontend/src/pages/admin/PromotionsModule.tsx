@@ -1,47 +1,42 @@
 import { useEffect, useState, useCallback } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { supabase } from '../../lib/supabase';
+import { deletePromotion, listPromotions, setPromotionActive, type Promotion } from '../../services/promotionsService';
 import { PromotionSettings } from './PromotionSettings';
+import { ErrorAlert } from '../../components/ui/ErrorAlert';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { useToast } from '../../hooks/useToast';
 
-export interface Promotion {
-  id: string;
-  merchantId: string;
-  name: string;
-  targetStamps: number;
-  rewardName: string;
-  isActive: boolean;
-  createdAt: string;
-}
+export type { Promotion };
 
 export function PromotionsModule({ session }: { session: Session | null }) {
+  const merchantId = session?.user?.id;
+  const { notifySuccess } = useToast();
   const [promotions, setPromotions] = useState<Promotion[]>([]);
+  const [promoToDelete, setPromoToDelete] = useState<Promotion | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPromoId, setEditingPromoId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const fetchPromotions = useCallback(async (merchantId: string) => {
+    setLoading(true);
     try {
-      const { data, error: fetchError } = await supabase
-        .from('Promotion')
-        .select('*')
-        .eq('merchantId', merchantId)
-        .order('createdAt', { ascending: false });
-      
-      if (fetchError) throw fetchError;
-      if (data) {
-        setPromotions(data);
-      }
-    } catch (err: any) {
+      const data = await listPromotions(merchantId);
+      setPromotions(data);
+    } catch (err) {
       console.error('Error fetching promotions:', err);
       setError('Error al cargar las promociones');
+    } finally {
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (session?.user?.id) {
-      fetchPromotions(session.user.id);
+    if (merchantId) {
+      fetchPromotions(merchantId);
     }
-  }, [session, fetchPromotions]);
+  }, [merchantId, fetchPromotions]);
 
   const handleOpenModal = (id: string | null = null) => {
     setEditingPromoId(id);
@@ -51,30 +46,57 @@ export function PromotionsModule({ session }: { session: Session | null }) {
   const togglePromotionStatus = async (promoId: string, currentStatus: boolean) => {
     try {
       setError(null);
-      const { error: updateError } = await supabase.from('Promotion').update({ isActive: !currentStatus }).eq('id', promoId);
-      if (updateError) throw updateError;
-      if (session?.user?.id) fetchPromotions(session.user.id);
-    } catch (err: any) {
+      await setPromotionActive(promoId, !currentStatus);
+      notifySuccess(currentStatus ? 'Promoción desactivada.' : 'Promoción activada.');
+      if (merchantId) fetchPromotions(merchantId);
+    } catch (err) {
       console.error('Error toggling status:', err);
       setError('Error al actualizar el estado de la promoción');
     }
   };
 
+  const handleDelete = async () => {
+    if (!promoToDelete) return;
+
+    setIsDeleting(true);
+    setError(null);
+    try {
+      await deletePromotion(promoToDelete.id);
+      notifySuccess(`Promoción "${promoToDelete.name}" eliminada.`);
+      setPromoToDelete(null);
+      if (merchantId) fetchPromotions(merchantId);
+    } catch (err) {
+      console.error('Error deleting promotion:', err);
+      setError('Error al eliminar la promoción');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <>
-      {isModalOpen && (
+      {promoToDelete && (
+        <ConfirmDialog
+          title="Eliminar promoción"
+          message={`Vas a eliminar "${promoToDelete.name}". Esta acción no se puede deshacer y la promoción desaparecerá de tu lista.`}
+          confirmLabel="Sí, eliminar"
+          isBusy={isDeleting}
+          onConfirm={handleDelete}
+          onCancel={() => setPromoToDelete(null)}
+        />
+      )}
+
+      {isModalOpen && merchantId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60 backdrop-blur-sm transition-opacity">
           <div className="animate-in fade-in zoom-in-95 duration-200">
-            <PromotionSettings 
-              merchantId={session?.user?.id || ''} 
+            <PromotionSettings
+              merchantId={merchantId}
               promoId={editingPromoId}
               onClose={() => {
                 setIsModalOpen(false);
                 setEditingPromoId(null);
-                if (session?.user?.id) {
-                  fetchPromotions(session.user.id);
-                }
-              }} 
+                fetchPromotions(merchantId);
+              }}
             />
           </div>
         </div>
@@ -85,7 +107,7 @@ export function PromotionsModule({ session }: { session: Session | null }) {
           <h1 className="text-4xl font-extrabold tracking-tight mb-2">Promociones Activas</h1>
           <p className="text-slate-500 dark:text-slate-400 text-lg">Administra las reglas de lealtad y recompensas para tus clientes.</p>
         </div>
-        <button 
+        <button
           onClick={() => handleOpenModal(null)}
           className="px-6 py-3 bg-brand-blue hover:bg-blue-600 text-white shadow-lg shadow-brand-blue/20 rounded-xl font-bold transition-all flex items-center gap-2"
         >
@@ -94,11 +116,7 @@ export function PromotionsModule({ session }: { session: Session | null }) {
         </button>
       </header>
 
-      {error && (
-        <div className="mb-8 p-4 bg-red-50 text-red-600 rounded-2xl border border-red-100">
-          {error}
-        </div>
-      )}
+      {error && <ErrorAlert message={error} />}
 
       <div className="bg-white dark:bg-slate-800 rounded-[2rem] border border-slate-200/60 dark:border-slate-700/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.1)] overflow-hidden">
         <div className="overflow-x-auto">
@@ -112,14 +130,30 @@ export function PromotionsModule({ session }: { session: Session | null }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-              {promotions.length === 0 ? (
+              {loading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <tr key={i}>
+                    <td colSpan={4} className="p-5">
+                      <div className="h-12 rounded-2xl bg-slate-50 dark:bg-slate-800/50 animate-pulse" />
+                    </td>
+                  </tr>
+                ))
+              ) : promotions.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="p-16 text-center">
                     <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-400 mb-4">
                       <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4"></path></svg>
                     </div>
                     <p className="text-lg font-bold text-slate-600 dark:text-slate-300">No tienes promociones registradas aún.</p>
-                    <p className="text-slate-500 dark:text-slate-400 mt-1">Crea tu primera promoción para empezar.</p>
+                    <p className="text-slate-500 dark:text-slate-400 mt-1 mb-6">
+                      Sin una promoción activa, tus clientes no pueden juntar sellos.
+                    </p>
+                    <button
+                      onClick={() => handleOpenModal(null)}
+                      className="px-6 py-3 bg-brand-blue hover:bg-blue-600 text-white shadow-lg shadow-brand-blue/20 rounded-xl font-bold transition-all"
+                    >
+                      Crear mi primera promoción
+                    </button>
                   </td>
                 </tr>
               ) : (
@@ -131,8 +165,10 @@ export function PromotionsModule({ session }: { session: Session | null }) {
                           {promo.targetStamps}
                         </div>
                         <div>
-                          <p className="font-bold text-slate-900 dark:text-slate-100">{promo.rewardName}</p>
-                          <p className="text-sm text-slate-500 dark:text-slate-400">Objetivo: {promo.targetStamps} Sellos</p>
+                          <p className="font-bold text-slate-900 dark:text-slate-100">{promo.name}</p>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">
+                            {promo.rewardName} · Objetivo: {promo.targetStamps} Sellos
+                          </p>
                         </div>
                       </div>
                     </td>
@@ -140,10 +176,10 @@ export function PromotionsModule({ session }: { session: Session | null }) {
                       {new Date(promo.createdAt).toLocaleDateString()}
                     </td>
                     <td className="p-5">
-                      <button 
+                      <button
                         onClick={() => togglePromotionStatus(promo.id, promo.isActive)}
                         className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold transition-colors border ${
-                          promo.isActive 
+                          promo.isActive
                             ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20 hover:bg-emerald-100'
                             : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-200'
                         }`}
@@ -153,12 +189,21 @@ export function PromotionsModule({ session }: { session: Session | null }) {
                       </button>
                     </td>
                     <td className="p-5 text-right">
-                      <button 
+                      <button
                         onClick={() => handleOpenModal(promo.id)}
                         className="p-2 text-slate-400 hover:text-brand-blue dark:hover:text-blue-400 transition-colors rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20"
                         title="Editar"
+                        aria-label={`Editar ${promo.name}`}
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                      </button>
+                      <button
+                        onClick={() => setPromoToDelete(promo)}
+                        className="p-2 text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+                        title="Eliminar"
+                        aria-label={`Eliminar ${promo.name}`}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                       </button>
                     </td>
                   </tr>

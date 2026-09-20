@@ -1,22 +1,28 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { supabase } from '../../lib/supabase';
+import { createPromotion, getPromotion, updatePromotion } from '../../services/promotionsService';
+import { ErrorAlert } from '../../components/ui/ErrorAlert';
+import { useToast } from '../../hooks/useToast';
 
 export function PromotionSettings({ onClose, merchantId, promoId }: { onClose: () => void, merchantId: string, promoId?: string | null }) {
+  const { notifySuccess } = useToast();
+  const [name, setName] = useState('');
   const [targetStamps, setTargetStamps] = useState(8);
   const [rewardName, setRewardName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchPromotion = useCallback(async () => {
-    const { data } = await supabase
-      .from('Promotion')
-      .select('*')
-      .eq('id', promoId)
-      .single();
-    
-    if (data) {
-      setTargetStamps(data.targetStamps);
-      setRewardName(data.rewardName);
+    if (!promoId) return;
+    try {
+      const data = await getPromotion(promoId);
+      if (data) {
+        setName(data.name);
+        setTargetStamps(data.targetStamps);
+        setRewardName(data.rewardName);
+      }
+    } catch (err) {
+      console.error('Error fetching promotion:', err);
+      setError('Error al cargar la promoción');
     }
   }, [promoId]);
 
@@ -30,22 +36,20 @@ export function PromotionSettings({ onClose, merchantId, promoId }: { onClose: (
     e.preventDefault();
     setIsSaving(true);
     setError(null);
-    
+
     try {
+      const values = { name: name.trim(), targetStamps, rewardName: rewardName.trim() };
       if (promoId) {
-        await supabase.from('Promotion').update({ targetStamps, rewardName }).eq('id', promoId);
+        await updatePromotion(promoId, values);
+        notifySuccess('Promoción actualizada.');
       } else {
-        await supabase.from('Promotion').insert([{ 
-          merchantId, 
-          targetStamps, 
-          rewardName, 
-          name: 'Regla de Promoción' 
-        }]);
+        await createPromotion(merchantId, values);
+        notifySuccess('Promoción creada.');
       }
       onClose();
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setError(err.message || 'Error al guardar la promoción');
+      setError(err instanceof Error ? err.message : 'Error al guardar la promoción');
     } finally {
       setIsSaving(false);
     }
@@ -53,18 +57,14 @@ export function PromotionSettings({ onClose, merchantId, promoId }: { onClose: (
 
   return (
     <div className="bg-white dark:bg-brand-slate rounded-3xl border border-slate-100 dark:border-brand-slate/50 shadow-2xl shadow-brand-blue/10 dark:shadow-black/50 p-8 max-w-xl w-[450px] relative">
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-2xl text-sm border border-red-100">
-          {error}
-        </div>
-      )}
-      <button 
+      {error && <ErrorAlert message={error} />}
+      <button
         onClick={onClose}
         className="absolute top-6 right-6 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
       </button>
-      
+
       <div className="mb-8">
         <div className="inline-flex items-center justify-center p-3 bg-brand-yellow/10 dark:bg-brand-yellow/20 rounded-2xl mb-4 text-brand-yellow">
           <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
@@ -74,6 +74,23 @@ export function PromotionSettings({ onClose, merchantId, promoId }: { onClose: (
       </div>
 
       <form onSubmit={handleSave} className="space-y-8">
+        <div>
+          <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 uppercase tracking-wider">
+            Nombre de la Promoción
+          </label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-4 focus:ring-brand-blue/20 focus:border-brand-blue transition-all text-slate-800 dark:text-slate-100 font-medium text-lg placeholder-slate-400"
+            placeholder="ej. Tarjeta de café, Promo verano..."
+            required
+          />
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-3 font-medium">
+            Te sirve para distinguir esta promoción de las demás en tu lista.
+          </p>
+        </div>
+
         <div>
           <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 uppercase tracking-wider">
             Nombre del Premio

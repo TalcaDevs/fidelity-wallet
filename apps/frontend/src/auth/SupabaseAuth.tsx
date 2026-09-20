@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
 
-export function SupabaseAuth({ onLogin }: { onLogin: () => void }) {
+export function SupabaseAuth() {
+  const [mode, setMode] = useState<'login' | 'reset'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [noticeMsg, setNoticeMsg] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setErrorMsg('');
-    
-    const { data, error } = await supabase.auth.signInWithPassword({
+
+    const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -21,9 +23,35 @@ export function SupabaseAuth({ onLogin }: { onLogin: () => void }) {
 
     if (error) {
       setErrorMsg(error.message);
-    } else if (data.session) {
-      onLogin();
     }
+  };
+
+  const handleResetRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setErrorMsg('');
+    setNoticeMsg('');
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    });
+
+    setIsLoading(false);
+
+    if (error) {
+      setErrorMsg(error.message);
+      return;
+    }
+
+    // Mensaje deliberadamente neutro: confirmar si un correo existe o no
+    // permitiría enumerar las cuentas de comercios registrados.
+    setNoticeMsg('Si ese correo tiene una cuenta, le enviamos un enlace para restablecer la contraseña.');
+  };
+
+  const switchMode = (next: 'login' | 'reset') => {
+    setMode(next);
+    setErrorMsg('');
+    setNoticeMsg('');
   };
 
   return (
@@ -35,16 +63,18 @@ export function SupabaseAuth({ onLogin }: { onLogin: () => void }) {
           </div>
         </div>
         <h2 className="mt-2 text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-          Inicia Sesión
+          {mode === 'login' ? 'Inicia Sesión' : 'Recupera tu acceso'}
         </h2>
         <p className="mt-3 text-base text-slate-500 dark:text-slate-400 font-medium">
-          Fidelity Wallet para Comercios
+          {mode === 'login'
+            ? 'Fidelity Wallet para Comercios'
+            : 'Te enviamos un enlace para crear una contraseña nueva.'}
         </p>
       </div>
 
       <div className="mt-10 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white dark:bg-brand-slate py-10 px-6 sm:px-12 shadow-2xl shadow-brand-blue/5 dark:shadow-black/50 sm:rounded-3xl border border-slate-100 dark:border-brand-slate/50">
-          <form className="space-y-6" onSubmit={handleSubmit}>
+          <form className="space-y-6" onSubmit={mode === 'login' ? handleSubmit : handleResetRequest}>
             <div>
               <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
                 Correo Electrónico
@@ -61,6 +91,7 @@ export function SupabaseAuth({ onLogin }: { onLogin: () => void }) {
               </div>
             </div>
 
+            {mode === 'login' && (
             <div>
               <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
                 Contraseña
@@ -76,26 +107,41 @@ export function SupabaseAuth({ onLogin }: { onLogin: () => void }) {
                 />
               </div>
             </div>
+            )}
 
             <div className="flex items-center justify-between pt-2">
-              <div className="flex items-center">
-                <input
-                  id="remember-me"
-                  name="remember-me"
-                  type="checkbox"
-                  className="h-5 w-5 text-brand-blue focus:ring-brand-blue border-slate-300 rounded cursor-pointer"
-                />
-                <label htmlFor="remember-me" className="ml-3 block text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
-                  Recordarme
-                </label>
-              </div>
+              {mode === 'login' ? (
+                <div className="flex items-center">
+                  <input
+                    id="remember-me"
+                    name="remember-me"
+                    type="checkbox"
+                    className="h-5 w-5 text-brand-blue focus:ring-brand-blue border-slate-300 rounded cursor-pointer"
+                  />
+                  <label htmlFor="remember-me" className="ml-3 block text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
+                    Recordarme
+                  </label>
+                </div>
+              ) : (
+                <span />
+              )}
 
               <div className="text-sm">
-                <a href="#" className="font-bold text-brand-blue hover:text-blue-500 transition-colors">
-                  ¿Olvidaste tu contraseña?
-                </a>
+                <button
+                  type="button"
+                  onClick={() => switchMode(mode === 'login' ? 'reset' : 'login')}
+                  className="font-bold text-brand-blue hover:text-blue-500 transition-colors"
+                >
+                  {mode === 'login' ? '¿Olvidaste tu contraseña?' : 'Volver a iniciar sesión'}
+                </button>
               </div>
             </div>
+
+            {noticeMsg && (
+              <div className="p-4 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-sm font-medium rounded-xl border border-emerald-100 dark:border-emerald-500/20">
+                {noticeMsg}
+              </div>
+            )}
 
             {errorMsg && (
               <div className="p-4 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-sm font-medium rounded-xl border border-red-100 dark:border-red-500/20 flex items-center gap-3">
@@ -110,7 +156,9 @@ export function SupabaseAuth({ onLogin }: { onLogin: () => void }) {
                 disabled={isLoading}
                 className="w-full flex justify-center py-4 px-4 border border-transparent rounded-2xl shadow-lg shadow-brand-blue/20 text-base font-bold text-white bg-brand-blue hover:bg-blue-600 focus:outline-none focus:ring-4 focus:ring-brand-blue/30 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isLoading ? 'Iniciando sesión...' : 'Entrar al Panel'}
+                {mode === 'login'
+                  ? (isLoading ? 'Iniciando sesión...' : 'Entrar al Panel')
+                  : (isLoading ? 'Enviando enlace...' : 'Enviar enlace de recuperación')}
               </button>
             </div>
           </form>
