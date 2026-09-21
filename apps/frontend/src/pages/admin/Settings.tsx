@@ -1,14 +1,30 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { getMerchant, updateMerchantName } from '../../services/merchantService';
+import { getMerchant, updateMerchantSettings } from '../../services/merchantService';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
+import { isValidStampValidityDays } from '../../lib/stampExpiry';
 import { useToast } from '../../hooks/useToast';
+
+// Un select con plazos redondos en vez de un input libre de días: el dueño
+// piensa en meses ("los sellos duran 3 meses"), no en 90 días, y así no puede
+// escribir un valor absurdo. Guardamos días porque es lo que vive en la BD.
+const VALIDITY_OPTIONS: { value: number | null; label: string }[] = [
+  { value: null, label: 'Sin vencimiento' },
+  { value: 30, label: '1 mes (30 días)' },
+  { value: 60, label: '2 meses (60 días)' },
+  { value: 90, label: '3 meses (90 días)' },
+  { value: 180, label: '6 meses (180 días)' },
+  { value: 365, label: '12 meses (365 días)' },
+];
+
+const NO_EXPIRY = '';
 
 export function Settings({ session }: { session: Session | null }) {
   const merchantId = session?.user?.id;
   const { notifySuccess } = useToast();
 
   const [name, setName] = useState('');
+  const [stampValidityDays, setStampValidityDays] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,6 +34,7 @@ export function Settings({ session }: { session: Session | null }) {
     try {
       const merchant = await getMerchant(id);
       setName(merchant?.name ?? '');
+      setStampValidityDays(merchant?.stampValidityDays ?? null);
     } catch (err) {
       console.error('Error fetching merchant:', err);
       setError('No pudimos cargar los datos de tu local.');
@@ -34,11 +51,16 @@ export function Settings({ session }: { session: Session | null }) {
     e.preventDefault();
     if (!merchantId) return;
 
+    if (!isValidStampValidityDays(stampValidityDays)) {
+      setError('La vigencia de los sellos debe ser un número entero de días mayor que cero.');
+      return;
+    }
+
     setIsSaving(true);
     setError(null);
     try {
-      await updateMerchantName(merchantId, name.trim());
-      notifySuccess('Nombre del local actualizado.');
+      await updateMerchantSettings(merchantId, { name: name.trim(), stampValidityDays });
+      notifySuccess('Configuración del local actualizada.');
     } catch (err) {
       console.error('Error updating merchant:', err);
       setError(err instanceof Error ? err.message : 'No pudimos guardar los cambios.');
@@ -46,6 +68,12 @@ export function Settings({ session }: { session: Session | null }) {
       setIsSaving(false);
     }
   };
+
+  // Un local puede tener un plazo que no está entre los preajustes (cargado a
+  // mano en la BD); lo agregamos para no pisárselo al guardar.
+  const options = VALIDITY_OPTIONS.some((option) => option.value === stampValidityDays)
+    ? VALIDITY_OPTIONS
+    : [...VALIDITY_OPTIONS, { value: stampValidityDays, label: `${stampValidityDays} días` }];
 
   return (
     <>
@@ -79,6 +107,31 @@ export function Settings({ session }: { session: Session | null }) {
               />
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-3 font-medium">
                 Este nombre aparece en la tarjeta que tus clientes guardan en su billetera y en la página donde se registran.
+              </p>
+            </div>
+
+            <div>
+              <label htmlFor="stamp-validity" className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 uppercase tracking-wider">
+                Vigencia de los Sellos
+              </label>
+              <select
+                id="stamp-validity"
+                value={stampValidityDays === null ? NO_EXPIRY : String(stampValidityDays)}
+                onChange={(e) => setStampValidityDays(e.target.value === NO_EXPIRY ? null : Number(e.target.value))}
+                className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-4 focus:ring-brand-blue/20 focus:border-brand-blue transition-all text-slate-800 dark:text-slate-100 font-medium text-lg"
+              >
+                {options.map((option) => (
+                  <option key={option.value ?? NO_EXPIRY} value={option.value === null ? NO_EXPIRY : String(option.value)}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-3 font-medium">
+                {stampValidityDays === null
+                  ? 'Los sellos de tu local no vencen: tus clientes pueden juntarlos sin apuro.'
+                  : `Cada sello vence ${stampValidityDays} días después de que el cliente lo gana.`}
+                {' '}Aplica a todas tus promociones. Los sellos ya entregados no cambian si después
+                modificas este valor: su vencimiento queda fijado en el momento en que se dan.
               </p>
             </div>
 

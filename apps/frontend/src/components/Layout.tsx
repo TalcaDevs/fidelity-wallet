@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import { useTheme } from '../hooks/useTheme';
 import { useMediaQuery } from '../hooks/useMediaQuery';
+import type { MerchantRole } from '../hooks/useMembership';
 
 const NAV_LINK_CLASSES = ({ isActive }: { isActive: boolean }) =>
   `flex items-center gap-3 px-5 py-3.5 rounded-2xl font-bold transition-all duration-300 ${
@@ -14,25 +15,25 @@ const NAV_LINK_CLASSES = ({ isActive }: { isActive: boolean }) =>
 
 const NAV_ITEMS = [
   {
-    to: '/dashboard',
+    to: '/admin/dashboard',
     label: 'Métricas Principales',
     icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6',
     strokeWidth: '2.5',
   },
   {
-    to: '/promotions',
+    to: '/admin/promotions',
     label: 'Promociones',
     icon: 'M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4',
     strokeWidth: '2',
   },
   {
-    to: '/customers',
+    to: '/admin/customers',
     label: 'Clientes',
     icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z',
     strokeWidth: '2',
   },
   {
-    to: '/settings',
+    to: '/admin/settings',
     label: 'Configuración',
     icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z',
     strokeWidth: '2',
@@ -42,7 +43,12 @@ const NAV_ITEMS = [
 // El sidebar es un drawer solo bajo el breakpoint md; en escritorio está siempre visible.
 const MOBILE_QUERY = '(max-width: 767px)';
 
-export function Layout({ session }: { session: Session | null }) {
+const ROLE_LABELS: Record<MerchantRole, string> = {
+  OWNER: 'Administrador',
+  STAFF: 'Cajero',
+};
+
+export function Layout({ session, role }: { session: Session | null; role: MerchantRole | null }) {
   const { isDarkMode, toggleDarkMode } = useTheme();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const isMobile = useMediaQuery(MOBILE_QUERY);
@@ -137,7 +143,7 @@ export function Layout({ session }: { session: Session | null }) {
              </div>
              <div className="overflow-hidden text-ellipsis">
                <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{session?.user?.email}</p>
-               <p className="text-xs text-slate-500">Administrador</p>
+               <p className="text-xs text-slate-500">{role ? ROLE_LABELS[role] : 'Sin rol asignado'}</p>
              </div>
           </div>
           <button

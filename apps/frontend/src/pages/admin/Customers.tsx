@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { listCustomers, type CustomerRow } from '../../services/customersService';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
 import { maskIdentifier } from '../../lib/maskIdentifier';
+import { formatStampExpiry } from '../../lib/stampExpiry';
 import { downloadCsv, toCsv, type CsvColumn } from '../../lib/csv';
 import { useToast } from '../../hooks/useToast';
 
@@ -13,7 +14,8 @@ const DATE_FORMAT: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digi
 const CSV_COLUMNS: CsvColumn<CustomerRow>[] = [
   { header: 'RUT', value: (row) => row.rut },
   { header: 'Teléfono', value: (row) => row.phone },
-  { header: 'Sellos acumulados', value: (row) => row.stampsCount },
+  { header: 'Sellos vigentes', value: (row) => row.activeStamps },
+  { header: 'Próximo vencimiento', value: (row) => (row.nextExpiryAt ? new Date(row.nextExpiryAt).toISOString() : null) },
   { header: 'Cliente desde', value: (row) => new Date(row.joinedAt).toISOString() },
   { header: 'Última actividad', value: (row) => new Date(row.lastActivityAt).toISOString() },
 ];
@@ -42,6 +44,10 @@ export function Customers({ session }: { session: Session | null }) {
   useEffect(() => {
     if (merchantId) fetchCustomers(merchantId);
   }, [merchantId, fetchCustomers]);
+
+  // Un único "ahora" para todo el render: si cada fila creara el suyo, dos filas
+  // con la misma fecha podrían quedar con textos distintos al cruzar la medianoche.
+  const now = new Date();
 
   const term = search.trim().toLowerCase();
   const visible = term
@@ -95,7 +101,7 @@ export function Customers({ session }: { session: Session | null }) {
             <thead>
               <tr className="bg-slate-50/80 dark:bg-slate-900/50 border-b border-slate-200/60 dark:border-slate-700/60 backdrop-blur-sm">
                 <th className="p-6 text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Cliente</th>
-                <th className="p-6 text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Sellos</th>
+                <th className="p-6 text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Sellos vigentes</th>
                 <th className="p-6 text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Cliente desde</th>
                 <th className="p-6 text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Última actividad</th>
               </tr>
@@ -126,24 +132,33 @@ export function Customers({ session }: { session: Session | null }) {
                   </td>
                 </tr>
               ) : (
-                visible.map((row) => (
-                  <tr key={row.passId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
-                    <td className="p-5 font-bold text-slate-900 dark:text-slate-100">
-                      {maskIdentifier(row.rut) ?? maskIdentifier(row.phone) ?? 'Anónimo'}
-                    </td>
-                    <td className="p-5">
-                      <span className="inline-flex items-center justify-center min-w-10 h-10 px-3 rounded-full bg-brand-blue/10 dark:bg-brand-blue/20 text-brand-blue font-bold">
-                        {row.stampsCount}
-                      </span>
-                    </td>
-                    <td className="p-5 text-slate-600 dark:text-slate-300 font-medium">
-                      {new Date(row.joinedAt).toLocaleDateString([], DATE_FORMAT)}
-                    </td>
-                    <td className="p-5 text-slate-600 dark:text-slate-300 font-medium">
-                      {new Date(row.lastActivityAt).toLocaleDateString([], DATE_FORMAT)}
-                    </td>
-                  </tr>
-                ))
+                visible.map((row) => {
+                  const expiryLabel = formatStampExpiry(row.nextExpiryAt, now);
+                  return (
+                    <tr key={row.passId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                      <td className="p-5 font-bold text-slate-900 dark:text-slate-100">
+                        {maskIdentifier(row.rut) ?? maskIdentifier(row.phone) ?? 'Anónimo'}
+                      </td>
+                      <td className="p-5">
+                        <span className="inline-flex items-center justify-center min-w-10 h-10 px-3 rounded-full bg-brand-blue/10 dark:bg-brand-blue/20 text-brand-blue font-bold">
+                          {row.activeStamps}
+                        </span>
+                        {/* Si la promoción no vence, no mostramos nada: un guion o un "null" solo confunde. */}
+                        {expiryLabel && (
+                          <span className="block text-sm text-slate-500 dark:text-slate-400 font-medium mt-1">
+                            {expiryLabel}
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-5 text-slate-600 dark:text-slate-300 font-medium">
+                        {new Date(row.joinedAt).toLocaleDateString([], DATE_FORMAT)}
+                      </td>
+                      <td className="p-5 text-slate-600 dark:text-slate-300 font-medium">
+                        {new Date(row.lastActivityAt).toLocaleDateString([], DATE_FORMAT)}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

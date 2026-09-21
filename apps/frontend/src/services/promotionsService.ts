@@ -46,17 +46,33 @@ export async function createPromotion(merchantId: string, values: PromotionFormV
   if (error) throw error;
 }
 
+// PostgREST responde 204 (éxito) a un UPDATE o DELETE que RLS dejó sin filas: no
+// es un error, simplemente no tocó nada. Sin pedir las filas afectadas, el panel
+// mostraría "guardado" sobre una escritura que la base rechazó en silencio.
+function assertRowAffected(rows: { id: string }[] | null): void {
+  if (!rows || rows.length === 0) {
+    throw new Error('No se pudo guardar el cambio: la promoción no existe o tu cuenta no tiene permisos sobre ella.');
+  }
+}
+
 export async function updatePromotion(promoId: string, values: PromotionFormValues): Promise<void> {
-  const { error } = await supabase.from('Promotion').update(values).eq('id', promoId);
+  const { data, error } = await supabase.from('Promotion').update({
+    name: values.name,
+    targetStamps: values.targetStamps,
+    rewardName: values.rewardName,
+  }).eq('id', promoId).select('id');
   if (error) throw error;
+  assertRowAffected(data);
 }
 
 export async function setPromotionActive(promoId: string, isActive: boolean): Promise<void> {
-  const { error } = await supabase.from('Promotion').update({ isActive }).eq('id', promoId);
+  const { data, error } = await supabase.from('Promotion').update({ isActive }).eq('id', promoId).select('id');
   if (error) throw error;
+  assertRowAffected(data);
 }
 
 export async function deletePromotion(promoId: string): Promise<void> {
-  const { error } = await supabase.from('Promotion').delete().eq('id', promoId);
+  const { data, error } = await supabase.from('Promotion').delete().eq('id', promoId).select('id');
   if (error) throw error;
+  assertRowAffected(data);
 }
