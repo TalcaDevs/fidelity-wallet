@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from 'react';
-import type { Session } from '@supabase/supabase-js';
 import { deletePromotion, listPromotions, setPromotionActive, type Promotion } from '../../services/promotionsService';
 import { PromotionSettings } from './PromotionSettings';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
@@ -8,8 +7,7 @@ import { useToast } from '../../hooks/useToast';
 
 export type { Promotion };
 
-export function PromotionsModule({ session }: { session: Session | null }) {
-  const merchantId = session?.user?.id;
+export function PromotionsModule({ merchantId }: { merchantId: string | null }) {
   const { notifySuccess } = useToast();
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [promoToDelete, setPromoToDelete] = useState<Promotion | null>(null);

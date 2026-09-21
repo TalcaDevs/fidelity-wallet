@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { Session } from '@supabase/supabase-js';
 import { listCustomers, type CustomerRow } from '../../services/customersService';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
 import { maskIdentifier } from '../../lib/maskIdentifier';
@@ -20,8 +19,7 @@ const CSV_COLUMNS: CsvColumn<CustomerRow>[] = [
   { header: 'Última actividad', value: (row) => new Date(row.lastActivityAt).toISOString() },
 ];
 
-export function Customers({ session }: { session: Session | null }) {
-  const merchantId = session?.user?.id;
+export function Customers({ merchantId }: { merchantId: string | null }) {
   const { notifySuccess, notifyError } = useToast();
 
   const [customers, setCustomers] = useState<CustomerRow[]>([]);

@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import type { MembershipState, MerchantRole } from '../../hooks/useMembership';
+import { supabase } from '../../lib/supabase';
 import { ROUTES, buildLoginUrl, resolveRedirectTarget } from './routePaths';
 
 interface LocationState {
@@ -14,6 +15,34 @@ function FullScreenLoader({ label }: { label: string }) {
         W
       </div>
       <p className="font-medium">{label}</p>
+    </div>
+  );
+}
+
+function AccessDenied({ reason }: { reason: string | null }) {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-5 px-6 text-center bg-slate-50 dark:bg-[#0f172a] text-slate-600 dark:text-slate-300">
+      <div className="w-14 h-14 rounded-2xl bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400 flex items-center justify-center text-2xl font-black">
+        !
+      </div>
+      <div>
+        <p className="text-xl font-extrabold text-slate-900 dark:text-slate-100 mb-1">No pudimos verificar tu acceso</p>
+        <p className="max-w-md">{reason ?? 'Tu usuario no tiene un local asociado.'}</p>
+      </div>
+      <div className="flex gap-3">
+        <button
+          onClick={() => window.location.reload()}
+          className="px-5 py-3 rounded-xl bg-brand-blue hover:bg-blue-600 text-white font-bold transition-all"
+        >
+          Reintentar
+        </button>
+        <button
+          onClick={() => supabase.auth.signOut()}
+          className="px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 font-bold transition-all hover:bg-slate-100 dark:hover:bg-slate-800"
+        >
+          Cerrar sesión
+        </button>
+      </div>
     </div>
   );
 }
@@ -44,7 +73,14 @@ export function RequireRole({
     return <FullScreenLoader label="Cargando tu cuenta..." />;
   }
 
-  if (!membership.role || !allow.includes(membership.role)) {
+  // Fail-closed: si no pudimos confirmar la membresía (error de red, tabla
+  // inaccesible, usuario sin local) no se asume ningún rol ni se redirige en
+  // silencio. Se deniega y se dice por qué, con una salida clara.
+  if (membership.error || !membership.role) {
+    return <AccessDenied reason={membership.error} />;
+  }
+
+  if (!allow.includes(membership.role)) {
     return <Navigate to={ROUTES.scan} replace />;
   }
 

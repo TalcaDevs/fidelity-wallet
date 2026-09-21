@@ -19,8 +19,7 @@ const VALIDITY_OPTIONS: { value: number | null; label: string }[] = [
 
 const NO_EXPIRY = '';
 
-export function Settings({ session }: { session: Session | null }) {
-  const merchantId = session?.user?.id;
+export function Settings({ session, merchantId }: { session: Session | null; merchantId: string | null }) {
   const { notifySuccess } = useToast();
 
   const [name, setName] = useState('');

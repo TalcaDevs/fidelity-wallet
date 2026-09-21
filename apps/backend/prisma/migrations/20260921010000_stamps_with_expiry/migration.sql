@@ -7,8 +7,8 @@
 --
 -- Decisiones de producto que este esquema fija (y el motivo de cada una):
 --
---   1. "expiresAt" se calcula al sellar (earnedAt + stampValidityDays de la promocion
---      vigente en ese instante) y queda CONGELADO. No se recalcula nunca. Si el dueno
+--   1. "expiresAt" se calcula al sellar (earnedAt + "Merchant"."stampValidityDays") y
+--      queda CONGELADO. No se recalcula nunca. Si el dueno
 --      del local acorta la vigencia manana, no le quema retroactivamente sellos que el
 --      cliente ya tenia ganados bajo las reglas viejas. "expiresAt" NULL = no vence.
 --
@@ -21,9 +21,15 @@
 --      que cualquier valor guardado estaria mal apenas pasa el reloj. Ningun proceso
 --      batch es responsable de la correccion del saldo.
 
--- 1. Vigencia configurable por promocion. NULL = los sellos de esa promocion no vencen,
---    que es el comportamiento historico y por eso el default implicito.
-ALTER TABLE "Promotion" ADD COLUMN "stampValidityDays" INTEGER;
+-- 1. Vigencia configurable por comercio. NULL = los sellos de ese local no vencen, que es
+--    el comportamiento historico y por eso el default implicito.
+--
+--    Vive en "Merchant" y no en "Promotion" porque es una regla del local ("aca los sellos
+--    valen 3 meses"), no del premio: el dueno la configura una sola vez junto al nombre del
+--    negocio. Ademas "Pass" todavia no sabe a que promocion pertenece, asi que tenerla en
+--    "Promotion" obligaria a resolver que promocion aplica solo para saber cuantos dias dura
+--    el sello.
+ALTER TABLE "Merchant" ADD COLUMN "stampValidityDays" INTEGER;
 
 -- 2. Auditoria de quien ejecuto el scan. Hoy siempre es el dueno porque hay un usuario
 --    por comercio; se agrega ahora para que la migracion de roles (OWNER/STAFF) no tenga

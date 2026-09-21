@@ -41,27 +41,27 @@ export function useMembership(session: Session | null): MembershipState {
       .then((memberships) => {
         if (!active) return;
         const membership = memberships[0];
-        // TRANSITORIO: hasta que todas las cuentas tengan fila en MerchantUser,
-        // el supuesto vigente del sistema es "un usuario = un comercio propio",
-        // así que sin fila asumimos OWNER del comercio con su mismo id.
+        // Sin fila de membresía no hay rol: fail-closed. El trigger de alta crea
+        // la fila del dueño y la migración backfilleó las existentes, así que
+        // "sin membresía" significa que algo está mal, no que sea el dueño.
         setState(
           membership
             ? { userId, merchantId: membership.merchantId, role: membership.role, loading: false, error: null }
-            : { userId, merchantId: userId, role: 'OWNER', loading: false, error: null }
+            : { userId, merchantId: null, role: null, loading: false, error: 'Tu usuario no está asociado a ningún local.' }
         );
       })
       .catch((err: unknown) => {
         if (!active) return;
-        // El mismo fallback cubre el período en que la tabla todavía no existe
-        // en el entorno: se registra el error, pero no se deja al dueño fuera
-        // de su propio panel.
+        // Un fallo de red o un error transitorio NO puede otorgar permisos: sin
+        // membresía confirmada se deniega el acceso y el guard lo muestra. Darle
+        // OWNER a quien no pudimos verificar es una escalada de privilegios.
         console.error('Error fetching membership:', err);
         setState({
           userId,
-          merchantId: userId,
-          role: 'OWNER',
+          merchantId: null,
+          role: null,
           loading: false,
-          error: err instanceof Error ? err.message : 'Error fetching membership',
+          error: err instanceof Error ? err.message : 'No pudimos verificar tu acceso.',
         });
       });
 
