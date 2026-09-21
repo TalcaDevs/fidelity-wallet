@@ -5,7 +5,6 @@ dist
 coverage
 build
 .agents/
-HANDOFF.md
 scratch_triggers.sql
 *.mjs
 *.tsbuildinfo

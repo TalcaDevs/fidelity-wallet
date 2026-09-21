@@ -34,6 +34,7 @@ export function PromotionSettings({ onClose, merchantId, promoId }: { onClose: (
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+
     setIsSaving(true);
     setError(null);
 

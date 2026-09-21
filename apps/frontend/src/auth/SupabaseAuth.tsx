@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { ROUTES, passwordResetUrl } from '../components/routing/routePaths';
+import { useTheme } from '../hooks/useTheme';
 
 export function SupabaseAuth() {
+  // El login vive fuera del Layout, que es quien normalmente aplica la clase
+  // `dark`: sin esto las variantes oscuras de esta pantalla nunca se activan.
+  useTheme();
   const [mode, setMode] = useState<'login' | 'reset'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,8 +38,10 @@ export function SupabaseAuth() {
     setErrorMsg('');
     setNoticeMsg('');
 
+    // Con la landing pública en "/", el enlace del correo tiene que apuntar al
+    // formulario de nueva contraseña y no a la página de marketing.
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin,
+      redirectTo: passwordResetUrl(),
     });
 
     setIsLoading(false);
@@ -163,6 +171,12 @@ export function SupabaseAuth() {
             </div>
           </form>
         </div>
+
+        <p className="mt-8 text-center">
+          <Link to={ROUTES.home} className="text-sm font-bold text-slate-500 dark:text-slate-400 hover:text-brand-blue transition-colors">
+            ← Volver al inicio
+          </Link>
+        </p>
       </div>
     </div>
   );
