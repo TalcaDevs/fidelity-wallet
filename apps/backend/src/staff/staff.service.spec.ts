@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -12,6 +12,9 @@ describe('StaffService', () => {
   beforeEach(() => {
     prisma = {
       merchant: {
+        findUnique: vi.fn(),
+      },
+      merchantUser: {
         findUnique: vi.fn(),
       },
     } as unknown as PrismaService;
@@ -147,5 +150,59 @@ describe('StaffService', () => {
         email: 'duplicate@test.com',
       }),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('should throw ForbiddenException if caller is not an OWNER of the merchant', async () => {
+    vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({
+      id: 'mu-1',
+      userId: 'caller-1',
+      merchantId: 'a0000000-0000-0000-0000-000000000001',
+      role: 'STAFF', // Not OWNER!
+      createdAt: new Date(),
+    } as any);
+
+    await expect(
+      service.inviteStaff(
+        {
+          merchantId: 'a0000000-0000-0000-0000-000000000001',
+          email: 'newstaff@test.com',
+        },
+        'caller-1',
+      ),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('should allow invite if caller is an OWNER of the merchant', async () => {
+    vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({
+      id: 'mu-2',
+      userId: 'caller-owner',
+      merchantId: 'a0000000-0000-0000-0000-000000000001',
+      role: 'OWNER',
+      createdAt: new Date(),
+    } as any);
+
+    vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue({
+      id: 'a0000000-0000-0000-0000-000000000001',
+      name: 'Cafeteria',
+      email: 'owner@test.com',
+    } as any);
+
+    mockSupabaseAdmin.auth.admin.inviteUserByEmail.mockResolvedValue({
+      data: {
+        user: { id: 'u-123', email: 'newstaff@test.com' },
+      },
+      error: null,
+    });
+
+    const res = await service.inviteStaff(
+      {
+        merchantId: 'a0000000-0000-0000-0000-000000000001',
+        email: 'newstaff@test.com',
+      },
+      'caller-owner',
+    );
+
+    expect(res.id).toBe('u-123');
+    expect(res.role).toBe('STAFF');
   });
 });

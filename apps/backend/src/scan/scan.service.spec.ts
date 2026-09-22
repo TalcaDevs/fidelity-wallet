@@ -44,6 +44,9 @@ describe('ScanService', () => {
 
   beforeEach(() => {
     prisma = {
+      merchantUser: {
+        findUnique: vi.fn(),
+      },
       pass: {
         findUnique: vi.fn(),
       },
@@ -65,6 +68,56 @@ describe('ScanService', () => {
     } as unknown as PrismaService;
 
     service = new ScanService(prisma);
+  });
+
+  it('should throw ForbiddenException if callerUserId is not member of merchant', async () => {
+    vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue(null);
+
+    await expect(
+      service.processScan(
+        {
+          passToken: mockToken,
+          action: ScanActionType.STAMP,
+          merchantId: mockMerchantId,
+        },
+        'unauthorized-user-id',
+      ),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('should allow scan when callerUserId is verified member of merchant', async () => {
+    vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({
+      id: 'mu-1',
+      userId: mockUserId,
+      merchantId: mockMerchantId,
+      role: 'STAFF',
+      createdAt: new Date(),
+    } as any);
+    vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
+    vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(mockPromotion as any);
+    vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
+    vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-1' } as any);
+    vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-1' } as any);
+    vi.spyOn(prisma.stamp, 'count').mockResolvedValue(1);
+
+    const result = await service.processScan(
+      {
+        passToken: mockToken,
+        action: ScanActionType.STAMP,
+        merchantId: mockMerchantId,
+      },
+      mockUserId,
+    );
+
+    expect(result.success).toBe(true);
+    expect(prisma.merchantUser.findUnique).toHaveBeenCalledWith({
+      where: {
+        userId_merchantId: {
+          userId: mockUserId,
+          merchantId: mockMerchantId,
+        },
+      },
+    });
   });
 
   it('should throw NotFoundException if passToken is invalid', async () => {

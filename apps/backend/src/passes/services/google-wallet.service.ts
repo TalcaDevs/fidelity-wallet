@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import jwt from 'jsonwebtoken';
 import { PassData } from '../interfaces/pass-data.interface.js';
@@ -88,8 +88,16 @@ export class GoogleWalletService {
         return `https://pay.google.com/gp/v/save/${token}`;
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        this.logger.warn(`Google Wallet JWT signing failed (${msg}). Falling back to sandbox URL.`);
+        this.logger.error(`Google Wallet JWT signing failed: ${msg}`);
+        if (process.env.NODE_ENV === 'production') {
+          throw new InternalServerErrorException(`Google Wallet JWT signing failed: ${msg}`);
+        }
+        this.logger.warn('Falling back to sandbox URL.');
       }
+    } else if (process.env.NODE_ENV === 'production') {
+      throw new InternalServerErrorException(
+        'Google Wallet credentials are not configured in production environment',
+      );
     }
 
     // Development / Sandbox unsigned JWT token fallback

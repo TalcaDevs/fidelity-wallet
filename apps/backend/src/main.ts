@@ -11,9 +11,18 @@ async function bootstrap() {
   // Prefijo global para todos los endpoints de la API
   app.setGlobalPrefix('api');
 
-  // Habilitar CORS para permitir llamadas desde el Landing y la PWA
+  // Habilitar CORS restringido a orígenes permitidos
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+    : [
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+      ];
+
   app.enableCors({
-    origin: true, // En desarrollo permite todos los orígenes locales
+    origin: allowedOrigins,
     credentials: true,
   });
 

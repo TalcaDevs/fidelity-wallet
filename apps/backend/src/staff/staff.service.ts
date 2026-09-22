@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -46,7 +47,22 @@ export class StaffService {
     this.supabaseAdmin = client;
   }
 
-  async inviteStaff(dto: InviteStaffDto): Promise<StaffResponseDto> {
+  async inviteStaff(dto: InviteStaffDto, callerUserId?: string): Promise<StaffResponseDto> {
+    if (callerUserId) {
+      const callerMembership = await this.prisma.merchantUser.findUnique({
+        where: {
+          userId_merchantId: {
+            userId: callerUserId,
+            merchantId: dto.merchantId,
+          },
+        },
+      });
+
+      if (!callerMembership || callerMembership.role !== 'OWNER') {
+        throw new ForbiddenException('Only the merchant OWNER can invite staff members');
+      }
+    }
+
     const merchant = await this.prisma.merchant.findUnique({
       where: { id: dto.merchantId },
     });

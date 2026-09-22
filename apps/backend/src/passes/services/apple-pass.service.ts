@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassData } from '../interfaces/pass-data.interface.js';
 
@@ -43,7 +43,7 @@ export class ApplePassService {
       passTypeIdentifier,
       serialNumber: data.serialNumber,
       teamIdentifier,
-      webServiceURL: `${webServiceUrl}/v1`,
+      webServiceURL: `${webServiceUrl.replace(/\/+$/, '')}/api/v1`,
       authenticationToken: data.passToken,
       organizationName: data.merchantName,
       description: `Pase de Fidelidad - ${data.merchantName}`,
@@ -137,10 +137,16 @@ export class ApplePassService {
         return pass.getAsBuffer();
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        this.logger.warn(
-          `Failed to sign PKPass with real certificates (${msg}). Falling back to development mock pass buffer.`,
-        );
+        this.logger.error(`Failed to sign PKPass: ${msg}`);
+        if (process.env.NODE_ENV === 'production') {
+          throw new InternalServerErrorException(`Apple Wallet PKPass signing failed: ${msg}`);
+        }
+        this.logger.warn('Falling back to development mock pass buffer.');
       }
+    } else if (process.env.NODE_ENV === 'production') {
+      throw new InternalServerErrorException(
+        'Apple Wallet signing certificates are not configured in production environment',
+      );
     }
 
     // Development / Mock fallback: serialize pass manifest JSON as buffer

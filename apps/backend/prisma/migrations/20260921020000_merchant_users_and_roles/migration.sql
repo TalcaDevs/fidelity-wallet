@@ -253,18 +253,24 @@ CREATE POLICY "merchant_user_delete" ON "MerchantUser"
 -- Supabase (esos roles no existen).
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-    EXECUTE 'GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role';
-    EXECUTE 'GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role';
-    EXECUTE 'GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role';
-    EXECUTE 'GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role';
-    EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role';
-    EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role';
-    EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES TO anon, authenticated, service_role';
-    EXECUTE 'GRANT SELECT, INSERT, UPDATE, DELETE ON public."MerchantUser" TO authenticated';
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    EXECUTE 'GRANT USAGE ON SCHEMA public TO anon';
+    EXECUTE 'GRANT SELECT ON public."Merchant", public."Promotion" TO anon';
   END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+    EXECUTE 'GRANT USAGE ON SCHEMA public TO authenticated';
+    EXECUTE 'GRANT SELECT ON public."Merchant", public."Promotion", public."Pass", public."Stamp", public."Scan", public."Customer", public."MerchantUser", public."PassStampBalance" TO authenticated';
+    EXECUTE 'GRANT INSERT, UPDATE, DELETE ON public."Promotion", public."MerchantUser" TO authenticated';
+    EXECUTE 'GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO authenticated';
+    EXECUTE 'GRANT EXECUTE ON ALL ROUTINES IN SCHEMA public TO authenticated';
+  END IF;
+
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
-    EXECUTE 'GRANT ALL ON public."MerchantUser" TO service_role';
+    EXECUTE 'GRANT USAGE ON SCHEMA public TO service_role';
+    EXECUTE 'GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role';
+    EXECUTE 'GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role';
+    EXECUTE 'GRANT ALL ON ALL ROUTINES IN SCHEMA public TO service_role';
   END IF;
 END
 $$;

@@ -20,7 +20,24 @@ export class ScanService {
     @Optional() private readonly passesService?: PassesService,
   ) {}
 
-  async processScan(dto: ScanActionDto): Promise<ScanResultDto> {
+  async processScan(dto: ScanActionDto, callerUserId?: string): Promise<ScanResultDto> {
+    if (callerUserId) {
+      const membership = await this.prisma.merchantUser.findUnique({
+        where: {
+          userId_merchantId: {
+            userId: callerUserId,
+            merchantId: dto.merchantId,
+          },
+        },
+      });
+
+      if (!membership) {
+        throw new ForbiddenException('User is not authorized as staff or owner for this merchant');
+      }
+
+      dto.createdByUserId = callerUserId;
+    }
+
     const pass = await this.prisma.pass.findUnique({
       where: { passToken: dto.passToken },
       include: {
@@ -57,35 +74,9 @@ export class ScanService {
         }
       : undefined;
 
-    // 90-second anti-fraud window for STAMP
     if (dto.action === ScanActionType.STAMP) {
-      const latestScan = await this.prisma.scan.findFirst({
-        where: {
-          passId: pass.id,
-          merchantId: dto.merchantId,
-          type: ScanType.STAMP_ADDED,
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-
-      if (latestScan && Date.now() - latestScan.createdAt.getTime() < ANTI_FRAUD_WINDOW_MS) {
-        const currentActiveStamps = await this.countActiveStamps(pass.id);
-        return {
-          success: true,
-          alreadyScanned: true,
-          action: ScanActionType.STAMP,
-          passId: pass.id,
-          activeStamps: currentActiveStamps,
-          targetStamps: promotion.targetStamps,
-          rewardUnlocked: currentActiveStamps >= promotion.targetStamps,
-          rewardName: promotion.rewardName,
-          customer: maskedCustomer,
-          message: 'Stamp was already registered within the last 90 seconds',
-        };
-      }
-
       const result = await this.executeStampAction(pass, promotion, dto, maskedCustomer);
-      if (this.passesService) {
+      if (this.passesService && !result.alreadyScanned) {
         void this.passesService.notifyPassUpdate(pass.id);
       }
       return result;
@@ -116,6 +107,39 @@ export class ScanService {
         : null;
 
     return this.prisma.$transaction(async (tx) => {
+      // Atomic 90-second anti-fraud window checked inside transaction
+      const latestScan = await tx.scan.findFirst({
+        where: {
+          passId: pass.id,
+          merchantId: dto.merchantId,
+          type: ScanType.STAMP_ADDED,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (latestScan && now.getTime() - latestScan.createdAt.getTime() < ANTI_FRAUD_WINDOW_MS) {
+        const activeStamps = await tx.stamp.count({
+          where: {
+            passId: pass.id,
+            consumedAt: null,
+            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+          },
+        });
+
+        return {
+          success: true,
+          alreadyScanned: true,
+          action: ScanActionType.STAMP,
+          passId: pass.id,
+          activeStamps,
+          targetStamps: promotion.targetStamps,
+          rewardUnlocked: activeStamps >= promotion.targetStamps,
+          rewardName: promotion.rewardName,
+          customer: maskedCustomer,
+          message: 'Stamp was already registered within the last 90 seconds',
+        };
+      }
+
       const scan = await tx.scan.create({
         data: {
           passId: pass.id,
