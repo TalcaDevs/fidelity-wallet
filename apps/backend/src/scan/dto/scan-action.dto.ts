@@ -25,7 +25,7 @@ export class ScanActionDto {
   action: ScanActionType;
 
   @ApiProperty({
-    description: 'Merchant ID performing the scan (UUID)',
+    description: 'Merchant ID performing the scan (UUID v4)',
     example: 'a0000000-0000-0000-0000-000000000001',
   })
   @IsUUID('4', { message: 'merchantId must be a valid UUID v4' })
@@ -33,12 +33,12 @@ export class ScanActionDto {
   merchantId: string;
 
   @ApiPropertyOptional({
-    description: 'User ID of the staff or owner who performed the scan (UUID)',
-    example: 'b0000000-0000-0000-0000-000000000002',
+    description: 'Optional ID of the specific promotion to apply (UUID v4)',
+    example: 'p0000000-0000-0000-0000-000000000001',
   })
   @IsOptional()
-  @IsUUID('4', { message: 'createdByUserId must be a valid UUID v4' })
-  createdByUserId?: string;
+  @IsUUID('4', { message: 'promotionId must be a valid UUID v4' })
+  promotionId?: string;
 }
 
 export class MaskedCustomerDto {
@@ -57,7 +57,7 @@ export class ScanResultDto {
   success: boolean;
 
   @ApiProperty({
-    description: 'True if duplicate stamp was ignored within the 90-second anti-fraud window',
+    description: 'True if duplicate stamp or redeem was ignored within the 90-second anti-fraud window',
     example: false,
   })
   alreadyScanned: boolean;
@@ -83,7 +83,7 @@ export class ScanResultDto {
   @ApiPropertyOptional({ description: 'Next stamp expiration timestamp, if any' })
   nextExpiryAt?: Date | null;
 
-  @ApiPropertyOptional({ description: 'Created Scan ID (UUID)' })
+  @ApiPropertyOptional({ description: 'Created or latest matching Scan ID (UUID)' })
   scanId?: string;
 
   @ApiPropertyOptional({ description: 'Number of stamps consumed in this redeem action' })

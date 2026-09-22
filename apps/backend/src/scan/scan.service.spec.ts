@@ -1,4 +1,10 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ScanType } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -45,7 +51,12 @@ describe('ScanService', () => {
   beforeEach(() => {
     prisma = {
       merchantUser: {
-        findUnique: vi.fn(),
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'mu-1',
+          userId: mockUserId,
+          merchantId: mockMerchantId,
+          role: 'STAFF',
+        }),
       },
       pass: {
         findUnique: vi.fn(),
@@ -64,10 +75,24 @@ describe('ScanService', () => {
         create: vi.fn(),
         updateMany: vi.fn(),
       },
+      $queryRaw: vi.fn().mockResolvedValue([]),
       $transaction: vi.fn((callback) => callback(prisma)),
     } as unknown as PrismaService;
 
     service = new ScanService(prisma);
+  });
+
+  it('should throw UnauthorizedException if callerUserId is missing', async () => {
+    await expect(
+      service.processScan(
+        {
+          passToken: mockToken,
+          action: ScanActionType.STAMP,
+          merchantId: mockMerchantId,
+        },
+        '',
+      ),
+    ).rejects.toThrow(UnauthorizedException);
   });
 
   it('should throw ForbiddenException if callerUserId is not member of merchant', async () => {
@@ -85,50 +110,18 @@ describe('ScanService', () => {
     ).rejects.toThrow(ForbiddenException);
   });
 
-  it('should allow scan when callerUserId is verified member of merchant', async () => {
-    vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({
-      id: 'mu-1',
-      userId: mockUserId,
-      merchantId: mockMerchantId,
-      role: 'STAFF',
-      createdAt: new Date(),
-    } as any);
-    vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
-    vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(mockPromotion as any);
-    vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
-    vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-1' } as any);
-    vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-1' } as any);
-    vi.spyOn(prisma.stamp, 'count').mockResolvedValue(1);
-
-    const result = await service.processScan(
-      {
-        passToken: mockToken,
-        action: ScanActionType.STAMP,
-        merchantId: mockMerchantId,
-      },
-      mockUserId,
-    );
-
-    expect(result.success).toBe(true);
-    expect(prisma.merchantUser.findUnique).toHaveBeenCalledWith({
-      where: {
-        userId_merchantId: {
-          userId: mockUserId,
-          merchantId: mockMerchantId,
-        },
-      },
-    });
-  });
-
   it('should throw NotFoundException if passToken is invalid', async () => {
     vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(null);
 
     await expect(
-      service.processScan({
-        passToken: 'invalid-token',
-        action: ScanActionType.STAMP,
-        merchantId: mockMerchantId,
-      }),
+      service.processScan(
+        {
+          passToken: 'invalid-token',
+          action: ScanActionType.STAMP,
+          merchantId: mockMerchantId,
+        },
+        mockUserId,
+      ),
     ).rejects.toThrow(NotFoundException);
   });
 
@@ -139,11 +132,14 @@ describe('ScanService', () => {
     } as any);
 
     await expect(
-      service.processScan({
-        passToken: mockToken,
-        action: ScanActionType.STAMP,
-        merchantId: mockMerchantId,
-      }),
+      service.processScan(
+        {
+          passToken: mockToken,
+          action: ScanActionType.STAMP,
+          merchantId: mockMerchantId,
+        },
+        mockUserId,
+      ),
     ).rejects.toThrow(ForbiddenException);
   });
 
@@ -152,22 +148,24 @@ describe('ScanService', () => {
     vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(null);
 
     await expect(
-      service.processScan({
-        passToken: mockToken,
-        action: ScanActionType.STAMP,
-        merchantId: mockMerchantId,
-      }),
+      service.processScan(
+        {
+          passToken: mockToken,
+          action: ScanActionType.STAMP,
+          merchantId: mockMerchantId,
+        },
+        mockUserId,
+      ),
     ).rejects.toThrow(BadRequestException);
   });
 
-  it('should prevent duplicate stamp within 90-second anti-fraud window', async () => {
+  it('should prevent duplicate stamp within 90-second anti-fraud window and return consistent contract', async () => {
     vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
     vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(mockPromotion as any);
 
-    // Scan occurred 30 seconds ago
     const thirtySecondsAgo = new Date(Date.now() - 30 * 1000);
     vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue({
-      id: 'scan-prev',
+      id: 'scan-prev-1',
       passId: mockPassId,
       merchantId: mockMerchantId,
       type: ScanType.STAMP_ADDED,
@@ -175,24 +173,31 @@ describe('ScanService', () => {
     } as any);
 
     vi.spyOn(prisma.stamp, 'count').mockResolvedValue(3);
+    vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue({
+      expiresAt: new Date(Date.now() + 86400000),
+    } as any);
 
     const stampCreateSpy = vi.spyOn(prisma.stamp, 'create');
     const scanCreateSpy = vi.spyOn(prisma.scan, 'create');
 
-    const result = await service.processScan({
-      passToken: mockToken,
-      action: ScanActionType.STAMP,
-      merchantId: mockMerchantId,
-    });
+    const result = await service.processScan(
+      {
+        passToken: mockToken,
+        action: ScanActionType.STAMP,
+        merchantId: mockMerchantId,
+      },
+      mockUserId,
+    );
 
     expect(result.alreadyScanned).toBe(true);
     expect(result.activeStamps).toBe(3);
-    expect(result.rewardUnlocked).toBe(false);
+    expect(result.scanId).toBe('scan-prev-1');
+    expect(result.nextExpiryAt).toBeDefined();
     expect(stampCreateSpy).not.toHaveBeenCalled();
     expect(scanCreateSpy).not.toHaveBeenCalled();
   });
 
-  it('should successfully add a stamp with frozen expiresAt and createdByUserId', async () => {
+  it('should successfully add a stamp with frozen expiresAt and callerUserId audit', async () => {
     vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
     vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(mockPromotion as any);
     vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null); // no recent scan
@@ -200,23 +205,24 @@ describe('ScanService', () => {
     const mockCreatedScan = { id: 'scan-new-1', passId: mockPassId };
     const scanCreateSpy = vi.spyOn(prisma.scan, 'create').mockResolvedValue(mockCreatedScan as any);
     const stampCreateSpy = vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-new-1' } as any);
-    vi.spyOn(prisma.stamp, 'count').mockResolvedValue(5); // reached targetStamps = 5
+    vi.spyOn(prisma.stamp, 'count').mockResolvedValue(5);
     vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
 
-    const result = await service.processScan({
-      passToken: mockToken,
-      action: ScanActionType.STAMP,
-      merchantId: mockMerchantId,
-      createdByUserId: mockUserId,
-    });
+    const result = await service.processScan(
+      {
+        passToken: mockToken,
+        action: ScanActionType.STAMP,
+        merchantId: mockMerchantId,
+      },
+      mockUserId,
+    );
 
     expect(result.alreadyScanned).toBe(false);
     expect(result.activeStamps).toBe(5);
-    expect(result.rewardUnlocked).toBe(true); // activeStamps >= targetStamps (5 >= 5)
+    expect(result.rewardUnlocked).toBe(true);
     expect(result.scanId).toBe('scan-new-1');
     expect(result.customer?.rut).toBe('12.***.*78-5');
 
-    // Verify createdByUserId was passed to Scan
     expect(scanCreateSpy).toHaveBeenCalledWith({
       data: {
         passId: mockPassId,
@@ -226,7 +232,6 @@ describe('ScanService', () => {
       },
     });
 
-    // Verify Stamp was created with expiresAt frozen to ~30 days in future and createdByUserId
     expect(stampCreateSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -248,16 +253,18 @@ describe('ScanService', () => {
     vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(passWithoutExpiry as any);
     vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(mockPromotion as any);
     vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
-
     vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-1' } as any);
     const stampCreateSpy = vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-1' } as any);
     vi.spyOn(prisma.stamp, 'count').mockResolvedValue(1);
 
-    await service.processScan({
-      passToken: mockToken,
-      action: ScanActionType.STAMP,
-      merchantId: mockMerchantId,
-    });
+    await service.processScan(
+      {
+        passToken: mockToken,
+        action: ScanActionType.STAMP,
+        merchantId: mockMerchantId,
+      },
+      mockUserId,
+    );
 
     expect(stampCreateSpy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -268,20 +275,20 @@ describe('ScanService', () => {
     );
   });
 
-  it('should perform FIFO consumption on REDEEM, consuming the oldest active stamps', async () => {
+  it('should perform FIFO consumption on REDEEM with atomic count verification', async () => {
     vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
     vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue({
       ...mockPromotion,
       targetStamps: 3,
     } as any);
+    vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null); // No recent redeem
 
-    // 5 active stamps, ordered by earnedAt ASC (FIFO)
     const mockStamps = [
       { id: 'stamp-1', earnedAt: new Date('2026-01-01T00:00:00Z') }, // oldest
       { id: 'stamp-2', earnedAt: new Date('2026-01-02T00:00:00Z') },
       { id: 'stamp-3', earnedAt: new Date('2026-01-03T00:00:00Z') },
       { id: 'stamp-4', earnedAt: new Date('2026-01-04T00:00:00Z') },
-      { id: 'stamp-5', earnedAt: new Date('2026-01-05T00:00:00Z') }, // newest
+      { id: 'stamp-5', earnedAt: new Date('2026-01-05T00:00:00Z') },
     ];
 
     vi.spyOn(prisma.stamp, 'findMany').mockResolvedValue(mockStamps as any);
@@ -289,26 +296,85 @@ describe('ScanService', () => {
     const stampUpdateManySpy = vi.spyOn(prisma.stamp, 'updateMany').mockResolvedValue({ count: 3 } as any);
     vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
 
-    const result = await service.processScan({
-      passToken: mockToken,
-      action: ScanActionType.REDEEM,
-      merchantId: mockMerchantId,
-      createdByUserId: mockUserId,
-    });
+    const result = await service.processScan(
+      {
+        passToken: mockToken,
+        action: ScanActionType.REDEEM,
+        merchantId: mockMerchantId,
+      },
+      mockUserId,
+    );
 
     expect(result.action).toBe(ScanActionType.REDEEM);
-    expect(result.activeStamps).toBe(2); // 5 - 3 = 2
+    expect(result.activeStamps).toBe(2);
     expect(result.consumedStampsCount).toBe(3);
-    expect(result.rewardUnlocked).toBe(false); // 2 < 3
-
-    // Verify FIFO: consumed stamps MUST be the oldest ones: ['stamp-1', 'stamp-2', 'stamp-3']
     expect(stampUpdateManySpy).toHaveBeenCalledWith({
-      where: { id: { in: ['stamp-1', 'stamp-2', 'stamp-3'] } },
+      where: { id: { in: ['stamp-1', 'stamp-2', 'stamp-3'] }, consumedAt: null },
       data: expect.objectContaining({
         consumedAt: expect.any(Date),
         consumedByScanId: 'redeem-scan-1',
       }),
     });
+  });
+
+  it('should throw ConflictException on REDEEM if concurrent process consumed stamps', async () => {
+    vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
+    vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue({
+      ...mockPromotion,
+      targetStamps: 3,
+    } as any);
+    vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
+
+    const mockStamps = [
+      { id: 'stamp-1', earnedAt: new Date('2026-01-01T00:00:00Z') },
+      { id: 'stamp-2', earnedAt: new Date('2026-01-02T00:00:00Z') },
+      { id: 'stamp-3', earnedAt: new Date('2026-01-03T00:00:00Z') },
+    ];
+
+    vi.spyOn(prisma.stamp, 'findMany').mockResolvedValue(mockStamps as any);
+    vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'redeem-scan-1' } as any);
+    // Concurrent transaction already consumed one stamp, so count = 2 instead of 3
+    vi.spyOn(prisma.stamp, 'updateMany').mockResolvedValue({ count: 2 } as any);
+
+    await expect(
+      service.processScan(
+        {
+          passToken: mockToken,
+          action: ScanActionType.REDEEM,
+          merchantId: mockMerchantId,
+        },
+        mockUserId,
+      ),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('should prevent duplicate REDEEM within 90-second anti-fraud window', async () => {
+    vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
+    vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(mockPromotion as any);
+
+    const twentySecondsAgo = new Date(Date.now() - 20 * 1000);
+    vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue({
+      id: 'redeem-scan-prev',
+      passId: mockPassId,
+      merchantId: mockMerchantId,
+      type: ScanType.REWARD_REDEEMED,
+      createdAt: twentySecondsAgo,
+    } as any);
+
+    vi.spyOn(prisma.stamp, 'count').mockResolvedValue(0);
+
+    const result = await service.processScan(
+      {
+        passToken: mockToken,
+        action: ScanActionType.REDEEM,
+        merchantId: mockMerchantId,
+      },
+      mockUserId,
+    );
+
+    expect(result.alreadyScanned).toBe(true);
+    expect(result.action).toBe(ScanActionType.REDEEM);
+    expect(result.scanId).toBe('redeem-scan-prev');
   });
 
   it('should throw BadRequestException on REDEEM if active stamps < targetStamps', async () => {
@@ -317,19 +383,22 @@ describe('ScanService', () => {
       ...mockPromotion,
       targetStamps: 5,
     } as any);
+    vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
 
-    // Only 2 stamps available
     vi.spyOn(prisma.stamp, 'findMany').mockResolvedValue([
       { id: 'stamp-1' },
       { id: 'stamp-2' },
     ] as any);
 
     await expect(
-      service.processScan({
-        passToken: mockToken,
-        action: ScanActionType.REDEEM,
-        merchantId: mockMerchantId,
-      }),
+      service.processScan(
+        {
+          passToken: mockToken,
+          action: ScanActionType.REDEEM,
+          merchantId: mockMerchantId,
+        },
+        mockUserId,
+      ),
     ).rejects.toThrow(BadRequestException);
   });
 });

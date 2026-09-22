@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { PassesService } from './passes.service.js';
@@ -14,11 +14,13 @@ describe('PassesService', () => {
   const mockCustomerId = 'c0000000-0000-0000-0000-000000000001';
   const mockMerchantId = 'a0000000-0000-0000-0000-000000000001';
   const mockPassId = 'p0000000-0000-0000-0000-000000000001';
+  const mockUserId = 'u0000000-0000-0000-0000-000000000001';
 
   beforeEach(() => {
     prisma = {
       customer: { findUnique: vi.fn() },
       merchant: { findUnique: vi.fn() },
+      merchantUser: { findUnique: vi.fn() },
       pass: { findUnique: vi.fn(), create: vi.fn() },
       promotion: { findFirst: vi.fn() },
       stamp: { count: vi.fn(), findFirst: vi.fn() },
@@ -27,7 +29,6 @@ describe('PassesService', () => {
     applePassService = {
       getPassUrl: vi.fn((token: string) => `http://localhost:3000/api/passes/${token}/apple`),
       generatePassBuffer: vi.fn().mockResolvedValue(Buffer.from('mock-pkpass-buffer')),
-      sendApnsPush: vi.fn().mockResolvedValue(undefined),
     } as unknown as ApplePassService;
 
     googleWalletService = {
@@ -36,6 +37,20 @@ describe('PassesService', () => {
     } as unknown as GoogleWalletService;
 
     service = new PassesService(prisma, applePassService, googleWalletService);
+  });
+
+  it('should throw ForbiddenException if callerUserId is not a member of the merchant', async () => {
+    vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue(null);
+
+    await expect(
+      service.generatePass(
+        {
+          customerId: mockCustomerId,
+          merchantId: mockMerchantId,
+        },
+        'unauthorized-user',
+      ),
+    ).rejects.toThrow(ForbiddenException);
   });
 
   it('should throw NotFoundException if customer does not exist', async () => {
@@ -59,6 +74,20 @@ describe('PassesService', () => {
         merchantId: mockMerchantId,
       }),
     ).rejects.toThrow(NotFoundException);
+  });
+
+  it('should throw BadRequestException if merchant has no active promotion', async () => {
+    vi.spyOn(prisma.customer, 'findUnique').mockResolvedValue({ id: mockCustomerId } as any);
+    vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue({ id: mockMerchantId } as any);
+    vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue({ id: mockPassId } as any);
+    vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(null);
+
+    await expect(
+      service.generatePass({
+        customerId: mockCustomerId,
+        merchantId: mockMerchantId,
+      }),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it('should create new pass and return Apple and Google Wallet URLs', async () => {
@@ -92,13 +121,23 @@ describe('PassesService', () => {
       isActive: true,
     } as any);
 
+    vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({
+      id: 'mu-1',
+      userId: mockUserId,
+      merchantId: mockMerchantId,
+      role: 'OWNER',
+    } as any);
+
     vi.spyOn(prisma.stamp, 'count').mockResolvedValue(2);
     vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
 
-    const result = await service.generatePass({
-      customerId: mockCustomerId,
-      merchantId: mockMerchantId,
-    });
+    const result = await service.generatePass(
+      {
+        customerId: mockCustomerId,
+        merchantId: mockMerchantId,
+      },
+      mockUserId,
+    );
 
     expect(result.passId).toBe(mockPassId);
     expect(result.passToken).toBe('mock-entropy-token-12345');
@@ -109,15 +148,34 @@ describe('PassesService', () => {
     expect(result.googleWalletUrl).toBe('https://pay.google.com/gp/v/save/mock-jwt');
   });
 
-  it('should return Apple pass buffer', async () => {
+  it('should throw BadRequestException in getApplePassBuffer if no active promotion', async () => {
     vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue({
       id: mockPassId,
       passToken: 'token-abc',
+      merchantId: mockMerchantId,
       merchant: { id: mockMerchantId, name: 'Local' },
       customer: { id: mockCustomerId, rut: '11111111-1' },
     } as any);
 
     vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(null);
+
+    await expect(service.getApplePassBuffer('token-abc')).rejects.toThrow(BadRequestException);
+  });
+
+  it('should return Apple pass buffer when valid pass and promotion exist', async () => {
+    vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue({
+      id: mockPassId,
+      passToken: 'token-abc',
+      merchantId: mockMerchantId,
+      merchant: { id: mockMerchantId, name: 'Local' },
+      customer: { id: mockCustomerId, rut: '11111111-1' },
+    } as any);
+
+    vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue({
+      id: 'promo-1',
+      targetStamps: 5,
+      rewardName: 'Café',
+    } as any);
     vi.spyOn(prisma.stamp, 'count').mockResolvedValue(0);
     vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
 

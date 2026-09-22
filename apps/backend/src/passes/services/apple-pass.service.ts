@@ -11,7 +11,8 @@ export class ApplePassService {
   public hasRealCertificates(): boolean {
     const cert = this.configService.get<string>('APPLE_PASS_CERT') || process.env.APPLE_PASS_CERT;
     const key = this.configService.get<string>('APPLE_PASS_KEY') || process.env.APPLE_PASS_KEY;
-    return Boolean(cert && key);
+    const wwdr = this.configService.get<string>('APPLE_WWDR_CERT') || process.env.APPLE_WWDR_CERT;
+    return Boolean(cert && key && wwdr);
   }
 
   public getPassUrl(passToken: string): string {
@@ -33,18 +34,11 @@ export class ApplePassService {
       process.env.APPLE_TEAM_IDENTIFIER ||
       'TALCADEVS1';
 
-    const webServiceUrl =
-      this.configService.get<string>('BACKEND_URL') ||
-      process.env.BACKEND_URL ||
-      'http://localhost:3000';
-
     return {
       formatVersion: 1,
       passTypeIdentifier,
       serialNumber: data.serialNumber,
       teamIdentifier,
-      webServiceURL: `${webServiceUrl.replace(/\/+$/, '')}/api/v1`,
-      authenticationToken: data.passToken,
       organizationName: data.merchantName,
       description: `Pase de Fidelidad - ${data.merchantName}`,
       foregroundColor: data.foregroundColor || 'rgb(255, 255, 255)',
@@ -125,36 +119,44 @@ export class ApplePassService {
           this.configService.get<string>('APPLE_PASS_PASSWORD') ||
           process.env.APPLE_PASS_PASSWORD;
 
-        const certificates: Record<string, unknown> = {
-          signerCert: cert!,
-          signerKey: key!,
+        if (!cert || !key || !wwdr) {
+          throw new Error('Certificados de firma de Apple incompletos (APPLE_PASS_CERT, APPLE_PASS_KEY y APPLE_WWDR_CERT son requeridos)');
+        }
+
+        const certificates = {
+          signerCert: cert,
+          signerKey: key,
+          wwdr,
+          ...(password ? { signerKeyPassphrase: password } : {}),
         };
-        if (password) certificates.signerKeyPassphrase = password;
-        if (wwdr) certificates.wwdr = wwdr;
 
-        const pass = new PKPass({}, certificates as any, passJson as any);
-
+        const pass = new PKPass({}, certificates, passJson);
         return pass.getAsBuffer();
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        this.logger.error(`Failed to sign PKPass: ${msg}`);
-        if (process.env.NODE_ENV === 'production') {
-          throw new InternalServerErrorException(`Apple Wallet PKPass signing failed: ${msg}`);
+        this.logger.error(`Fallo al firmar PKPass: ${msg}`);
+        const allowMock =
+          this.configService.get<string>('ALLOW_MOCK_PASSES') === 'true' ||
+          process.env.NODE_ENV !== 'production';
+
+        if (!allowMock) {
+          throw new InternalServerErrorException(`Fallo en la firma del pase Apple Wallet PKPass: ${msg}`);
         }
-        this.logger.warn('Falling back to development mock pass buffer.');
+        this.logger.warn('Utilizando buffer mock en modo de desarrollo.');
       }
-    } else if (process.env.NODE_ENV === 'production') {
-      throw new InternalServerErrorException(
-        'Apple Wallet signing certificates are not configured in production environment',
-      );
+    } else {
+      const allowMock =
+        this.configService.get<string>('ALLOW_MOCK_PASSES') === 'true' ||
+        process.env.NODE_ENV !== 'production';
+
+      if (!allowMock) {
+        throw new InternalServerErrorException(
+          'Los certificados de firma de Apple Wallet no están configurados en producción',
+        );
+      }
     }
 
-    // Development / Mock fallback: serialize pass manifest JSON as buffer
+    // Mock fallback para desarrollo: serializar JSON del manifiesto del pase
     return Buffer.from(JSON.stringify(passJson, null, 2), 'utf-8');
-  }
-
-  async sendApnsPush(pushToken: string): Promise<void> {
-    this.logger.log(`[APNs Mock/Push] Dispatching pass update push notification to device token: ${pushToken}`);
-    // In production with APNs credentials, http2 connection to api.push.apple.com sends empty payload {}
   }
 }

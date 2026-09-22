@@ -1,6 +1,7 @@
 import { randomBytes } from 'crypto';
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -22,19 +23,39 @@ export class PassesService {
     private readonly googleWalletService: GoogleWalletService,
   ) {}
 
-  async generatePass(dto: GeneratePassDto): Promise<PassEmissionResponseDto> {
+  async generatePass(
+    dto: GeneratePassDto,
+    callerUserId?: string,
+  ): Promise<PassEmissionResponseDto> {
+    if (callerUserId) {
+      const membership = await this.prisma.merchantUser.findUnique({
+        where: {
+          userId_merchantId: {
+            userId: callerUserId,
+            merchantId: dto.merchantId,
+          },
+        },
+      });
+
+      if (!membership) {
+        throw new ForbiddenException(
+          'El usuario no está autorizado como miembro de este comercio',
+        );
+      }
+    }
+
     const customer = await this.prisma.customer.findUnique({
       where: { id: dto.customerId },
     });
     if (!customer) {
-      throw new NotFoundException(`Customer with ID ${dto.customerId} not found`);
+      throw new NotFoundException(`Cliente con ID ${dto.customerId} no encontrado`);
     }
 
     const merchant = await this.prisma.merchant.findUnique({
       where: { id: dto.merchantId },
     });
     if (!merchant) {
-      throw new NotFoundException(`Merchant with ID ${dto.merchantId} not found`);
+      throw new NotFoundException(`Comercio con ID ${dto.merchantId} no encontrado`);
     }
 
     let pass = await this.prisma.pass.findUnique({
@@ -57,13 +78,17 @@ export class PassesService {
       });
     }
 
-    const promotion = await this.prisma.promotion.findFirst({
-      where: { merchantId: dto.merchantId, isActive: true },
-      orderBy: { createdAt: 'desc' },
-    });
+    const promotion = dto.promotionId
+      ? await this.prisma.promotion.findFirst({
+          where: { id: dto.promotionId, merchantId: dto.merchantId, isActive: true },
+        })
+      : await this.prisma.promotion.findFirst({
+          where: { merchantId: dto.merchantId, isActive: true },
+          orderBy: { createdAt: 'desc' },
+        });
 
     if (!promotion) {
-      throw new BadRequestException('Merchant has no active promotion configured');
+      throw new BadRequestException('El comercio no tiene una promoción activa configurada');
     }
 
     const now = new Date();
@@ -129,13 +154,17 @@ export class PassesService {
     });
 
     if (!pass) {
-      throw new NotFoundException('Pass not found');
+      throw new NotFoundException('Pase no encontrado');
     }
 
     const promotion = await this.prisma.promotion.findFirst({
       where: { merchantId: pass.merchantId, isActive: true },
       orderBy: { createdAt: 'desc' },
     });
+
+    if (!promotion) {
+      throw new BadRequestException('El comercio no tiene una promoción activa configurada');
+    }
 
     const now = new Date();
     const activeStamps = await this.prisma.stamp.count({
@@ -156,9 +185,9 @@ export class PassesService {
       select: { expiresAt: true },
     });
 
-    const customerLabel = pass.customer.rut
+    const customerLabel = pass.customer?.rut
       ? maskRut(pass.customer.rut)
-      : pass.customer.phone
+      : pass.customer?.phone
         ? maskPhone(pass.customer.phone)
         : 'Cliente';
 
@@ -170,8 +199,8 @@ export class PassesService {
       merchantName: pass.merchant.name,
       customerLabel,
       activeStamps,
-      targetStamps: promotion?.targetStamps ?? 10,
-      rewardName: promotion?.rewardName ?? 'Premio Fidelidad',
+      targetStamps: promotion.targetStamps,
+      rewardName: promotion.rewardName,
       nextExpiryAt: nextExpiring?.expiresAt ?? null,
     };
 
@@ -189,9 +218,8 @@ export class PassesService {
         },
       });
 
-      this.logger.log(`Dispatching asynchronous wallet push for pass ${passId} (stamps: ${activeStamps})`);
+      this.logger.log(`Dispatching wallet update for pass ${passId} (activeStamps: ${activeStamps})`);
       await Promise.allSettled([
-        this.applePassService.sendApnsPush(passId),
         this.googleWalletService.updateLoyaltyObject(passId, activeStamps),
       ]);
     } catch (err: unknown) {

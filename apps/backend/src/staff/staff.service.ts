@@ -4,6 +4,7 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
@@ -28,7 +29,7 @@ export class StaffService {
 
       if (!url || !serviceRoleKey) {
         throw new InternalServerErrorException(
-          'Supabase credentials (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY) are required',
+          'Las credenciales de Supabase (SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY) son requeridas',
         );
       }
 
@@ -42,25 +43,22 @@ export class StaffService {
     return this.supabaseAdmin;
   }
 
-  // Allows injecting a custom or mocked client (e.g. for unit testing)
-  public setSupabaseAdmin(client: SupabaseClient): void {
-    this.supabaseAdmin = client;
-  }
+  async inviteStaff(dto: InviteStaffDto, callerUserId: string): Promise<StaffResponseDto> {
+    if (!callerUserId) {
+      throw new UnauthorizedException('Usuario no autenticado');
+    }
 
-  async inviteStaff(dto: InviteStaffDto, callerUserId?: string): Promise<StaffResponseDto> {
-    if (callerUserId) {
-      const callerMembership = await this.prisma.merchantUser.findUnique({
-        where: {
-          userId_merchantId: {
-            userId: callerUserId,
-            merchantId: dto.merchantId,
-          },
+    const callerMembership = await this.prisma.merchantUser.findUnique({
+      where: {
+        userId_merchantId: {
+          userId: callerUserId,
+          merchantId: dto.merchantId,
         },
-      });
+      },
+    });
 
-      if (!callerMembership || callerMembership.role !== 'OWNER') {
-        throw new ForbiddenException('Only the merchant OWNER can invite staff members');
-      }
+    if (!callerMembership || callerMembership.role !== 'OWNER') {
+      throw new ForbiddenException('Solo el dueño del comercio puede invitar personal');
     }
 
     const merchant = await this.prisma.merchant.findUnique({
@@ -68,7 +66,7 @@ export class StaffService {
     });
 
     if (!merchant) {
-      throw new NotFoundException(`Merchant with ID ${dto.merchantId} not found`);
+      throw new NotFoundException(`El comercio con ID ${dto.merchantId} no fue encontrado`);
     }
 
     const supabase = this.getSupabaseAdmin();
@@ -89,7 +87,7 @@ export class StaffService {
       }
 
       if (!data?.user) {
-        throw new BadRequestException('Failed to create staff user');
+        throw new BadRequestException('No se pudo crear el usuario de personal');
       }
 
       return {
@@ -97,7 +95,7 @@ export class StaffService {
         email: data.user.email ?? dto.email,
         merchantId: dto.merchantId,
         role: 'STAFF',
-        message: 'Staff user created successfully with credentials',
+        message: 'Personal creado exitosamente con credenciales de acceso',
       };
     }
 
@@ -113,7 +111,7 @@ export class StaffService {
     }
 
     if (!data?.user) {
-      throw new BadRequestException('Failed to send staff invitation');
+      throw new BadRequestException('No se pudo enviar la invitación al personal');
     }
 
     return {
@@ -121,7 +119,7 @@ export class StaffService {
       email: data.user.email ?? dto.email,
       merchantId: dto.merchantId,
       role: 'STAFF',
-      message: 'Staff invitation email sent successfully',
+      message: 'Invitación enviada exitosamente por correo electrónico',
     };
   }
 }

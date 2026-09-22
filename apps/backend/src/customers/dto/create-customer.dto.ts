@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsUUID, IsOptional, IsString } from 'class-validator';
+import { IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class CreateCustomerDto {
   @ApiProperty({
@@ -27,15 +27,21 @@ export class CreateCustomerDto {
 }
 
 export class CustomerResponseDto {
-  @ApiProperty({ description: 'ID del cliente registrado', example: 'd3b07384-d113-4011-8e8e-d9006fa70bc6' })
+  @ApiProperty({
+    description: 'ID del cliente registrado',
+    example: 'd3b07384-d113-4011-8e8e-d9006fa70bc6',
+  })
   customerId: string;
 
-  @ApiProperty({ description: 'ID del pase emitido para este comercio', example: 'e4c08495-e224-4122-9f9f-e0117ab81cd7' })
+  @ApiProperty({
+    description: 'ID del pase emitido para este comercio',
+    example: 'e4c08495-e224-4122-9f9f-e0117ab81cd7',
+  })
   passId: string;
 
-  @ApiProperty({ description: 'Token criptográfico seguro del pase', example: 'a1b2c3d4e5f67890...' })
-  passToken: string;
-
-  @ApiProperty({ description: 'Indica si el cliente o pase es nuevo o ya existía', example: true })
+  @ApiProperty({
+    description: 'Indica si el cliente o pase es nuevo o ya existía',
+    example: true,
+  })
   isNew: boolean;
 }

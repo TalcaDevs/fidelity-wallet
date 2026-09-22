@@ -1,4 +1,12 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Post,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
 import { SupabaseAuthGuard } from '../common/guards/supabase-auth.guard.js';
@@ -15,23 +23,27 @@ export class ScanController {
   @Post()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Process pass scan: add stamp or redeem reward',
+    summary: 'Procesar escaneo de pase: agregar sello o canjear premio',
     description:
-      'Performs transactional pass validation, atomic 90-second anti-duplicate check, FIFO stamp consumption on redeem, and returns updated active stamp balance.',
+      'Valida el pase de forma transaccional con bloqueo pesimista de fila, ventana anti-duplicado de 90 segundos, consumo FIFO en canje y auditoría del mesero autenticado.',
   })
   @ApiResponse({
     status: 200,
-    description: 'Scan processed successfully (or duplicate safely ignored within 90s window)',
+    description: 'Escaneo procesado exitosamente (o duplicado ignorado de forma segura dentro de la ventana de 90s)',
     type: ScanResultDto,
   })
-  @ApiResponse({ status: 400, description: 'Invalid action or insufficient stamps for redemption' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Pass does not belong to the requesting merchant' })
-  @ApiResponse({ status: 404, description: 'Pass token not found' })
+  @ApiResponse({ status: 400, description: 'Acción inválida o sellos insuficientes para canje' })
+  @ApiResponse({ status: 401, description: 'Usuario no autenticado' })
+  @ApiResponse({ status: 403, description: 'El pase no pertenece al comercio o el usuario no es miembro' })
+  @ApiResponse({ status: 404, description: 'Token de pase no encontrado' })
+  @ApiResponse({ status: 409, description: 'Conflicto de concurrencia al canjear sellos' })
   async scanPass(
     @Body() dto: ScanActionDto,
     @CurrentUser() user?: AuthenticatedUser,
   ): Promise<ScanResultDto> {
-    return this.scanService.processScan(dto, user?.id);
+    if (!user?.id) {
+      throw new UnauthorizedException('Usuario no autenticado');
+    }
+    return this.scanService.processScan(dto, user.id);
   }
 }

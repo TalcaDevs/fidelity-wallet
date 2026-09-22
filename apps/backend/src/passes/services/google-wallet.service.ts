@@ -88,19 +88,31 @@ export class GoogleWalletService {
         return `https://pay.google.com/gp/v/save/${token}`;
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        this.logger.error(`Google Wallet JWT signing failed: ${msg}`);
-        if (process.env.NODE_ENV === 'production') {
-          throw new InternalServerErrorException(`Google Wallet JWT signing failed: ${msg}`);
+        this.logger.error(`Fallo en la firma del JWT de Google Wallet: ${msg}`);
+        const allowMock =
+          this.configService.get<string>('ALLOW_MOCK_PASSES') === 'true' ||
+          process.env.NODE_ENV !== 'production';
+
+        if (!allowMock) {
+          throw new InternalServerErrorException(
+            `Fallo en la firma del JWT de Google Wallet: ${msg}`,
+          );
         }
-        this.logger.warn('Falling back to sandbox URL.');
+        this.logger.warn('Utilizando URL sandbox en modo de desarrollo.');
       }
-    } else if (process.env.NODE_ENV === 'production') {
-      throw new InternalServerErrorException(
-        'Google Wallet credentials are not configured in production environment',
-      );
+    } else {
+      const allowMock =
+        this.configService.get<string>('ALLOW_MOCK_PASSES') === 'true' ||
+        process.env.NODE_ENV !== 'production';
+
+      if (!allowMock) {
+        throw new InternalServerErrorException(
+          'Las credenciales de Google Wallet no están configuradas en producción',
+        );
+      }
     }
 
-    // Development / Sandbox unsigned JWT token fallback
+    // Mock fallback para desarrollo / Sandbox: JWT base64url sin firma
     const mockToken = Buffer.from(JSON.stringify(claims)).toString('base64url');
     return `https://pay.google.com/gp/v/save/${mockToken}`;
   }

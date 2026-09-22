@@ -1,7 +1,7 @@
 import {
-  ExceptionFilter,
-  Catch,
   ArgumentsHost,
+  Catch,
+  ExceptionFilter,
   HttpException,
   HttpStatus,
   Logger,
@@ -18,7 +18,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let message: string | object = 'Internal server error';
+    let message: string | object = 'Ha ocurrido un error interno en el servidor';
     let error = 'Internal Server Error';
 
     if (exception instanceof HttpException) {
@@ -34,14 +34,18 @@ export class HttpExceptionFilter implements ExceptionFilter {
       }
     } else if (exception instanceof Error) {
       this.logger.error(
-        `Unhandled exception on ${request.method} ${request.url}: ${exception.message}`,
+        `Excepción no controlada en ${request.method} ${request.url}: ${exception.message}`,
         exception.stack,
       );
-      message = exception.message;
+      // No exponer detalles de base de datos o stack interno al cliente en 500 no controlados
+      message = 'Ha ocurrido un error interno en el servidor';
+      error = 'Internal Server Error';
     } else {
       this.logger.error(
-        `Unknown error on ${request.method} ${request.url}: ${String(exception)}`,
+        `Error desconocido en ${request.method} ${request.url}: ${String(exception)}`,
       );
+      message = 'Ha ocurrido un error interno en el servidor';
+      error = 'Internal Server Error';
     }
 
     response.status(status).json({

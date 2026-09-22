@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -8,6 +8,9 @@ describe('StaffService', () => {
   let service: StaffService;
   let prisma: PrismaService;
   let mockSupabaseAdmin: any;
+
+  const mockMerchantId = 'a0000000-0000-0000-0000-000000000001';
+  const mockOwnerId = 'owner-uuid-123';
 
   beforeEach(() => {
     prisma = {
@@ -27,8 +30,6 @@ describe('StaffService', () => {
       }),
     } as unknown as ConfigService;
 
-    service = new StaffService(prisma, configService);
-
     mockSupabaseAdmin = {
       auth: {
         admin: {
@@ -38,125 +39,27 @@ describe('StaffService', () => {
       },
     };
 
-    service.setSupabaseAdmin(mockSupabaseAdmin);
+    service = new StaffService(prisma, configService);
+    vi.spyOn(service, 'getSupabaseAdmin').mockReturnValue(mockSupabaseAdmin);
   });
 
-  it('should throw NotFoundException if merchant does not exist', async () => {
-    vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue(null);
-
+  it('should throw UnauthorizedException if callerUserId is missing', async () => {
     await expect(
-      service.inviteStaff({
-        merchantId: 'a0000000-0000-0000-0000-000000000001',
-        email: 'staff@test.com',
-      }),
-    ).rejects.toThrow(NotFoundException);
-  });
-
-  it('should invite staff without password using inviteUserByEmail', async () => {
-    vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue({
-      id: 'a0000000-0000-0000-0000-000000000001',
-      name: 'Cafeteria',
-      email: 'owner@test.com',
-      stampValidityDays: null,
-      createdAt: new Date(),
-    } as any);
-
-    mockSupabaseAdmin.auth.admin.inviteUserByEmail.mockResolvedValue({
-      data: {
-        user: {
-          id: 'user-uuid-123',
+      service.inviteStaff(
+        {
+          merchantId: mockMerchantId,
           email: 'staff@test.com',
         },
-      },
-      error: null,
-    });
-
-    const result = await service.inviteStaff({
-      merchantId: 'a0000000-0000-0000-0000-000000000001',
-      email: 'staff@test.com',
-    });
-
-    expect(mockSupabaseAdmin.auth.admin.inviteUserByEmail).toHaveBeenCalledWith(
-      'staff@test.com',
-      {
-        data: {
-          merchant_id: 'a0000000-0000-0000-0000-000000000001',
-          role: 'STAFF',
-        },
-      },
-    );
-
-    expect(result.id).toBe('user-uuid-123');
-    expect(result.role).toBe('STAFF');
-    expect(result.email).toBe('staff@test.com');
-  });
-
-  it('should create staff with password using createUser', async () => {
-    vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue({
-      id: 'a0000000-0000-0000-0000-000000000001',
-      name: 'Cafeteria',
-      email: 'owner@test.com',
-      stampValidityDays: null,
-      createdAt: new Date(),
-    } as any);
-
-    mockSupabaseAdmin.auth.admin.createUser.mockResolvedValue({
-      data: {
-        user: {
-          id: 'user-uuid-456',
-          email: 'staff2@test.com',
-        },
-      },
-      error: null,
-    });
-
-    const result = await service.inviteStaff({
-      merchantId: 'a0000000-0000-0000-0000-000000000001',
-      email: 'staff2@test.com',
-      password: 'SecretPassword123!',
-    });
-
-    expect(mockSupabaseAdmin.auth.admin.createUser).toHaveBeenCalledWith({
-      email: 'staff2@test.com',
-      password: 'SecretPassword123!',
-      email_confirm: true,
-      user_metadata: {
-        merchant_id: 'a0000000-0000-0000-0000-000000000001',
-        role: 'STAFF',
-      },
-    });
-
-    expect(result.id).toBe('user-uuid-456');
-    expect(result.role).toBe('STAFF');
-  });
-
-  it('should throw BadRequestException if Supabase returns error', async () => {
-    vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue({
-      id: 'a0000000-0000-0000-0000-000000000001',
-      name: 'Cafeteria',
-      email: 'owner@test.com',
-      stampValidityDays: null,
-      createdAt: new Date(),
-    } as any);
-
-    mockSupabaseAdmin.auth.admin.inviteUserByEmail.mockResolvedValue({
-      data: null,
-      error: { message: 'User already registered' },
-    });
-
-    await expect(
-      service.inviteStaff({
-        merchantId: 'a0000000-0000-0000-0000-000000000001',
-        email: 'duplicate@test.com',
-      }),
-    ).rejects.toThrow(BadRequestException);
+        '',
+      ),
+    ).rejects.toThrow(UnauthorizedException);
   });
 
   it('should throw ForbiddenException if caller is not an OWNER of the merchant', async () => {
     vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({
       id: 'mu-1',
-      userId: 'caller-1',
-      merchantId: 'a0000000-0000-0000-0000-000000000001',
+      userId: 'caller-staff',
+      merchantId: mockMerchantId,
       role: 'STAFF', // Not OWNER!
       createdAt: new Date(),
     } as any);
@@ -164,45 +67,152 @@ describe('StaffService', () => {
     await expect(
       service.inviteStaff(
         {
-          merchantId: 'a0000000-0000-0000-0000-000000000001',
+          merchantId: mockMerchantId,
           email: 'newstaff@test.com',
         },
-        'caller-1',
+        'caller-staff',
       ),
     ).rejects.toThrow(ForbiddenException);
   });
 
-  it('should allow invite if caller is an OWNER of the merchant', async () => {
+  it('should throw NotFoundException if merchant does not exist', async () => {
     vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({
-      id: 'mu-2',
-      userId: 'caller-owner',
-      merchantId: 'a0000000-0000-0000-0000-000000000001',
+      id: 'mu-owner',
+      userId: mockOwnerId,
+      merchantId: mockMerchantId,
+      role: 'OWNER',
+      createdAt: new Date(),
+    } as any);
+
+    vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue(null);
+
+    await expect(
+      service.inviteStaff(
+        {
+          merchantId: mockMerchantId,
+          email: 'staff@test.com',
+        },
+        mockOwnerId,
+      ),
+    ).rejects.toThrow(NotFoundException);
+  });
+
+  it('should invite staff without password using inviteUserByEmail', async () => {
+    vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({
+      id: 'mu-owner',
+      userId: mockOwnerId,
+      merchantId: mockMerchantId,
       role: 'OWNER',
       createdAt: new Date(),
     } as any);
 
     vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue({
-      id: 'a0000000-0000-0000-0000-000000000001',
+      id: mockMerchantId,
+      name: 'Cafeteria',
+      email: 'owner@test.com',
+      stampValidityDays: null,
+    } as any);
+
+    mockSupabaseAdmin.auth.admin.inviteUserByEmail.mockResolvedValue({
+      data: {
+        user: { id: 'u0000000-0000-0000-0000-000000000002', email: 'mesero@cafeteria.cl' },
+      },
+      error: null,
+    });
+
+    const result = await service.inviteStaff(
+      {
+        merchantId: mockMerchantId,
+        email: 'mesero@cafeteria.cl',
+      },
+      mockOwnerId,
+    );
+
+    expect(result.id).toBe('u0000000-0000-0000-0000-000000000002');
+    expect(result.role).toBe('STAFF');
+    expect(mockSupabaseAdmin.auth.admin.inviteUserByEmail).toHaveBeenCalledWith(
+      'mesero@cafeteria.cl',
+      {
+        data: {
+          merchant_id: mockMerchantId,
+          role: 'STAFF',
+        },
+      },
+    );
+  });
+
+  it('should create staff with password using createUser', async () => {
+    vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({
+      id: 'mu-owner',
+      userId: mockOwnerId,
+      merchantId: mockMerchantId,
+      role: 'OWNER',
+      createdAt: new Date(),
+    } as any);
+
+    vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue({
+      id: mockMerchantId,
+      name: 'Cafeteria',
+      email: 'owner@test.com',
+    } as any);
+
+    mockSupabaseAdmin.auth.admin.createUser.mockResolvedValue({
+      data: {
+        user: { id: 'u0000000-0000-0000-0000-000000000003', email: 'cajero@cafeteria.cl' },
+      },
+      error: null,
+    });
+
+    const result = await service.inviteStaff(
+      {
+        merchantId: mockMerchantId,
+        email: 'cajero@cafeteria.cl',
+        password: 'ClaveSegura2026!',
+      },
+      mockOwnerId,
+    );
+
+    expect(result.id).toBe('u0000000-0000-0000-0000-000000000003');
+    expect(result.role).toBe('STAFF');
+    expect(mockSupabaseAdmin.auth.admin.createUser).toHaveBeenCalledWith({
+      email: 'cajero@cafeteria.cl',
+      password: 'ClaveSegura2026!',
+      email_confirm: true,
+      user_metadata: {
+        merchant_id: mockMerchantId,
+        role: 'STAFF',
+      },
+    });
+  });
+
+  it('should throw BadRequestException if Supabase returns error', async () => {
+    vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({
+      id: 'mu-owner',
+      userId: mockOwnerId,
+      merchantId: mockMerchantId,
+      role: 'OWNER',
+      createdAt: new Date(),
+    } as any);
+
+    vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue({
+      id: mockMerchantId,
       name: 'Cafeteria',
       email: 'owner@test.com',
     } as any);
 
     mockSupabaseAdmin.auth.admin.inviteUserByEmail.mockResolvedValue({
-      data: {
-        user: { id: 'u-123', email: 'newstaff@test.com' },
-      },
-      error: null,
+      data: null,
+      error: { message: 'User already exists' },
     });
 
-    const res = await service.inviteStaff(
-      {
-        merchantId: 'a0000000-0000-0000-0000-000000000001',
-        email: 'newstaff@test.com',
-      },
-      'caller-owner',
-    );
-
-    expect(res.id).toBe('u-123');
-    expect(res.role).toBe('STAFF');
+    await expect(
+      service.inviteStaff(
+        {
+          merchantId: mockMerchantId,
+          email: 'duplicate@test.com',
+        },
+        mockOwnerId,
+      ),
+    ).rejects.toThrow(BadRequestException);
   });
 });

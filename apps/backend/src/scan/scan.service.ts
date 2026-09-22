@@ -1,41 +1,55 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
-  Optional,
+  UnauthorizedException,
 } from '@nestjs/common';
+import type { Customer, Merchant, Pass, Promotion } from '@prisma/client';
 import { ScanType } from '@prisma/client';
 import { maskPhone, maskRut } from '../common/utils/mask.util.js';
-import { PrismaService } from '../prisma/prisma.service.js';
-import { ScanActionDto, ScanActionType, ScanResultDto } from './dto/scan-action.dto.js';
 import { PassesService } from '../passes/passes.service.js';
+import { PrismaService } from '../prisma/prisma.service.js';
+import {
+  MaskedCustomerDto,
+  ScanActionDto,
+  ScanActionType,
+  ScanResultDto,
+} from './dto/scan-action.dto.js';
 
 export const ANTI_FRAUD_WINDOW_MS = 90 * 1000; // 90 seconds
+
+type PassWithRelations = Pass & {
+  merchant: Merchant;
+  customer: Customer | null;
+};
 
 @Injectable()
 export class ScanService {
   constructor(
     private readonly prisma: PrismaService,
-    @Optional() private readonly passesService?: PassesService,
+    private readonly passesService?: PassesService,
   ) {}
 
-  async processScan(dto: ScanActionDto, callerUserId?: string): Promise<ScanResultDto> {
-    if (callerUserId) {
-      const membership = await this.prisma.merchantUser.findUnique({
-        where: {
-          userId_merchantId: {
-            userId: callerUserId,
-            merchantId: dto.merchantId,
-          },
+  async processScan(dto: ScanActionDto, callerUserId: string): Promise<ScanResultDto> {
+    if (!callerUserId) {
+      throw new UnauthorizedException('Usuario no autenticado');
+    }
+
+    const membership = await this.prisma.merchantUser.findUnique({
+      where: {
+        userId_merchantId: {
+          userId: callerUserId,
+          merchantId: dto.merchantId,
         },
-      });
+      },
+    });
 
-      if (!membership) {
-        throw new ForbiddenException('User is not authorized as staff or owner for this merchant');
-      }
-
-      dto.createdByUserId = callerUserId;
+    if (!membership) {
+      throw new ForbiddenException(
+        'El usuario no está autorizado como personal o dueño en este comercio',
+      );
     }
 
     const pass = await this.prisma.pass.findUnique({
@@ -47,26 +61,34 @@ export class ScanService {
     });
 
     if (!pass) {
-      throw new NotFoundException('Pass not found for given token');
+      throw new NotFoundException('No se encontró un pase para el token proporcionado');
     }
 
     if (pass.merchantId !== dto.merchantId) {
-      throw new ForbiddenException('Pass does not belong to this merchant');
+      throw new ForbiddenException('El pase no pertenece a este comercio');
     }
 
-    const promotion = await this.prisma.promotion.findFirst({
-      where: {
-        merchantId: dto.merchantId,
-        isActive: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const promotion = dto.promotionId
+      ? await this.prisma.promotion.findFirst({
+          where: {
+            id: dto.promotionId,
+            merchantId: dto.merchantId,
+            isActive: true,
+          },
+        })
+      : await this.prisma.promotion.findFirst({
+          where: {
+            merchantId: dto.merchantId,
+            isActive: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        });
 
     if (!promotion) {
-      throw new BadRequestException('Merchant has no active promotion');
+      throw new BadRequestException('El comercio no tiene una promoción activa válida');
     }
 
-    const maskedCustomer = pass.customer
+    const maskedCustomer: MaskedCustomerDto | undefined = pass.customer
       ? {
           id: pass.customer.id,
           rut: pass.customer.rut ? maskRut(pass.customer.rut) : null,
@@ -75,7 +97,13 @@ export class ScanService {
       : undefined;
 
     if (dto.action === ScanActionType.STAMP) {
-      const result = await this.executeStampAction(pass, promotion, dto, maskedCustomer);
+      const result = await this.executeStampAction(
+        pass,
+        promotion,
+        dto,
+        callerUserId,
+        maskedCustomer,
+      );
       if (this.passesService && !result.alreadyScanned) {
         void this.passesService.notifyPassUpdate(pass.id);
       }
@@ -83,22 +111,29 @@ export class ScanService {
     }
 
     if (dto.action === ScanActionType.REDEEM) {
-      const result = await this.executeRedeemAction(pass, promotion, dto, maskedCustomer);
-      if (this.passesService) {
+      const result = await this.executeRedeemAction(
+        pass,
+        promotion,
+        dto,
+        callerUserId,
+        maskedCustomer,
+      );
+      if (this.passesService && !result.alreadyScanned) {
         void this.passesService.notifyPassUpdate(pass.id);
       }
       return result;
     }
 
     const unsupportedAction = String(dto.action);
-    throw new BadRequestException(`Unsupported scan action: ${unsupportedAction}`);
+    throw new BadRequestException(`Acción de escaneo no soportada: ${unsupportedAction}`);
   }
 
   private async executeStampAction(
-    pass: { id: string; merchant: { stampValidityDays: number | null } },
-    promotion: { id: string; targetStamps: number; rewardName: string },
+    pass: PassWithRelations,
+    promotion: Promotion,
     dto: ScanActionDto,
-    maskedCustomer?: { id: string; rut?: string | null; phone?: string | null },
+    callerUserId: string,
+    maskedCustomer?: MaskedCustomerDto,
   ): Promise<ScanResultDto> {
     const now = new Date();
     const expiresAt =
@@ -107,7 +142,10 @@ export class ScanService {
         : null;
 
     return this.prisma.$transaction(async (tx) => {
-      // Atomic 90-second anti-fraud window checked inside transaction
+      // Bloqueo pesimista de fila en Pass para serializar operaciones sobre el mismo pase
+      await tx.$queryRaw`SELECT id FROM "Pass" WHERE id = ${pass.id}::uuid FOR UPDATE`;
+
+      // Ventana anti-duplicado atómica de 90 segundos
       const latestScan = await tx.scan.findFirst({
         where: {
           passId: pass.id,
@@ -126,6 +164,16 @@ export class ScanService {
           },
         });
 
+        const nextExpiring = await tx.stamp.findFirst({
+          where: {
+            passId: pass.id,
+            consumedAt: null,
+            expiresAt: { gt: now },
+          },
+          orderBy: { expiresAt: 'asc' },
+          select: { expiresAt: true },
+        });
+
         return {
           success: true,
           alreadyScanned: true,
@@ -135,8 +183,10 @@ export class ScanService {
           targetStamps: promotion.targetStamps,
           rewardUnlocked: activeStamps >= promotion.targetStamps,
           rewardName: promotion.rewardName,
+          nextExpiryAt: nextExpiring?.expiresAt ?? null,
+          scanId: latestScan.id,
           customer: maskedCustomer,
-          message: 'Stamp was already registered within the last 90 seconds',
+          message: 'El sello ya fue registrado en los últimos 90 segundos',
         };
       }
 
@@ -145,7 +195,7 @@ export class ScanService {
           passId: pass.id,
           merchantId: dto.merchantId,
           type: ScanType.STAMP_ADDED,
-          createdByUserId: dto.createdByUserId ?? null,
+          createdByUserId: callerUserId,
         },
       });
 
@@ -155,7 +205,7 @@ export class ScanService {
           merchantId: dto.merchantId,
           promotionId: promotion.id,
           sourceScanId: scan.id,
-          createdByUserId: dto.createdByUserId ?? null,
+          createdByUserId: callerUserId,
           earnedAt: now,
           expiresAt,
         },
@@ -193,22 +243,71 @@ export class ScanService {
         customer: maskedCustomer,
         message:
           activeStamps >= promotion.targetStamps
-            ? `Stamp added! Reward "${promotion.rewardName}" unlocked!`
-            : `Stamp added successfully (${activeStamps}/${promotion.targetStamps})`,
+            ? `¡Sello agregado! ¡Premio "${promotion.rewardName}" desbloqueado!`
+            : `Sello agregado exitosamente (${activeStamps}/${promotion.targetStamps})`,
       };
     });
   }
 
   private async executeRedeemAction(
-    pass: { id: string },
-    promotion: { id: string; targetStamps: number; rewardName: string },
+    pass: PassWithRelations,
+    promotion: Promotion,
     dto: ScanActionDto,
-    maskedCustomer?: { id: string; rut?: string | null; phone?: string | null },
+    callerUserId: string,
+    maskedCustomer?: MaskedCustomerDto,
   ): Promise<ScanResultDto> {
     const now = new Date();
 
     return this.prisma.$transaction(async (tx) => {
-      // FIFO: Select oldest valid, non-consumed stamps
+      // Bloqueo pesimista de fila en Pass para serializar operaciones sobre el mismo pase
+      await tx.$queryRaw`SELECT id FROM "Pass" WHERE id = ${pass.id}::uuid FOR UPDATE`;
+
+      // Ventana anti-duplicado de 90 segundos para canje
+      const latestRedeem = await tx.scan.findFirst({
+        where: {
+          passId: pass.id,
+          merchantId: dto.merchantId,
+          type: ScanType.REWARD_REDEEMED,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (latestRedeem && now.getTime() - latestRedeem.createdAt.getTime() < ANTI_FRAUD_WINDOW_MS) {
+        const currentActiveStamps = await tx.stamp.count({
+          where: {
+            passId: pass.id,
+            consumedAt: null,
+            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+          },
+        });
+
+        const nextExpiring = await tx.stamp.findFirst({
+          where: {
+            passId: pass.id,
+            consumedAt: null,
+            expiresAt: { gt: now },
+          },
+          orderBy: { expiresAt: 'asc' },
+          select: { expiresAt: true },
+        });
+
+        return {
+          success: true,
+          alreadyScanned: true,
+          action: ScanActionType.REDEEM,
+          passId: pass.id,
+          activeStamps: currentActiveStamps,
+          targetStamps: promotion.targetStamps,
+          rewardUnlocked: currentActiveStamps >= promotion.targetStamps,
+          rewardName: promotion.rewardName,
+          nextExpiryAt: nextExpiring?.expiresAt ?? null,
+          scanId: latestRedeem.id,
+          customer: maskedCustomer,
+          message: 'El canje ya fue procesado en los últimos 90 segundos',
+        };
+      }
+
+      // FIFO: Seleccionar sellos activos más antiguos
       const activeStampsList = await tx.stamp.findMany({
         where: {
           passId: pass.id,
@@ -220,7 +319,7 @@ export class ScanService {
 
       if (activeStampsList.length < promotion.targetStamps) {
         throw new BadRequestException(
-          `Insufficient active stamps for reward. Has ${activeStampsList.length}, requires ${promotion.targetStamps}`,
+          `Sellos activos insuficientes para canjear el premio. Tiene ${activeStampsList.length}, requiere ${promotion.targetStamps}`,
         );
       }
 
@@ -229,20 +328,26 @@ export class ScanService {
           passId: pass.id,
           merchantId: dto.merchantId,
           type: ScanType.REWARD_REDEEMED,
-          createdByUserId: dto.createdByUserId ?? null,
+          createdByUserId: callerUserId,
         },
       });
 
       const stampsToConsume = activeStampsList.slice(0, promotion.targetStamps);
       const stampIds = stampsToConsume.map((s) => s.id);
 
-      await tx.stamp.updateMany({
-        where: { id: { in: stampIds } },
+      const updateResult = await tx.stamp.updateMany({
+        where: { id: { in: stampIds }, consumedAt: null },
         data: {
           consumedAt: now,
           consumedByScanId: scan.id,
         },
       });
+
+      if (updateResult.count !== stampsToConsume.length) {
+        throw new ConflictException(
+          'Conflicto de concurrencia: parte de los sellos ya fueron consumidos por otra operación.',
+        );
+      }
 
       const remainingActiveStamps = activeStampsList.length - promotion.targetStamps;
 
@@ -269,19 +374,8 @@ export class ScanService {
         scanId: scan.id,
         consumedStampsCount: promotion.targetStamps,
         customer: maskedCustomer,
-        message: `Reward "${promotion.rewardName}" redeemed successfully`,
+        message: `Premio "${promotion.rewardName}" canjeado exitosamente`,
       };
-    });
-  }
-
-  private async countActiveStamps(passId: string): Promise<number> {
-    const now = new Date();
-    return this.prisma.stamp.count({
-      where: {
-        passId,
-        consumedAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      },
     });
   }
 }
