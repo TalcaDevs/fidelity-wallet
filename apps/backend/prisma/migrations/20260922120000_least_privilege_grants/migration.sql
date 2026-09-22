@@ -14,11 +14,16 @@ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
     EXECUTE 'GRANT USAGE ON SCHEMA public TO authenticated';
     EXECUTE 'GRANT SELECT ON public."Merchant", public."Promotion", public."Customer", public."Stamp", public."Scan", public."MerchantUser", public."PassStampBalance" TO authenticated';
-    -- En Pass, se excluye passToken explícitamente para proteger la credencial del cliente
+
+    -- En Pass, asegurar revocación explícita de SELECT previo y otorgar SELECT solo a columnas seguras (excluyendo passToken)
+    EXECUTE 'REVOKE SELECT ON public."Pass" FROM anon, authenticated';
     EXECUTE 'GRANT SELECT (id, "customerId", "merchantId", "createdAt", "updatedAt") ON public."Pass" TO authenticated';
+
     EXECUTE 'GRANT INSERT, UPDATE, DELETE ON public."Promotion", public."MerchantUser" TO authenticated';
-    EXECUTE 'GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO authenticated';
-    EXECUTE 'GRANT EXECUTE ON ALL ROUTINES IN SCHEMA public TO authenticated';
+
+    -- Conceder ejecución únicamente sobre las funciones auxiliares de evaluación RLS
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.current_merchant_ids() TO authenticated';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.is_merchant_owner(uuid) TO authenticated';
   END IF;
 
   -- Permisos para service_role (backend NestJS exclusivo)

@@ -41,11 +41,11 @@ async function bootstrap() {
   // Filtro global de excepciones estructuradas
   app.useGlobalFilters(new HttpExceptionFilter());
 
-  // Configuración de documentación OpenAPI / Swagger (gate por entorno)
-  const isDevOrSwaggerExplicit =
-    process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'true';
+  // Configuración de documentación OpenAPI / Swagger (gate estricto por entorno o flag explícito)
+  const enableSwagger =
+    process.env.NODE_ENV === 'development' || process.env.ENABLE_SWAGGER === 'true';
 
-  if (isDevOrSwaggerExplicit) {
+  if (enableSwagger) {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('Fidelity Wallet API')
       .setDescription(

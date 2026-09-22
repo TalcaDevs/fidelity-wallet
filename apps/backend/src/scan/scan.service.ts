@@ -29,7 +29,7 @@ type PassWithRelations = Pass & {
 export class ScanService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly passesService?: PassesService,
+    private readonly passesService: PassesService,
   ) {}
 
   async processScan(dto: ScanActionDto, callerUserId: string): Promise<ScanResultDto> {
@@ -104,7 +104,7 @@ export class ScanService {
         callerUserId,
         maskedCustomer,
       );
-      if (this.passesService && !result.alreadyScanned) {
+      if (!result.alreadyScanned) {
         void this.passesService.notifyPassUpdate(pass.id);
       }
       return result;
@@ -118,7 +118,7 @@ export class ScanService {
         callerUserId,
         maskedCustomer,
       );
-      if (this.passesService && !result.alreadyScanned) {
+      if (!result.alreadyScanned) {
         void this.passesService.notifyPassUpdate(pass.id);
       }
       return result;
@@ -155,12 +155,18 @@ export class ScanService {
         orderBy: { createdAt: 'desc' },
       });
 
+      // Filtro de promoción para sellos (soporta también sellos previos sin promotionId)
+      const promotionFilter = {
+        OR: [{ promotionId: promotion.id }, { promotionId: null }],
+      };
+
       if (latestScan && now.getTime() - latestScan.createdAt.getTime() < ANTI_FRAUD_WINDOW_MS) {
         const activeStamps = await tx.stamp.count({
           where: {
             passId: pass.id,
             consumedAt: null,
             OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+            AND: [promotionFilter],
           },
         });
 
@@ -169,6 +175,7 @@ export class ScanService {
             passId: pass.id,
             consumedAt: null,
             expiresAt: { gt: now },
+            AND: [promotionFilter],
           },
           orderBy: { expiresAt: 'asc' },
           select: { expiresAt: true },
@@ -216,6 +223,7 @@ export class ScanService {
           passId: pass.id,
           consumedAt: null,
           OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+          AND: [promotionFilter],
         },
       });
 
@@ -224,6 +232,7 @@ export class ScanService {
           passId: pass.id,
           consumedAt: null,
           expiresAt: { gt: now },
+          AND: [promotionFilter],
         },
         orderBy: { expiresAt: 'asc' },
         select: { expiresAt: true },
@@ -272,12 +281,18 @@ export class ScanService {
         orderBy: { createdAt: 'desc' },
       });
 
+      // Filtro de promoción para sellos (soporta también sellos previos sin promotionId)
+      const promotionFilter = {
+        OR: [{ promotionId: promotion.id }, { promotionId: null }],
+      };
+
       if (latestRedeem && now.getTime() - latestRedeem.createdAt.getTime() < ANTI_FRAUD_WINDOW_MS) {
         const currentActiveStamps = await tx.stamp.count({
           where: {
             passId: pass.id,
             consumedAt: null,
             OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+            AND: [promotionFilter],
           },
         });
 
@@ -286,6 +301,7 @@ export class ScanService {
             passId: pass.id,
             consumedAt: null,
             expiresAt: { gt: now },
+            AND: [promotionFilter],
           },
           orderBy: { expiresAt: 'asc' },
           select: { expiresAt: true },
@@ -307,12 +323,13 @@ export class ScanService {
         };
       }
 
-      // FIFO: Seleccionar sellos activos más antiguos
+      // FIFO: Seleccionar sellos activos más antiguos correspondientes a esta promoción
       const activeStampsList = await tx.stamp.findMany({
         where: {
           passId: pass.id,
           consumedAt: null,
           OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+          AND: [promotionFilter],
         },
         orderBy: { earnedAt: 'asc' },
       });
@@ -356,6 +373,7 @@ export class ScanService {
           passId: pass.id,
           consumedAt: null,
           expiresAt: { gt: now },
+          AND: [promotionFilter],
         },
         orderBy: { expiresAt: 'asc' },
         select: { expiresAt: true },

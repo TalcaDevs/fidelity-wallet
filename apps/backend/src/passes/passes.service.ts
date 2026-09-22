@@ -5,7 +5,9 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
+import { Pass, Prisma } from '@prisma/client';
 import { maskPhone, maskRut } from '../common/utils/mask.util.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { GeneratePassDto, PassEmissionResponseDto } from './dto/generate-pass.dto.js';
@@ -23,25 +25,74 @@ export class PassesService {
     private readonly googleWalletService: GoogleWalletService,
   ) {}
 
-  async generatePass(
-    dto: GeneratePassDto,
-    callerUserId?: string,
-  ): Promise<PassEmissionResponseDto> {
-    if (callerUserId) {
-      const membership = await this.prisma.merchantUser.findUnique({
-        where: {
-          userId_merchantId: {
-            userId: callerUserId,
-            merchantId: dto.merchantId,
-          },
+  /**
+   * Punto único de emisión y recuperación de pases con entropía de 32 bytes y manejo de P2002.
+   */
+  async findOrCreatePass(
+    customerId: string,
+    merchantId: string,
+  ): Promise<{ pass: Pass; isNew: boolean }> {
+    let pass = await this.prisma.pass.findUnique({
+      where: {
+        customerId_merchantId: {
+          customerId,
+          merchantId,
+        },
+      },
+    });
+
+    if (pass) {
+      return { pass, isNew: false };
+    }
+
+    const passToken = randomBytes(32).toString('hex');
+    try {
+      pass = await this.prisma.pass.create({
+        data: {
+          customerId,
+          merchantId,
+          passToken,
         },
       });
-
-      if (!membership) {
-        throw new ForbiddenException(
-          'El usuario no está autorizado como miembro de este comercio',
-        );
+      return { pass, isNew: true };
+    } catch (err: unknown) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        pass = await this.prisma.pass.findUnique({
+          where: {
+            customerId_merchantId: {
+              customerId,
+              merchantId,
+            },
+          },
+        });
+        if (!pass) throw err;
+        return { pass, isNew: false };
       }
+      throw err;
+    }
+  }
+
+  async generatePass(
+    dto: GeneratePassDto,
+    callerUserId: string,
+  ): Promise<PassEmissionResponseDto> {
+    if (!callerUserId) {
+      throw new UnauthorizedException('Usuario no autenticado');
+    }
+
+    const membership = await this.prisma.merchantUser.findUnique({
+      where: {
+        userId_merchantId: {
+          userId: callerUserId,
+          merchantId: dto.merchantId,
+        },
+      },
+    });
+
+    if (!membership) {
+      throw new ForbiddenException(
+        'El usuario no está autorizado como miembro de este comercio',
+      );
     }
 
     const customer = await this.prisma.customer.findUnique({
@@ -58,25 +109,7 @@ export class PassesService {
       throw new NotFoundException(`Comercio con ID ${dto.merchantId} no encontrado`);
     }
 
-    let pass = await this.prisma.pass.findUnique({
-      where: {
-        customerId_merchantId: {
-          customerId: dto.customerId,
-          merchantId: dto.merchantId,
-        },
-      },
-    });
-
-    if (!pass) {
-      const passToken = randomBytes(32).toString('hex');
-      pass = await this.prisma.pass.create({
-        data: {
-          customerId: dto.customerId,
-          merchantId: dto.merchantId,
-          passToken,
-        },
-      });
-    }
+    const { pass } = await this.findOrCreatePass(dto.customerId, dto.merchantId);
 
     const promotion = dto.promotionId
       ? await this.prisma.promotion.findFirst({
@@ -141,6 +174,70 @@ export class PassesService {
       targetStamps: promotion.targetStamps,
       rewardName: promotion.rewardName,
       nextExpiryAt: nextExpiring?.expiresAt ?? null,
+    };
+  }
+
+  /**
+   * Genera las URLs de billetera para un pase (utilizado por el alta anónima de clientes).
+   */
+  async getWalletUrlsForPass(
+    passId: string,
+  ): Promise<{ appleWalletUrl: string; googleWalletUrl: string } | null> {
+    const pass = await this.prisma.pass.findUnique({
+      where: { id: passId },
+      include: { merchant: true, customer: true },
+    });
+
+    if (!pass) return null;
+
+    const promotion = await this.prisma.promotion.findFirst({
+      where: { merchantId: pass.merchantId, isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!promotion) return null;
+
+    const now = new Date();
+    const activeStamps = await this.prisma.stamp.count({
+      where: {
+        passId: pass.id,
+        consumedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+    });
+
+    const nextExpiring = await this.prisma.stamp.findFirst({
+      where: {
+        passId: pass.id,
+        consumedAt: null,
+        expiresAt: { gt: now },
+      },
+      orderBy: { expiresAt: 'asc' },
+      select: { expiresAt: true },
+    });
+
+    const customerLabel = pass.customer?.rut
+      ? maskRut(pass.customer.rut)
+      : pass.customer?.phone
+        ? maskPhone(pass.customer.phone)
+        : 'Cliente';
+
+    const passData: PassData = {
+      passId: pass.id,
+      serialNumber: pass.id,
+      passToken: pass.passToken,
+      merchantId: pass.merchant.id,
+      merchantName: pass.merchant.name,
+      customerLabel,
+      activeStamps,
+      targetStamps: promotion.targetStamps,
+      rewardName: promotion.rewardName,
+      nextExpiryAt: nextExpiring?.expiresAt ?? null,
+    };
+
+    return {
+      appleWalletUrl: this.applePassService.getPassUrl(pass.passToken),
+      googleWalletUrl: this.googleWalletService.generateSaveUrl(passData),
     };
   }
 

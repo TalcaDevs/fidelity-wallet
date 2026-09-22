@@ -89,25 +89,21 @@ export class GoogleWalletService {
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.error(`Fallo en la firma del JWT de Google Wallet: ${msg}`);
-        const allowMock =
-          this.configService.get<string>('ALLOW_MOCK_PASSES') === 'true' ||
-          process.env.NODE_ENV !== 'production';
+        const allowMock = this.configService.get<string>('ALLOW_MOCK_PASSES') === 'true';
 
         if (!allowMock) {
           throw new InternalServerErrorException(
-            `Fallo en la firma del JWT de Google Wallet: ${msg}`,
+            'Fallo en la firma del JWT de Google Wallet',
           );
         }
         this.logger.warn('Utilizando URL sandbox en modo de desarrollo.');
       }
     } else {
-      const allowMock =
-        this.configService.get<string>('ALLOW_MOCK_PASSES') === 'true' ||
-        process.env.NODE_ENV !== 'production';
+      const allowMock = this.configService.get<string>('ALLOW_MOCK_PASSES') === 'true';
 
       if (!allowMock) {
         throw new InternalServerErrorException(
-          'Las credenciales de Google Wallet no están configuradas en producción',
+          'Las credenciales de Google Wallet no están configuradas',
         );
       }
     }

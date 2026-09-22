@@ -4,15 +4,18 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { randomBytes } from 'crypto';
 import { normalizePhone } from '../common/utils/phone.util.js';
 import { cleanRut, validateRut } from '../common/utils/rut.util.js';
+import { PassesService } from '../passes/passes.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateCustomerDto, CustomerResponseDto } from './dto/create-customer.dto.js';
 
 @Injectable()
 export class CustomersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly passesService: PassesService,
+  ) {}
 
   async createOrFindCustomer(dto: CreateCustomerDto): Promise<CustomerResponseDto> {
     const rawRut = dto.rut?.trim();
@@ -61,7 +64,7 @@ export class CustomersService {
 
     if (customerByRut && customerByPhone && customerByRut.id !== customerByPhone.id) {
       throw new BadRequestException(
-        'El RUT y el teléfono corresponden a dos clientes distintos registrados previamente.',
+        'Los datos proporcionados no coinciden o no son válidos para emitir el pase.',
       );
     }
 
@@ -109,51 +112,19 @@ export class CustomersService {
       }
     }
 
-    // 3. Buscar o crear el Pase (tarjeta) para este comercio específico
-    let pass = await this.prisma.pass.findUnique({
-      where: {
-        customerId_merchantId: {
-          customerId: customer.id,
-          merchantId: dto.merchantId,
-        },
-      },
-    });
+    // 3. Buscar o crear el Pase (tarjeta) para este comercio específico mediante PassesService
+    const { pass, isNew: isNewPass } = await this.passesService.findOrCreatePass(
+      customer.id,
+      dto.merchantId,
+    );
 
-    let isNewPass = false;
-
-    if (!pass) {
-      // Generar token criptográfico único con alta entropía (32 bytes = 256 bits)
-      const passToken = randomBytes(32).toString('hex');
-      try {
-        pass = await this.prisma.pass.create({
-          data: {
-            customerId: customer.id,
-            merchantId: dto.merchantId,
-            passToken,
-          },
-        });
-        isNewPass = true;
-      } catch (err: unknown) {
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-          pass = await this.prisma.pass.findUnique({
-            where: {
-              customerId_merchantId: {
-                customerId: customer.id,
-                merchantId: dto.merchantId,
-              },
-            },
-          });
-          if (!pass) throw err;
-        } else {
-          throw err;
-        }
-      }
-    }
+    const walletUrls = await this.passesService.getWalletUrlsForPass(pass.id);
 
     return {
       customerId: customer.id,
       passId: pass.id,
       isNew: isNewCustomer || isNewPass,
+      ...walletUrls,
     };
   }
 }

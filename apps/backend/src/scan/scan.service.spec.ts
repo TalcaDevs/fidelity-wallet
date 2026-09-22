@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { ScanType } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PassesService } from '../passes/passes.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ScanActionType } from './dto/scan-action.dto.js';
 import { ScanService } from './scan.service.js';
@@ -14,6 +15,7 @@ import { ScanService } from './scan.service.js';
 describe('ScanService', () => {
   let service: ScanService;
   let prisma: PrismaService;
+  let passesService: PassesService;
 
   const mockMerchantId = 'a0000000-0000-0000-0000-000000000001';
   const mockOtherMerchantId = 'a0000000-0000-0000-0000-000000000099';
@@ -79,7 +81,11 @@ describe('ScanService', () => {
       $transaction: vi.fn((callback) => callback(prisma)),
     } as unknown as PrismaService;
 
-    service = new ScanService(prisma);
+    passesService = {
+      notifyPassUpdate: vi.fn().mockResolvedValue(undefined),
+    } as unknown as PassesService;
+
+    service = new ScanService(prisma, passesService);
   });
 
   it('should throw UnauthorizedException if callerUserId is missing', async () => {
@@ -195,6 +201,7 @@ describe('ScanService', () => {
     expect(result.nextExpiryAt).toBeDefined();
     expect(stampCreateSpy).not.toHaveBeenCalled();
     expect(scanCreateSpy).not.toHaveBeenCalled();
+    expect(passesService.notifyPassUpdate).not.toHaveBeenCalled();
   });
 
   it('should successfully add a stamp with frozen expiresAt and callerUserId audit', async () => {
@@ -222,6 +229,7 @@ describe('ScanService', () => {
     expect(result.rewardUnlocked).toBe(true);
     expect(result.scanId).toBe('scan-new-1');
     expect(result.customer?.rut).toBe('12.***.*78-5');
+    expect(passesService.notifyPassUpdate).toHaveBeenCalledWith(mockPassId);
 
     expect(scanCreateSpy).toHaveBeenCalledWith({
       data: {
@@ -308,6 +316,15 @@ describe('ScanService', () => {
     expect(result.action).toBe(ScanActionType.REDEEM);
     expect(result.activeStamps).toBe(2);
     expect(result.consumedStampsCount).toBe(3);
+    expect(prisma.stamp.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          passId: mockPassId,
+          consumedAt: null,
+          AND: [{ OR: [{ promotionId: 'promo-1' }, { promotionId: null }] }],
+        }),
+      }),
+    );
     expect(stampUpdateManySpy).toHaveBeenCalledWith({
       where: { id: { in: ['stamp-1', 'stamp-2', 'stamp-3'] }, consumedAt: null },
       data: expect.objectContaining({
@@ -315,6 +332,7 @@ describe('ScanService', () => {
         consumedByScanId: 'redeem-scan-1',
       }),
     });
+    expect(passesService.notifyPassUpdate).toHaveBeenCalledWith(mockPassId);
   });
 
   it('should throw ConflictException on REDEEM if concurrent process consumed stamps', async () => {
@@ -375,6 +393,7 @@ describe('ScanService', () => {
     expect(result.alreadyScanned).toBe(true);
     expect(result.action).toBe(ScanActionType.REDEEM);
     expect(result.scanId).toBe('redeem-scan-prev');
+    expect(passesService.notifyPassUpdate).not.toHaveBeenCalled();
   });
 
   it('should throw BadRequestException on REDEEM if active stamps < targetStamps', async () => {

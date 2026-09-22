@@ -130,28 +130,28 @@ export class ApplePassService {
           ...(password ? { signerKeyPassphrase: password } : {}),
         };
 
-        const pass = new PKPass({}, certificates, passJson);
+        const transparentIcon = Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+          'base64',
+        );
+        const pass = new PKPass({ 'icon.png': transparentIcon }, certificates, passJson);
         return pass.getAsBuffer();
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.error(`Fallo al firmar PKPass: ${msg}`);
-        const allowMock =
-          this.configService.get<string>('ALLOW_MOCK_PASSES') === 'true' ||
-          process.env.NODE_ENV !== 'production';
+        const allowMock = this.configService.get<string>('ALLOW_MOCK_PASSES') === 'true';
 
         if (!allowMock) {
-          throw new InternalServerErrorException(`Fallo en la firma del pase Apple Wallet PKPass: ${msg}`);
+          throw new InternalServerErrorException('Fallo en la firma del pase Apple Wallet');
         }
         this.logger.warn('Utilizando buffer mock en modo de desarrollo.');
       }
     } else {
-      const allowMock =
-        this.configService.get<string>('ALLOW_MOCK_PASSES') === 'true' ||
-        process.env.NODE_ENV !== 'production';
+      const allowMock = this.configService.get<string>('ALLOW_MOCK_PASSES') === 'true';
 
       if (!allowMock) {
         throw new InternalServerErrorException(
-          'Los certificados de firma de Apple Wallet no están configurados en producción',
+          'Los certificados de firma de Apple Wallet no están configurados',
         );
       }
     }

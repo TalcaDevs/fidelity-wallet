@@ -44,4 +44,17 @@ export class CustomerResponseDto {
     example: true,
   })
   isNew: boolean;
+
+  @ApiPropertyOptional({
+    description: 'URL para descargar el pase en Apple Wallet (.pkpass)',
+    example: '/api/passes/e4c08495-e224-4122-9f9f-e0117ab81cd7/apple',
+  })
+  appleWalletUrl?: string;
+
+  @ApiPropertyOptional({
+    description: 'URL para guardar el pase en Google Wallet',
+    example: 'https://pay.google.com/gp/v/save/...',
+  })
+  googleWalletUrl?: string;
 }
+
