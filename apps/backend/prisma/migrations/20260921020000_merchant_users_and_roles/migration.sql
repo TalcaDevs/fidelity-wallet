@@ -254,6 +254,13 @@ CREATE POLICY "merchant_user_delete" ON "MerchantUser"
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+    EXECUTE 'GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role';
+    EXECUTE 'GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role';
+    EXECUTE 'GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role';
+    EXECUTE 'GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role';
+    EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role';
+    EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role';
+    EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES TO anon, authenticated, service_role';
     EXECUTE 'GRANT SELECT, INSERT, UPDATE, DELETE ON public."MerchantUser" TO authenticated';
   END IF;
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
