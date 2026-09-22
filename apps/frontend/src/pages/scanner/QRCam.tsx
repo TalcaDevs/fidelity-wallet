@@ -33,12 +33,12 @@ export function QRCam({ onScanSuccess, isActive }: QRCamProps) {
               fps: 10,
               qrbox: { width: 250, height: 250 },
             },
-            (decodedText) => {
+            (decodedText: string) => {
               // Haptic feedback if supported
               if (navigator.vibrate) navigator.vibrate(50);
               onScanSuccess(decodedText);
             },
-            (errorMessage) => {
+            () => {
               // ignore background scan errors
             }
           );

@@ -18,7 +18,7 @@ export function Join() {
   
   const [merchant, setMerchant] = useState<MerchantData | null>(null);
   const [loadingData, setLoadingData] = useState(true);
-  const [notFound, setNotFound] = useState(false);
+  const [notFound] = useState(false); // We don't use setNotFound anymore since we fallback to mock data
 
   const [identifier, setIdentifier] = useState('');
   const [loading, setLoading] = useState(false);
