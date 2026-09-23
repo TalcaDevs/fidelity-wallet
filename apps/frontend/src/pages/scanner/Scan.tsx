@@ -4,20 +4,18 @@ import { ManualFallback } from './ManualFallback';
 import { useAuth } from '../../hooks/useAuth';
 import { useScanFeedback } from '../../hooks/useScanFeedback';
 import { supabase } from '../../lib/supabase';
+import { Session } from '@supabase/supabase-js';
 import { processScan, ScanResult } from '../../services/scanService';
-import { ScanLoading, ScanSuccess, ScanAlreadyScanned, ScanReward, ScanError } from './ScanViews';
+import { ScanLoading, ScanSuccess, ScanAlreadyScanned, ScanReward, ScanError, ScanRedeemSuccess } from './ScanViews';
 
-type ScanState = 'camera' | 'manual' | 'loading' | 'success' | 'alreadyScanned' | 'reward' | 'error';
+type ScanState = 'camera' | 'manual' | 'loading' | 'success' | 'alreadyScanned' | 'reward' | 'error' | 'redeemSuccess';
 
-export function Scan() {
-  const { session } = useAuth();
+export function Scan({ merchantId, session }: { merchantId: string, session: Session }) {
   const { triggerFeedback, resumeAudio } = useScanFeedback();
   const [isStarted, setIsStarted] = useState(false);
   const [state, setState] = useState<ScanState>('camera');
   const [result, setResult] = useState<ScanResult | null>(null);
   const [scannedText, setScannedText] = useState<{ text: string, isManual: boolean } | null>(null);
-
-  const merchantId = session?.user.user_metadata?.merchant_id || session?.user.id;
 
   const handleScan = useCallback(async (text: string, isManual = false) => {
     setState('loading');
@@ -41,10 +39,9 @@ export function Scan() {
       triggerFeedback('alreadyScanned');
       setState('alreadyScanned');
     } else {
-      triggerFeedback('success');
       setState('success');
     }
-  }, [triggerFeedback]);
+  }, [triggerFeedback, merchantId]);
 
   const handleRedeem = useCallback(async () => {
     if (!scannedText) return;
@@ -57,16 +54,12 @@ export function Scan() {
     });
     setResult(res);
     
-    if (res.rewardUnlocked) {
-      // Actually it shouldn't be unlocked again, but just in case
-      triggerFeedback('success');
-      setState('success');
-    } else if (!res.ok) {
+    if (!res.ok) {
       triggerFeedback('error');
       setState('error');
     } else {
       triggerFeedback('success');
-      setState('success');
+      setState('redeemSuccess');
     }
   }, [scannedText, merchantId, triggerFeedback]);
 
@@ -127,9 +120,10 @@ export function Scan() {
           </div>
         )}
 
-        {isStarted && state === 'manual' && <ManualFallback isLoading={false} onSubmit={(t) => handleScan(t, true)} onCancel={resetScanner} />}
+        {isStarted && state === 'manual' && <ManualFallback onSubmit={(t) => handleScan(t, true)} onCancel={resetScanner} />}
         {state === 'loading' && <ScanLoading />}
         {state === 'success' && result && <ScanSuccess result={result} onReset={resetScanner} />}
+        {state === 'redeemSuccess' && result && <ScanRedeemSuccess result={result} onReset={resetScanner} />}
         {state === 'alreadyScanned' && result && <ScanAlreadyScanned onReset={resetScanner} />}
         {state === 'reward' && result && <ScanReward result={result} onReset={resetScanner} onRedeem={handleRedeem} />}
         {state === 'error' && <ScanError result={result} onReset={resetScanner} />}

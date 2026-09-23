@@ -4,6 +4,7 @@ import { validateRUT, isPhone } from '../../utils/validators';
 import { getMerchantWithActivePromo, MerchantWithPromo } from '../../services/merchantService';
 import { JoinNotFound } from './JoinNotFound';
 import { JoinSuccess } from './JoinSuccess';
+import { apiUrl } from '../../lib/api';
 
 export function Join() {
   const { merchantName } = useParams<{ merchantName: string }>();
@@ -73,7 +74,7 @@ export function Join() {
       try {
         const payload = validRut ? { rut: cleanId } : { phone: cleanId };
         
-        const response = await fetch('/api/customers', {
+        const response = await fetch(apiUrl('/api/customers'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -97,8 +98,12 @@ export function Join() {
 
         setLoading(false);
         setSuccess(true);
-      } catch (err: any) {
-        setError(err.message || 'Ocurrió un error al procesar tu solicitud.');
+      } catch (err: unknown) {
+        if (err instanceof Error) {
+          setError(err.message || 'Ocurrió un error al procesar tu solicitud.');
+        } else {
+          setError('Ocurrió un error al procesar tu solicitud.');
+        }
         setLoading(false);
       }
     }

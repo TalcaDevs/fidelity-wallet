@@ -47,7 +47,7 @@ export default function App() {
 
           {/* Scanner: requiere sesión y rol OWNER o STAFF */}
           <Route element={<RequireRole session={session} membership={membership} allow={['OWNER', 'STAFF']} />}>
-            <Route path={ROUTES.scan} element={<Scan />} />
+            <Route path={ROUTES.scan} element={session && membership.merchantId ? <Scan merchantId={membership.merchantId} session={session} /> : null} />
           </Route>
 
           {/* Panel: requiere sesión y rol OWNER */}

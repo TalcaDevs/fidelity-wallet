@@ -4,10 +4,9 @@ import { validateRUT, isPhone } from '../../utils/validators';
 interface ManualFallbackProps {
   onSubmit: (identifier: string) => void;
   onCancel: () => void;
-  isLoading: boolean;
 }
 
-export function ManualFallback({ onSubmit, onCancel, isLoading }: ManualFallbackProps) {
+export function ManualFallback({ onSubmit, onCancel }: ManualFallbackProps) {
   const [identifier, setIdentifier] = useState('');
   const [error, setError] = useState('');
 
@@ -53,10 +52,10 @@ export function ManualFallback({ onSubmit, onCancel, isLoading }: ManualFallback
           </div>
           <button
             type="submit"
-            disabled={isLoading || identifier.trim().length < 4}
+            disabled={identifier.trim().length < 4}
             className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-xl py-5 rounded-2xl shadow-lg shadow-blue-600/30 transition-all active:scale-[0.98]"
           >
-            {isLoading ? 'Buscando...' : 'Buscar Cliente'}
+            Buscar Cliente
           </button>
         </form>
 

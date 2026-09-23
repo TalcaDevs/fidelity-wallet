@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { isValidStampValidityDays } from '../lib/stampExpiry';
+import { apiUrl } from '../lib/api';
 
 export interface Merchant {
   id: string;
@@ -12,17 +13,6 @@ export interface Merchant {
 }
 
 export type MerchantSettings = Pick<Merchant, 'name' | 'stampValidityDays'>;
-
-export interface MerchantPublicData {
-  id: string;
-  name: string;
-  stampValidityDays: number | null;
-  Promotion: {
-    targetStamps: number;
-    rewardName: string;
-    isActive: boolean;
-  }[];
-}
 
 export interface MerchantWithPromo {
   id: string;
@@ -54,35 +44,32 @@ export async function getMerchantWithActivePromo(merchantName: string): Promise<
     };
   }
 
-  try {
-    // IMPORTANTE: Esta query fallará para usuarios anónimos por RLS hasta que 
-    // Dev 3 agregue el permiso público o cree la vista pública en la base de datos.
-    // De momento, la dejamos apuntando a la tabla 'Merchant' filtrando por 'name'.
-    const { data, error } = await supabase
-      .from('Merchant')
-      .select(`
-        id,
-        name,
-        stampValidityDays,
-        Promotion (
-          id,
-          name,
-          targetStamps,
-          rewardName
-        )
-      `)
-      .eq('name', merchantName)
-      .eq('Promotion.isActive', true)
-      .maybeSingle();
-
-    if (error || !data) {
-      return null;
-    }
-
-    return data as unknown as MerchantWithPromo;
-  } catch {
+  const response = await fetch(apiUrl('/api/merchants/by-slug/' + encodeURIComponent(merchantName)));
+  
+  if (response.status === 404) {
     return null;
   }
+  
+  if (!response.ok) {
+    throw new Error('No se pudo cargar la información del local. Por favor, reintenta.');
+  }
+  
+  const data = await response.json();
+  
+  // Mapear la respuesta del backend al contrato esperado por el frontend
+  return {
+    id: data.id,
+    name: data.name,
+    stampValidityDays: data.stampValidityDays,
+    Promotion: data.activePromotion ? [
+      {
+        id: data.activePromotion.id,
+        name: data.activePromotion.name || 'Promoción Activa',
+        targetStamps: data.activePromotion.targetStamps,
+        rewardName: data.activePromotion.rewardName
+      }
+    ] : []
+  };
 }
 
 export async function getMerchant(merchantId: string): Promise<Merchant | null> {

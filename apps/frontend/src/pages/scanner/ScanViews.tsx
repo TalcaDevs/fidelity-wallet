@@ -95,3 +95,21 @@ export function ScanError({ result, onReset }: { result: ScanResult | null, onRe
     </div>
   );
 }
+
+export function ScanRedeemSuccess({ result, onReset }: { result: ScanResult, onReset: () => void }) {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center duration-300 px-6 text-center">
+      <div className="w-28 h-28 bg-blue-500 rounded-full flex items-center justify-center shadow-[0_0_60px_rgba(59,130,246,0.3)] mb-8">
+        <svg className="w-14 h-14 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
+        </svg>
+      </div>
+      <h2 className="text-4xl font-black mb-2">¡Premio entregado!</h2>
+      <p className="text-slate-400 text-xl font-medium mb-8">Cliente {result.customerLabel}</p>
+      
+      <button onClick={onReset} className="w-full max-w-sm py-5 bg-slate-800 hover:bg-slate-700 rounded-2xl font-bold text-xl transition-colors">
+        Escanear otro
+      </button>
+    </div>
+  );
+}

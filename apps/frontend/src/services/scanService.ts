@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { apiUrl } from '../lib/api';
 
 export interface ScanResult {
   ok: boolean;
@@ -11,7 +12,7 @@ export interface ScanResult {
   error?: string;
 }
 
-const mockProcessScan = async (id: string, action: 'SCAN' | 'REDEEM'): Promise<ScanResult> => {
+const mockProcessScan = async (id: string, action: 'STAMP' | 'REDEEM'): Promise<ScanResult> => {
   return new Promise((resolve) => {
     setTimeout(() => {
       if (action === 'REDEEM') {
@@ -35,7 +36,7 @@ const mockProcessScan = async (id: string, action: 'SCAN' | 'REDEEM'): Promise<S
 
 export interface ScanParams {
   merchantId: string;
-  action: 'SCAN' | 'REDEEM';
+  action: 'STAMP' | 'REDEEM';
   passToken?: string;
   identifier?: string;
 }
@@ -51,14 +52,20 @@ export const processScan = async (params: ScanParams): Promise<ScanResult> => {
       return { ok: false, error: 'No hay sesión activa' };
     }
 
-    const endpoint = params.identifier ? '/api/scan/manual' : '/api/scan';
-    const type = params.action === 'REDEEM' ? 'REWARD_REDEEMED' : 'STAMP_ADDED';
-    
-    const body = params.identifier 
-      ? { merchantId: params.merchantId, identifier: params.identifier, type }
-      : { merchantId: params.merchantId, passToken: params.passToken, type };
+    let customer: { rut?: string, phone?: string } | undefined = undefined;
+    if (params.identifier) {
+      const isPhone = /^\+569\d{8}$/.test(params.identifier);
+      customer = isPhone ? { phone: params.identifier } : { rut: params.identifier };
+    }
 
-    const response = await fetch(endpoint, {
+    const body = {
+      merchantId: params.merchantId,
+      action: params.action,
+      ...(params.passToken ? { passToken: params.passToken } : {}),
+      ...(customer ? { customer } : {})
+    };
+
+    const response = await fetch(apiUrl('/api/scan'), {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
@@ -70,7 +77,11 @@ export const processScan = async (params: ScanParams): Promise<ScanResult> => {
     if (!response.ok) {
       if (response.status === 400 || response.status === 404 || response.status === 403) {
         const errorData = await response.json().catch(() => ({}));
-        return { ok: false, error: errorData.error || errorData.message || 'Pase inválido o de otro local' };
+        let errorMessage = errorData.error || errorData.message;
+        if (Array.isArray(errorMessage)) {
+          errorMessage = errorMessage[0];
+        }
+        return { ok: false, error: errorMessage || 'Pase inválido o de otro local' };
       }
       return { ok: false, error: 'Ocurrió un error al procesar el pase' };
     }
@@ -78,8 +89,8 @@ export const processScan = async (params: ScanParams): Promise<ScanResult> => {
     const data = await response.json();
     return {
       ok: true,
-      customerLabel: data.customerLabel,
-      stampsCount: data.stampsCount,
+      customerLabel: data.customer?.rut ?? data.customer?.phone ?? '',
+      stampsCount: data.activeStamps,
       targetStamps: data.targetStamps,
       rewardUnlocked: data.rewardUnlocked,
       rewardName: data.rewardName,
