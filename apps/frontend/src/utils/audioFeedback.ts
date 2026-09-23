@@ -1,6 +1,6 @@
 let audioCtx: AudioContext | null = null;
 
-export const getAudioContext = () => {
+export const getAudioContext = (): AudioContext | null => {
   if (!audioCtx) {
     const win = window as unknown as { webkitAudioContext?: typeof AudioContext };
     const AudioContextClass = window.AudioContext || win.webkitAudioContext;
@@ -8,7 +8,7 @@ export const getAudioContext = () => {
       audioCtx = new AudioContextClass();
     }
   }
-  return audioCtx!;
+  return audioCtx;
 };
 
 export const playSuccessSound = () => {

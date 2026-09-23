@@ -24,31 +24,65 @@ export interface MerchantPublicData {
   }[];
 }
 
-export async function getMerchantWithActivePromo(merchantId: string): Promise<MerchantPublicData | null> {
-  const { data, error } = await supabase
-    .from('Merchant')
-    .select(`
-      id,
-      name,
-      stampValidityDays,
-      Promotion (
-        targetStamps,
-        rewardName,
-        isActive
-      )
-    `)
-    .eq('id', merchantId)
-    .single();
+export interface MerchantWithPromo {
+  id: string;
+  name: string;
+  stampValidityDays: number | null;
+  Promotion: {
+    id: string;
+    name: string;
+    targetStamps: number;
+    rewardName: string;
+  }[];
+}
 
-  if (error || !data) {
-    return null;
+export async function getMerchantWithActivePromo(merchantName: string): Promise<MerchantWithPromo | null> {
+  // Manejo de Mocks si Dev 3 aún no abre el RLS, o para tests
+  if (import.meta.env.VITE_USE_MOCKS === 'true') {
+    return {
+      id: 'mock-merchant-id',
+      name: merchantName || 'Mi Local (Mock)',
+      stampValidityDays: 30,
+      Promotion: [
+        {
+          id: 'mock-promo-id',
+          name: 'Promo 10 Sellos',
+          targetStamps: 10,
+          rewardName: 'Café Gratis'
+        }
+      ]
+    };
   }
 
-  // Filter promotions to only include active ones, and cast type
-  return {
-    ...data,
-    Promotion: data.Promotion.filter((p: any) => p.isActive)
-  } as unknown as MerchantPublicData;
+  try {
+    // IMPORTANTE: Esta query fallará para usuarios anónimos por RLS hasta que 
+    // Dev 3 agregue el permiso público o cree la vista pública en la base de datos.
+    // De momento, la dejamos apuntando a la tabla 'Merchant' filtrando por 'name'.
+    const { data, error } = await supabase
+      .from('Merchant')
+      .select(`
+        id,
+        name,
+        stampValidityDays,
+        Promotion (
+          id,
+          name,
+          targetStamps,
+          rewardName
+        )
+      `)
+      .eq('name', merchantName)
+      .eq('Promotion.isActive', true)
+      .maybeSingle();
+
+    if (error || !data) {
+      return null;
+    }
+
+    return data as unknown as MerchantWithPromo;
+  } catch {
+    return null;
+  }
 }
 
 export async function getMerchant(merchantId: string): Promise<Merchant | null> {

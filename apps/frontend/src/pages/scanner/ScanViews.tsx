@@ -36,7 +36,7 @@ export function ScanSuccess({ result, onReset }: { result: ScanResult, onReset: 
   );
 }
 
-export function ScanAlreadyScanned({ onReset }: { result: ScanResult, onReset: () => void }) {
+export function ScanAlreadyScanned({ onReset }: { onReset: () => void }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center duration-300 px-6 text-center">
       <div className="w-28 h-28 bg-amber-500 rounded-full flex items-center justify-center shadow-[0_0_60px_rgba(245,158,11,0.3)] mb-8">
@@ -54,7 +54,7 @@ export function ScanAlreadyScanned({ onReset }: { result: ScanResult, onReset: (
   );
 }
 
-export function ScanReward({ result, onReset }: { result: ScanResult, onReset: () => void }) {
+export function ScanReward({ result, onReset, onRedeem }: { result: ScanResult, onReset: () => void, onRedeem?: () => void }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center duration-300 px-6 text-center">
       <div className="w-28 h-28 bg-amber-400 rounded-[2rem] rotate-12 flex items-center justify-center shadow-[0_0_60px_rgba(251,191,36,0.4)] mb-8">
@@ -68,7 +68,7 @@ export function ScanReward({ result, onReset }: { result: ScanResult, onReset: (
         {result.rewardName}
       </p>
 
-      <button onClick={onReset} className="w-full max-w-sm py-5 bg-amber-500 hover:bg-amber-400 text-amber-950 rounded-2xl font-black text-xl transition-colors shadow-xl shadow-amber-500/20">
+      <button onClick={onRedeem} className="w-full max-w-sm py-5 bg-amber-500 hover:bg-amber-400 text-amber-950 rounded-2xl font-black text-xl transition-colors shadow-xl shadow-amber-500/20">
         Confirmar Entrega
       </button>
       <button onClick={onReset} className="w-full max-w-sm py-4 mt-3 text-slate-400 font-bold">

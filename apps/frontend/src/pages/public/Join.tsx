@@ -6,7 +6,7 @@ import { JoinNotFound } from './JoinNotFound';
 import { JoinSuccess } from './JoinSuccess';
 
 export function Join() {
-  const { merchantId } = useParams<{ merchantId: string }>();
+  const { merchantName } = useParams<{ merchantName: string }>();
   
   const [merchant, setMerchant] = useState<MerchantPublicData | null>(null);
   const [loadingData, setLoadingData] = useState(true);
@@ -16,12 +16,14 @@ export function Join() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const [walletUrls, setWalletUrls] = useState<{ apple?: string, google?: string }>({});
+  const [alreadyExists, setAlreadyExists] = useState(false);
 
   useEffect(() => {
     async function fetchMerchant() {
-      if (!merchantId) return;
+      if (!merchantName) return;
       try {
-        const data = await getMerchantWithActivePromo(merchantId);
+        const data = await getMerchantWithActivePromo(merchantName);
         if (!data) {
           setNotFound(true);
         } else {
@@ -34,7 +36,7 @@ export function Join() {
       }
     }
     fetchMerchant();
-  }, [merchantId]);
+  }, [merchantName]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -61,23 +63,42 @@ export function Join() {
 
     setLoading(true);
     
-    if (import.meta.env.VITE_USE_MOCK_SCAN === 'true') {
+    if (import.meta.env.VITE_USE_MOCKS === 'true') {
       setTimeout(() => {
         setLoading(false);
         setSuccess(true);
+        setWalletUrls({ apple: '#', google: '#' });
       }, 1500);
     } else {
       try {
+        const payload = validRut ? { rut: cleanId } : { phone: cleanId };
+        
         const response = await fetch('/api/customers', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ merchantId, identifier: cleanId })
+          body: JSON.stringify({
+            merchantId: merchant?.id,
+            ...payload
+          })
         });
-        if (!response.ok) throw new Error('Error al generar pase');
+        
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Error al generar pase');
+        }
+        
+        if (data.appleWalletUrl || data.googleWalletUrl) {
+          setWalletUrls({ apple: data.appleWalletUrl, google: data.googleWalletUrl });
+          setAlreadyExists(false);
+        } else {
+          setAlreadyExists(true);
+        }
+
         setLoading(false);
         setSuccess(true);
-      } catch (err) {
-        setError('Ocurrió un error al procesar tu solicitud.');
+      } catch (err: any) {
+        setError(err.message || 'Ocurrió un error al procesar tu solicitud.');
         setLoading(false);
       }
     }
@@ -96,7 +117,14 @@ export function Join() {
   }
 
   if (success) {
-    return <JoinSuccess />;
+    return (
+      <JoinSuccess 
+        appleWalletUrl={walletUrls.apple} 
+        googleWalletUrl={walletUrls.google} 
+        alreadyExists={alreadyExists}
+        merchantName={merchant.name}
+      />
+    );
   }
 
   const promo = merchant.Promotion && merchant.Promotion.length > 0 ? merchant.Promotion[0] : null;

@@ -56,7 +56,7 @@ SaaS **B2B2C**: le cobramos (suscripción mensual por local) al **comercio**, no
 |---|---|---|
 | Tiempo de emisión del pase (QR → tarjeta en la billetera) | < 15 s | Dev 1 + Dev 2 |
 | Tiempo de escaneo en caja (cámara → confirmación en pantalla) | < 2 s | Dev 2 |
-| Conversión del landing `/join/:merchantId` | > 60% | Dev 2 |
+| Conversión del landing `/join/:merchantName` | > 60% | Dev 2 |
 | Entrega del push "premio desbloqueado" | < 10 s tras el sello | Dev 1 |
 | Uso semanal del panel por el dueño | ≥ 1 sesión/semana | Dev 3 |
 
@@ -132,7 +132,7 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
 | `/admin/login` | Login del dueño | Público | Dev 3 |
 | `/admin/reset` | Recuperación de contraseña | Público | Dev 3 |
 | `/admin/dashboard` · `/admin/promotions` · `/admin/customers` · `/admin/settings` | Panel | **Protegido, solo `OWNER`** (un `STAFF` cae a `/scan`) | Dev 3 |
-| `/join/:merchantId` | Landing de emisión del cliente final | Público, sin login | Dev 2 |
+| `/join/:merchantName` | Landing de emisión del cliente final | Público, sin login | Dev 2 |
 | `/scan` | PWA del cajero | **Protegido: requiere sesión (`STAFF` u `OWNER`)** | Dev 2 |
 
 **Por qué el panel queda namespaceado bajo `/admin/*`:** si mañana la landing se mueve a un sitio estático prerenderizado (por SEO y velocidad), **las URLs del panel no cambian**. Es la razón del prefijo; no es cosmética.
@@ -169,7 +169,7 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
 | PWA del cajero | **No está implementada.** Va en `apps/frontend`, ruta `/scan` — **`apps/scanner` quedó sin efecto, no crearla** (decisión 3) |
 | Invitación de meseros | No existe el endpoint para crear usuarios `STAFF`. Hoy las filas de `MerchantUser` se crean **a mano**. Asignado a Dev 1, ver §5.6 |
 | Landing pública `/` | **No existe.** Ver §8.6 (falta definir quién la hace y qué lleva) |
-| Landing de emisión | **No existe** la ruta `/join/:merchantId` |
+| Landing de emisión | **No existe** la ruta `/join/:merchantName` |
 | Motor de pases | No están instalados `passkit-generator` ni `googleapis`, ni hay certificados |
 | Seeds | No hay seed reproducible de datos de demo |
 
@@ -300,7 +300,7 @@ Reglas, **todas dentro de una transacción de base de datos**:
 - **Fallback manual obligatorio:** pantalla para buscar por RUT o teléfono cuando la cámara falla (permiso denegado, poca luz, pantalla rota del cliente). No es opcional: es la diferencia entre "se cayó el sistema" y "seguimos atendiendo".
 - Comportamiento offline mínimo: si se cae la red, avisar claramente en vez de fallar en silencio. Lo mismo vale para la sesión: distinguir "sin internet" de "sesión vencida, volvé a entrar".
 
-### 6.2 Landing de adquisición `/join/:merchantId`
+### 6.2 Landing de adquisición `/join/:merchantName`
 Flujo completo en una sola pantalla, sin scroll innecesario:
 1. El cliente escanea el QR físico de la mesa y aterriza aquí.
 2. Ve el nombre del local y la promoción vigente ("Junta 5 sellos, llévate un café").

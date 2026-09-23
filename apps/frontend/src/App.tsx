@@ -38,7 +38,7 @@ export default function App() {
         <Routes>
           {/* Públicas: funcionan con y sin sesión */}
           <Route path={ROUTES.home} element={<Home />} />
-          <Route path="/join/:merchantId" element={<Join />} />
+          <Route path="/join/:merchantName" element={<Join />} />
           <Route path={ROUTES.resetPassword} element={<PasswordResetRoute onDone={finishPasswordRecovery} />} />
 
           <Route element={<RedirectIfAuthenticated session={session} />}>

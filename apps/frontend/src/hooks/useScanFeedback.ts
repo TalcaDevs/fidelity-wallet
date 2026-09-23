@@ -2,8 +2,7 @@ import { useCallback } from 'react';
 import { getAudioContext, playSuccessSound, playRewardSound, playErrorSound, playAlreadyScannedSound } from '../utils/audioFeedback';
 
 export function useScanFeedback() {
-  const triggerFeedback = useCallback((type: 'success' | 'reward' | 'error' | 'alreadyScanned') => {
-    // Resume context on first interaction if suspended (iOS requirement)
+  const resumeAudio = useCallback(() => {
     try {
       const ctx = getAudioContext();
       if (ctx && ctx.state === 'suspended') {
@@ -12,7 +11,9 @@ export function useScanFeedback() {
     } catch (e) {
       // Ignore
     }
+  }, []);
 
+  const triggerFeedback = useCallback((type: 'success' | 'reward' | 'error' | 'alreadyScanned') => {
     if (type === 'reward') {
       if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 300]);
       playRewardSound();
@@ -28,5 +29,5 @@ export function useScanFeedback() {
     }
   }, []);
 
-  return triggerFeedback;
+  return { triggerFeedback, resumeAudio };
 }

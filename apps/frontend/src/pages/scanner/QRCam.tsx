@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 
 interface QRCamProps {
@@ -10,6 +10,7 @@ export function QRCam({ onScanSuccess, isActive }: QRCamProps) {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const isScanningRef = useRef(false);
   const lastScanRef = useRef<{ text: string; time: number } | null>(null);
+  const [cameraError, setCameraError] = useState(false);
 
   useEffect(() => {
     if (!isActive) {
@@ -50,9 +51,9 @@ export function QRCam({ onScanSuccess, isActive }: QRCamProps) {
             }
           );
           isScanningRef.current = true;
+          setCameraError(false);
         } catch (err) {
-          // Ignore camera access failed visually, but it should gracefully fallback or show a message
-          // The manual fallback button is available on the screen.
+          setCameraError(true);
         }
       }
     };
@@ -67,6 +68,21 @@ export function QRCam({ onScanSuccess, isActive }: QRCamProps) {
       }
     };
   }, [isActive, onScanSuccess]);
+
+  if (cameraError) {
+    return (
+      <div className="relative w-full h-full flex flex-col items-center justify-center bg-slate-900 rounded-3xl shadow-2xl p-6 text-center border-2 border-red-500/20">
+        <div className="w-16 h-16 bg-red-500/20 text-red-500 rounded-full flex items-center justify-center mb-4">
+          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 11l4 4m0-4l-4 4" />
+          </svg>
+        </div>
+        <h3 className="text-xl font-bold text-white mb-2">Error de cámara</h3>
+        <p className="text-slate-400 font-medium">No pudimos acceder a la cámara. Revisa los permisos de tu navegador o usa el ingreso manual arriba.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full h-full flex items-center justify-center overflow-hidden bg-black rounded-3xl shadow-2xl">

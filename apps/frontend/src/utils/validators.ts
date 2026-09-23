@@ -17,5 +17,6 @@ export const validateRUT = (rut: string): boolean => {
 };
 
 export const isPhone = (val: string): boolean => {
-  return /^\+?[0-9]{8,15}$/.test(val.replace(/\s/g, ''));
+  const cleanPhone = val.replace(/[\s+]/g, '');
+  return /^(569|9)\d{8}$/.test(cleanPhone);
 };
