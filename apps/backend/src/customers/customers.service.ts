@@ -54,6 +54,14 @@ export class CustomersService {
       throw new NotFoundException('El comercio especificado no existe');
     }
 
+    const activePromotion = await this.prisma.promotion.findFirst({
+      where: { merchantId: dto.merchantId, isActive: true },
+    });
+
+    if (!activePromotion) {
+      throw new BadRequestException('El comercio no tiene una promoción activa configurada');
+    }
+
     // 2. Buscar si el cliente ya existe por RUT o teléfono evitando cruce de identidades
     const customerByRut = normalizedRut
       ? await this.prisma.customer.findUnique({ where: { rut: normalizedRut } })
@@ -118,7 +126,9 @@ export class CustomersService {
       dto.merchantId,
     );
 
-    const walletUrls = await this.passesService.getWalletUrlsForPass(pass.id);
+    // Solo se entregan las URLs de billetera cuando el pase se crea por primera vez en esta llamada.
+    // Si el pase ya existía, no se devuelven credenciales para evitar suplantación de identidad por RUT.
+    const walletUrls = isNewPass ? await this.passesService.getWalletUrlsForPass(pass.id) : null;
 
     return {
       customerId: customer.id,

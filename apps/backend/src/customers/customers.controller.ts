@@ -1,5 +1,6 @@
 import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { CustomersService } from './customers.service.js';
 import { CreateCustomerDto, CustomerResponseDto } from './dto/create-customer.dto.js';
 
@@ -10,6 +11,7 @@ export class CustomersController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({
     summary: 'Alta o consulta de cliente para emisión de pase',
     description:

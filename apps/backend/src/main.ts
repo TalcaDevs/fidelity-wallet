@@ -1,12 +1,16 @@
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Configuración para proxy inverso (Railway, Render, Fly, Nginx): resuelve IP real del cliente para Throttler
+  app.set('trust proxy', 1);
 
   // Prefijo global para todos los endpoints de la API
   app.setGlobalPrefix('api');

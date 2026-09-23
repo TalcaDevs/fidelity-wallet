@@ -8,6 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
 import { SupabaseAuthGuard } from '../common/guards/supabase-auth.guard.js';
 import { ScanActionDto, ScanResultDto } from './dto/scan-action.dto.js';
@@ -16,6 +17,7 @@ import { ScanService } from './scan.service.js';
 @ApiTags('Cashier Scanner (PWA)')
 @ApiBearerAuth()
 @UseGuards(SupabaseAuthGuard)
+@SkipThrottle()
 @Controller('scan')
 export class ScanController {
   constructor(private readonly scanService: ScanService) {}

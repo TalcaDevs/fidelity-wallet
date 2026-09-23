@@ -65,6 +65,7 @@ describe('ScanService', () => {
       },
       promotion: {
         findFirst: vi.fn(),
+        findMany: vi.fn().mockResolvedValue([mockPromotion]),
       },
       scan: {
         findFirst: vi.fn(),
@@ -152,6 +153,7 @@ describe('ScanService', () => {
   it('should throw BadRequestException if merchant has no active promotion', async () => {
     vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
     vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(null);
+    vi.spyOn(prisma.promotion, 'findMany').mockResolvedValue([]);
 
     await expect(
       service.processScan(
@@ -285,10 +287,12 @@ describe('ScanService', () => {
 
   it('should perform FIFO consumption on REDEEM with atomic count verification', async () => {
     vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
-    vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue({
+    const promoTarget3 = {
       ...mockPromotion,
       targetStamps: 3,
-    } as any);
+    };
+    vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(promoTarget3 as any);
+    vi.spyOn(prisma.promotion, 'findMany').mockResolvedValue([promoTarget3 as any]);
     vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null); // No recent redeem
 
     const mockStamps = [
@@ -337,10 +341,12 @@ describe('ScanService', () => {
 
   it('should throw ConflictException on REDEEM if concurrent process consumed stamps', async () => {
     vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
-    vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue({
+    const promoTarget3 = {
       ...mockPromotion,
       targetStamps: 3,
-    } as any);
+    };
+    vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(promoTarget3 as any);
+    vi.spyOn(prisma.promotion, 'findMany').mockResolvedValue([promoTarget3 as any]);
     vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
 
     const mockStamps = [
@@ -419,5 +425,41 @@ describe('ScanService', () => {
         mockUserId,
       ),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('should throw BadRequestException if multiple active promotions exist and promotionId is omitted', async () => {
+    vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
+    vi.spyOn(prisma.promotion, 'findMany').mockResolvedValue([
+      mockPromotion as any,
+      { ...mockPromotion, id: 'promo-2', name: 'Segunda promo' } as any,
+    ]);
+
+    await expect(
+      service.processScan(
+        {
+          passToken: mockToken,
+          action: ScanActionType.STAMP,
+          merchantId: mockMerchantId,
+        },
+        mockUserId,
+      ),
+    ).rejects.toThrow('El comercio tiene múltiples promociones activas. Debe especificar promotionId en la petición de escaneo.');
+  });
+
+  it('should throw BadRequestException if explicit promotionId does not exist or is inactive', async () => {
+    vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
+    vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(null);
+
+    await expect(
+      service.processScan(
+        {
+          passToken: mockToken,
+          action: ScanActionType.STAMP,
+          merchantId: mockMerchantId,
+          promotionId: 'non-existent-promo',
+        },
+        mockUserId,
+      ),
+    ).rejects.toThrow('La promoción especificada no existe o no está activa en este comercio');
   });
 });

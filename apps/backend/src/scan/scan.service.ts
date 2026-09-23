@@ -68,24 +68,40 @@ export class ScanService {
       throw new ForbiddenException('El pase no pertenece a este comercio');
     }
 
-    const promotion = dto.promotionId
-      ? await this.prisma.promotion.findFirst({
-          where: {
-            id: dto.promotionId,
-            merchantId: dto.merchantId,
-            isActive: true,
-          },
-        })
-      : await this.prisma.promotion.findFirst({
-          where: {
-            merchantId: dto.merchantId,
-            isActive: true,
-          },
-          orderBy: { createdAt: 'desc' },
-        });
+    let promotion: Promotion | null = null;
+    if (dto.promotionId) {
+      promotion = await this.prisma.promotion.findFirst({
+        where: {
+          id: dto.promotionId,
+          merchantId: dto.merchantId,
+          isActive: true,
+        },
+      });
+      if (!promotion) {
+        throw new BadRequestException(
+          'La promoción especificada no existe o no está activa en este comercio',
+        );
+      }
+    } else {
+      const activePromotions = await this.prisma.promotion.findMany({
+        where: {
+          merchantId: dto.merchantId,
+          isActive: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
 
-    if (!promotion) {
-      throw new BadRequestException('El comercio no tiene una promoción activa válida');
+      if (activePromotions.length === 0) {
+        throw new BadRequestException('El comercio no tiene una promoción activa válida');
+      }
+
+      if (activePromotions.length > 1) {
+        throw new BadRequestException(
+          'El comercio tiene múltiples promociones activas. Debe especificar promotionId en la petición de escaneo.',
+        );
+      }
+
+      promotion = activePromotions[0];
     }
 
     const maskedCustomer: MaskedCustomerDto | undefined = pass.customer

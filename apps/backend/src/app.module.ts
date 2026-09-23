@@ -17,14 +17,9 @@ import { StaffModule } from './staff/staff.module.js';
     }),
     ThrottlerModule.forRoot([
       {
-        name: 'short',
-        ttl: 1000,
-        limit: 5,
-      },
-      {
-        name: 'medium',
+        name: 'default',
         ttl: 60000,
-        limit: 30,
+        limit: 60,
       },
     ]),
     PrismaModule,

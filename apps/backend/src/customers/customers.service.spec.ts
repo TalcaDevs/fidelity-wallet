@@ -14,6 +14,9 @@ describe('CustomersService', () => {
       merchant: {
         findUnique: vi.fn(),
       },
+      promotion: {
+        findFirst: vi.fn().mockResolvedValue({ id: 'promo-1', isActive: true }),
+      },
       customer: {
         findUnique: vi.fn(),
         findFirst: vi.fn(),
@@ -82,7 +85,16 @@ describe('CustomersService', () => {
     ).rejects.toThrow(NotFoundException);
   });
 
-  it('should create customer and pass via PassesService, returning wallet URLs without raw passToken', async () => {
+  it('should throw BadRequestException if merchant has no active promotion', async () => {
+    prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
+    prismaMock.promotion.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.createOrFindCustomer({ merchantId: 'm-1', rut: '11.111.111-1' }),
+    ).rejects.toThrow('El comercio no tiene una promoción activa configurada');
+  });
+
+  it('should create customer and pass via PassesService, returning wallet URLs only when pass is newly created', async () => {
     prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
     prismaMock.customer.findUnique.mockResolvedValue(null);
     prismaMock.customer.create.mockResolvedValue({ id: 'c-1', rut: '11111111-1', phone: null });
@@ -107,7 +119,7 @@ describe('CustomersService', () => {
     expect(passesServiceMock.getWalletUrlsForPass).toHaveBeenCalledWith('p-1');
   });
 
-  it('should return existing customer and pass idempotently if already registered', async () => {
+  it('should return existing customer and pass without wallet URLs to prevent credential leakage/impersonation', async () => {
     prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
     prismaMock.customer.findUnique.mockResolvedValue({ id: 'c-1', rut: '11111111-1', phone: null });
     passesServiceMock.findOrCreatePass.mockResolvedValue({
@@ -123,10 +135,11 @@ describe('CustomersService', () => {
     expect(result.customerId).toBe('c-1');
     expect(result.passId).toBe('p-1');
     expect(result.isNew).toBe(false);
-    expect(result.appleWalletUrl).toBe('/api/passes/p-1/apple');
-    expect(result.googleWalletUrl).toBe('/api/passes/p-1/google');
+    expect(result.appleWalletUrl).toBeUndefined();
+    expect(result.googleWalletUrl).toBeUndefined();
     expect((result as any).passToken).toBeUndefined();
     expect(prismaMock.customer.create).not.toHaveBeenCalled();
     expect(passesServiceMock.findOrCreatePass).toHaveBeenCalledWith('c-1', 'm-1');
+    expect(passesServiceMock.getWalletUrlsForPass).not.toHaveBeenCalled();
   });
 });

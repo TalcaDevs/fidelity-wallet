@@ -4,10 +4,12 @@
 
 DO $$
 BEGIN
-  -- Permisos para el rol anon (landing pública y clientes sin autenticar)
+  -- Permisos para el rol anon: mínimo privilegio estricto (toda interacción pública ocurre vía API NestJS service_role)
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
     EXECUTE 'GRANT USAGE ON SCHEMA public TO anon';
-    EXECUTE 'GRANT SELECT ON public."Merchant", public."Promotion" TO anon';
+    EXECUTE 'REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon';
+    EXECUTE 'REVOKE ALL ON ALL ROUTINES IN SCHEMA public FROM anon';
+    EXECUTE 'REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon';
   END IF;
 
   -- Permisos para el rol authenticated (dueños y meseros con sesión en panel/PWA)

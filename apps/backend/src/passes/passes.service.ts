@@ -7,13 +7,18 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { Pass, Prisma } from '@prisma/client';
+import { Customer, Merchant, Pass, Prisma } from '@prisma/client';
 import { maskPhone, maskRut } from '../common/utils/mask.util.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { GeneratePassDto, PassEmissionResponseDto } from './dto/generate-pass.dto.js';
 import { PassData } from './interfaces/pass-data.interface.js';
 import { ApplePassService } from './services/apple-pass.service.js';
 import { GoogleWalletService } from './services/google-wallet.service.js';
+
+export type PassWithMerchantAndCustomer = Pass & {
+  merchant: Merchant;
+  customer: Customer | null;
+};
 
 @Injectable()
 export class PassesService {
@@ -111,56 +116,16 @@ export class PassesService {
 
     const { pass } = await this.findOrCreatePass(dto.customerId, dto.merchantId);
 
-    const promotion = dto.promotionId
-      ? await this.prisma.promotion.findFirst({
-          where: { id: dto.promotionId, merchantId: dto.merchantId, isActive: true },
-        })
-      : await this.prisma.promotion.findFirst({
-          where: { merchantId: dto.merchantId, isActive: true },
-          orderBy: { createdAt: 'desc' },
-        });
+    const fullPass: PassWithMerchantAndCustomer = {
+      ...pass,
+      merchant,
+      customer,
+    };
 
-    if (!promotion) {
+    const passData = await this.buildPassData(fullPass, dto.promotionId);
+    if (!passData) {
       throw new BadRequestException('El comercio no tiene una promoción activa configurada');
     }
-
-    const now = new Date();
-    const activeStamps = await this.prisma.stamp.count({
-      where: {
-        passId: pass.id,
-        consumedAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      },
-    });
-
-    const nextExpiring = await this.prisma.stamp.findFirst({
-      where: {
-        passId: pass.id,
-        consumedAt: null,
-        expiresAt: { gt: now },
-      },
-      orderBy: { expiresAt: 'asc' },
-      select: { expiresAt: true },
-    });
-
-    const customerLabel = customer.rut
-      ? maskRut(customer.rut)
-      : customer.phone
-        ? maskPhone(customer.phone)
-        : 'Cliente';
-
-    const passData: PassData = {
-      passId: pass.id,
-      serialNumber: pass.id,
-      passToken: pass.passToken,
-      merchantId: merchant.id,
-      merchantName: merchant.name,
-      customerLabel,
-      activeStamps,
-      targetStamps: promotion.targetStamps,
-      rewardName: promotion.rewardName,
-      nextExpiryAt: nextExpiring?.expiresAt ?? null,
-    };
 
     const appleWalletUrl = this.applePassService.getPassUrl(pass.passToken);
     const googleWalletUrl = this.googleWalletService.generateSaveUrl(passData);
@@ -170,70 +135,32 @@ export class PassesService {
       passToken: pass.passToken,
       appleWalletUrl,
       googleWalletUrl,
-      activeStamps,
-      targetStamps: promotion.targetStamps,
-      rewardName: promotion.rewardName,
-      nextExpiryAt: nextExpiring?.expiresAt ?? null,
+      activeStamps: passData.activeStamps,
+      targetStamps: passData.targetStamps,
+      rewardName: passData.rewardName,
+      nextExpiryAt: passData.nextExpiryAt,
     };
   }
 
   /**
    * Genera las URLs de billetera para un pase (utilizado por el alta anónima de clientes).
+   * Acepta el ID del pase o el pase completo pre-cargado para evitar queries redundantes.
    */
   async getWalletUrlsForPass(
-    passId: string,
+    passOrId: string | PassWithMerchantAndCustomer,
   ): Promise<{ appleWalletUrl: string; googleWalletUrl: string } | null> {
-    const pass = await this.prisma.pass.findUnique({
-      where: { id: passId },
-      include: { merchant: true, customer: true },
-    });
+    const pass =
+      typeof passOrId === 'string'
+        ? await this.prisma.pass.findUnique({
+            where: { id: passOrId },
+            include: { merchant: true, customer: true },
+          })
+        : passOrId;
 
     if (!pass) return null;
 
-    const promotion = await this.prisma.promotion.findFirst({
-      where: { merchantId: pass.merchantId, isActive: true },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (!promotion) return null;
-
-    const now = new Date();
-    const activeStamps = await this.prisma.stamp.count({
-      where: {
-        passId: pass.id,
-        consumedAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      },
-    });
-
-    const nextExpiring = await this.prisma.stamp.findFirst({
-      where: {
-        passId: pass.id,
-        consumedAt: null,
-        expiresAt: { gt: now },
-      },
-      orderBy: { expiresAt: 'asc' },
-      select: { expiresAt: true },
-    });
-
-    const customerLabel = pass.customer?.rut
-      ? maskRut(pass.customer.rut)
-      : pass.customer?.phone
-        ? maskPhone(pass.customer.phone)
-        : 'Cliente';
-
-    const passData: PassData = {
-      passId: pass.id,
-      serialNumber: pass.id,
-      passToken: pass.passToken,
-      merchantId: pass.merchant.id,
-      merchantName: pass.merchant.name,
-      customerLabel,
-      activeStamps,
-      targetStamps: promotion.targetStamps,
-      rewardName: promotion.rewardName,
-      nextExpiryAt: nextExpiring?.expiresAt ?? null,
-    };
+    const passData = await this.buildPassData(pass);
+    if (!passData) return null;
 
     return {
       appleWalletUrl: this.applePassService.getPassUrl(pass.passToken),
@@ -254,21 +181,68 @@ export class PassesService {
       throw new NotFoundException('Pase no encontrado');
     }
 
-    const promotion = await this.prisma.promotion.findFirst({
-      where: { merchantId: pass.merchantId, isActive: true },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (!promotion) {
+    const passData = await this.buildPassData(pass);
+    if (!passData) {
       throw new BadRequestException('El comercio no tiene una promoción activa configurada');
     }
 
+    return this.applePassService.generatePassBuffer(passData);
+  }
+
+  async notifyPassUpdate(passId: string): Promise<void> {
+    try {
+      const pass = await this.prisma.pass.findUnique({
+        where: { id: passId },
+        include: { merchant: true, customer: true },
+      });
+
+      if (!pass) return;
+
+      const passData = await this.buildPassData(pass);
+      if (!passData) return;
+
+      this.logger.log(
+        `Dispatching wallet update for pass ${passId} (activeStamps: ${passData.activeStamps})`,
+      );
+      await Promise.allSettled([
+        this.googleWalletService.updateLoyaltyObject(passId, passData.activeStamps),
+      ]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Failed to dispatch background wallet push for pass ${passId}: ${msg}`);
+    }
+  }
+
+  /**
+   * Helper privado para armar el contrato PassData.
+   * Unifica el conteo de sellos activos y próximo vencimiento filtrando por la promoción activa.
+   */
+  private async buildPassData(
+    pass: PassWithMerchantAndCustomer,
+    explicitPromotionId?: string,
+  ): Promise<PassData | null> {
+    const promotion = explicitPromotionId
+      ? await this.prisma.promotion.findFirst({
+          where: { id: explicitPromotionId, merchantId: pass.merchantId, isActive: true },
+        })
+      : await this.prisma.promotion.findFirst({
+          where: { merchantId: pass.merchantId, isActive: true },
+          orderBy: { createdAt: 'desc' },
+        });
+
+    if (!promotion) return null;
+
     const now = new Date();
+    const promotionFilter = {
+      OR: [{ promotionId: promotion.id }, { promotionId: null }],
+    };
+
     const activeStamps = await this.prisma.stamp.count({
       where: {
         passId: pass.id,
         consumedAt: null,
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        AND: [promotionFilter],
       },
     });
 
@@ -277,6 +251,7 @@ export class PassesService {
         passId: pass.id,
         consumedAt: null,
         expiresAt: { gt: now },
+        AND: [promotionFilter],
       },
       orderBy: { expiresAt: 'asc' },
       select: { expiresAt: true },
@@ -288,7 +263,7 @@ export class PassesService {
         ? maskPhone(pass.customer.phone)
         : 'Cliente';
 
-    const passData: PassData = {
+    return {
       passId: pass.id,
       serialNumber: pass.id,
       passToken: pass.passToken,
@@ -300,28 +275,5 @@ export class PassesService {
       rewardName: promotion.rewardName,
       nextExpiryAt: nextExpiring?.expiresAt ?? null,
     };
-
-    return this.applePassService.generatePassBuffer(passData);
-  }
-
-  async notifyPassUpdate(passId: string): Promise<void> {
-    try {
-      const now = new Date();
-      const activeStamps = await this.prisma.stamp.count({
-        where: {
-          passId,
-          consumedAt: null,
-          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-        },
-      });
-
-      this.logger.log(`Dispatching wallet update for pass ${passId} (activeStamps: ${activeStamps})`);
-      await Promise.allSettled([
-        this.googleWalletService.updateLoyaltyObject(passId, activeStamps),
-      ]);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Failed to dispatch background wallet push for pass ${passId}: ${msg}`);
-    }
   }
 }
