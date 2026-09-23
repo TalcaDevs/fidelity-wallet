@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { validateRUT, isPhone } from '../../utils/validators';
 
 interface ManualFallbackProps {
   onSubmit: (identifier: string) => void;
@@ -8,16 +9,25 @@ interface ManualFallbackProps {
 
 export function ManualFallback({ onSubmit, onCancel, isLoading }: ManualFallbackProps) {
   const [identifier, setIdentifier] = useState('');
+  const [error, setError] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (identifier.trim().length > 3) {
-      onSubmit(identifier);
+    setError('');
+    
+    const cleanId = identifier.trim();
+    if (!cleanId) return;
+
+    if (!validateRUT(cleanId) && !isPhone(cleanId)) {
+      setError('Ingresa un RUT (ej: 12.345.678-9) o un teléfono válido');
+      return;
     }
+
+    onSubmit(cleanId);
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-900 text-white animate-in fade-in slide-in-from-bottom-8 duration-300">
+    <div className="flex flex-col h-full bg-slate-900 text-white duration-300">
       <div className="flex-1 p-6 flex flex-col justify-center">
         <div className="mb-8">
           <div className="w-16 h-16 bg-blue-600/20 text-blue-400 rounded-2xl flex items-center justify-center mb-6">
@@ -39,6 +49,7 @@ export function ManualFallback({ onSubmit, onCancel, isLoading }: ManualFallback
               className="w-full bg-slate-800 border-2 border-slate-700 focus:border-blue-500 rounded-2xl px-6 py-5 text-xl font-medium outline-none transition-colors"
               autoFocus
             />
+            {error && <p className="text-red-400 text-sm font-bold mt-2 px-1">{error}</p>}
           </div>
           <button
             type="submit"

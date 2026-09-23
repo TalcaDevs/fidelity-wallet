@@ -26,10 +26,10 @@ describe('ManualFallback', () => {
     const input = screen.getByPlaceholderText(/12\.345\.678-9/i);
     const button = screen.getByRole('button', { name: /buscar cliente/i });
     
-    fireEvent.change(input, { target: { value: '12345678-9' } });
+    fireEvent.change(input, { target: { value: '12345678-5' } });
     fireEvent.click(button);
     
-    expect(mockSubmit).toHaveBeenCalledWith('12345678-9');
+    expect(mockSubmit).toHaveBeenCalledWith('12345678-5');
   });
 
   it('should call onCancel when cancel button is clicked', () => {

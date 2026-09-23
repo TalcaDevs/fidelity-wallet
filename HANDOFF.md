@@ -22,7 +22,7 @@ Los tres cambios que más rompen supuestos previos:
 - **Ya no existe `Pass.stampsCount`.** Cualquier código o query que lo lea se rompe. El saldo se lee de la vista `PassStampBalance`.
 - **La PWA del cajero ya no es una pantalla sin login.** El mesero se autentica con Supabase Auth. Dev 2: esto agrega manejo de sesión, refresh de token y expiración a una pantalla que vive abierta todo un turno.
 - **`merchantId = auth.uid()` dejó de ser cierto.** Con más de un usuario por comercio, los permisos salen de la membresía (`MerchantUser`), no de la igualdad de UUIDs.
-- **La vigencia de los sellos se configura por comercio, no por promoción.** Nació en `Promotion` y se movió a `Merchant.stampValidityDays` (refundida dentro de `20260921010000_stamps_with_expiry`, 2026-09-21): es una regla del local ("acá los sellos valen 3 meses"), el dueño la fija una sola vez en Configuración junto al nombre del negocio, y el escaneo ya no necesita resolver antes qué promoción aplica para saber cuánto dura el sello.
+- **La vigencia de los sellos se configura por comercio, no por promoción.** Nació en `Promotion` y se movió a `Merchant.stampValidityDays` (migración `20260921030000`, 2026-09-21): es una regla del local ("acá los sellos valen 3 meses"), el dueño la fija una sola vez en Configuración junto al nombre del negocio, y el escaneo ya no necesita resolver antes qué promoción aplica para saber cuánto dura el sello.
 
 ---
 
@@ -146,7 +146,7 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
 |---|---|
 | Monorepo | `pnpm-workspace.yaml`, scripts raíz `dev / build / test / typecheck / lint` |
 | CI | `.github/workflows/pr-checks.yml`: install, `prisma generate`, `pnpm audit`, lint, typecheck, test y build en cada PR a `main`/`dev` |
-| Base de datos | Migraciones: `20260919182348_init`, `20260919182411_add_merchant_trigger`, `20260920041500_harden_rls_and_trigger`, `20260921010000_stamps_with_expiry`, `20260921020000_merchant_users_and_roles` |
+| Base de datos | Migraciones: `20260919182348_init`, `20260919182411_add_merchant_trigger`, `20260920041500_harden_rls_and_trigger`, `20260921010000_stamps_with_expiry`, `20260921020000_merchant_users_and_roles`, `20260921030000_stamp_validity_per_merchant` |
 | Modelos | `Merchant`, `MerchantUser`, `Promotion`, `Customer`, `Pass`, `Stamp`, `Scan`, enums `ScanType` y `MerchantRole` |
 | Sellos con vencimiento | Tabla `Stamp` + `Merchant.stampValidityDays` + vista `PassStampBalance` (`security_invoker = true`). La migración **backfillea** una fila `Stamp` por cada sello del viejo `stampsCount` (con `expiresAt` NULL: los sellos anteriores a la funcionalidad **no vencen**) y recién después dropea la columna |
 | RLS | Activa en `Merchant`, `MerchantUser`, `Promotion`, `Customer`, `Pass`, `Scan` y `Stamp`, ya reescrita contra la membresía (SELECT para cualquier miembro, escritura solo `OWNER`), con `search_path` fijo en todas las funciones |
@@ -160,7 +160,7 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
 | Roles y RLS por membresía | `20260921020000_merchant_users_and_roles`: tabla `MerchantUser` + reescritura de **todas** las políticas contra la membresía, con funciones `SECURITY DEFINER STABLE` de `search_path` fijo (`current_merchant_ids()`, `is_merchant_owner()`), separando SELECT (cualquier miembro) de INSERT/UPDATE/DELETE (solo `OWNER`). Reemplaza la política provisoria `stamp_own` que había creado `20260921010000` |
 | Routing | `App.tsx` ya implementa el mapa de §2: `/` público, `/join/:merchantId`, `/scan`, panel bajo `/admin/*` con guard de rol, y redirecciones desde las URLs viejas (`/dashboard` → `/admin/dashboard`) |
 | Placeholder `/scan` | Ruta reservada dentro de `apps/frontend` (`src/pages/scanner/`) para que Dev 2 no colisione con el routing. **Es un placeholder: todavía no escanea nada** |
-| Resuelto en esta rama | Las páginas del panel ya reciben el `merchantId` de la membresía, no lo derivan de `session.user.id` (§7.8) |
+| Pendiente en esta rama | Migrar las páginas del panel de `session.user.id` al `merchantId` que entrega la membresía (§7.8) |
 
 ### ❌ No hecho (esto es el trabajo que se traspasa)
 | Área | Detalle |
@@ -350,8 +350,9 @@ El escaneo depende de Safari/Chrome, del permiso de cámara y de la luz del loca
 ### 7.5 🟡 Gestión de secretos
 Hoy los `.env` viven solo en local (están en `.gitignore`, correcto). Falta un `.env.example` versionado por app y un lugar acordado para las llaves de producción antes del despliegue. Con el endpoint de invitación de meseros (§5.6) entra la **`service_role key`** al backend: esa nunca puede terminar en el bundle del frontend.
 
-### 7.6 ✅ Resuelto: este archivo ya viaja en el repositorio
-*(Cerrado el 2026-09-21, a pedido de la revisión del PR #7.)* `HANDOFF.md` estaba en `.gitignore`, así que las decisiones de arquitectura no le llegaban a Dev 1 ni a Dev 2 por `git pull`. Se quitó del `.gitignore` y el documento se versiona junto al código: a partir de ahora, quien cambie un contrato que está acá lo actualiza en el mismo PR.
+### 7.6 🟡 Este archivo está en `.gitignore`
+**Verificado el 2026-09-20: sigue siendo cierto.** `HANDOFF.md` aparece en `.gitignore` (junto a `node_modules`, `dist`, `.env`, `.agents/`, `.claude/`, …), así que **no viaja por git**: hay que compartirlo por otro medio, o sacarlo del `.gitignore` si queremos que viva en el repo.
+**Consecuencia concreta hoy:** las cuatro decisiones del 2026-09-20 **no le llegan a nadie por `git pull`** — hay que pasar el archivo a mano. Decidirlo ya, no "antes de repartir tareas".
 
 ### 7.7 🟠 El contador del cliente **baja solo** — riesgo de producto, no técnico
 *(Nuevo 2026-09-20. Riesgo asumido y explícito de la decisión 1.)*
@@ -366,8 +367,8 @@ Con sellos que vencen y consumo FIFO, el saldo del cliente **disminuye sin que �
 
 No lo escondemos: es el costo consciente de que los sellos generen urgencia. El detalle del aviso sigue sin definir — §8.8.
 
-### 7.8 ✅ Resuelto: el panel ya consume el `merchantId` de la membresía
-*(Cerrado el 2026-09-21, a pedido de la revisión del PR #7.)* Las páginas del panel filtraban por `session.user.id` dando por sentado que era el `merchantId`. Ahora `App` resuelve la membresía una sola vez y le pasa `merchantId` como prop a `Dashboard`, `PromotionsModule`, `Customers` y `Settings`; ninguna página deriva ya el comercio del id del usuario. La igualdad `Merchant.id = auth.users.id` sigue existiendo para el `OWNER`, pero el panel dejó de depender de ella.
+### 7.8 🟠 Deuda: el panel usa `session.user.id` como `merchantId`
+*(Nuevo 2026-09-20.)* Las páginas del panel siguen filtrando por `session.user.id` asumiendo que es el `merchantId`. **Funciona solo mientras el dueño y el comercio comparten id** — y deja de funcionar para cualquier `STAFF`, y para el día en que un usuario pertenezca a más de un comercio. Hay que migrarlas al `merchantId` que entrega la membresía (`MerchantUser`). Es deuda conocida y asumida, no un descubrimiento.
 
 ### 7.9 🟠 La sesión del cajero es un punto de falla nuevo
 *(Nuevo 2026-09-20.)* Agregar login a la PWA del cajero agrega una forma nueva de que la caja "se caiga": token vencido, refresh fallido, logout accidental en hora punta. Antes esa pantalla no podía fallar por auth porque no tenía auth. Dev 2 tiene que tratar la expiración de sesión como un caso de UX de primera clase (§6.1), no como un error genérico.

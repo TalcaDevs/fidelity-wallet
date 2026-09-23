@@ -1,7 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = "http://127.0.0.1:54321";
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "dummy_secret_key";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error("SUPABASE_SERVICE_ROLE_KEY environment variable is missing.");
+}
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: {
@@ -45,27 +49,26 @@ async function main() {
   const { data: staffData, error: staffError } = await supabase.auth.admin.createUser({
     email: 'staff@example.com',
     password: 'password123',
-    email_confirm: true,
-    user_metadata: {
-      merchant_id: merchantId,
-      role: 'STAFF'
-    }
+    email_confirm: true
   });
-  if (staffError) console.error("Error creating staff:", staffError);
-  else console.log("Staff created:", staffData.user.id);
+  if (staffError) {
+    console.error("Error creating staff:", staffError);
+    return;
+  }
+  console.log("Staff created:", staffData.user.id);
 
-  console.log("Creating jere...");
-  const { data: jereData, error: jereError } = await supabase.auth.admin.createUser({
-    email: 'jere@gmail.com',
-    password: '200231',
-    email_confirm: true,
-    user_metadata: {
-      merchant_id: merchantId,
-      role: 'STAFF'
-    }
+  console.log("Assigning staff to MerchantUser...");
+  const { error: insertError } = await supabase.from('MerchantUser').insert({
+    userId: staffData.user.id,
+    merchantId: merchantId,
+    role: 'STAFF'
   });
-  if (jereError) console.error("Error creating jere:", jereError);
-  else console.log("Jere created:", jereData.user.id);
+
+  if (insertError) {
+    console.error("Error assigning staff to merchant:", insertError);
+  } else {
+    console.log("Staff assigned to merchant successfully.");
+  }
 }
 
 main().catch(console.error);

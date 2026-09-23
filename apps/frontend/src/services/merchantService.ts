@@ -13,6 +13,44 @@ export interface Merchant {
 
 export type MerchantSettings = Pick<Merchant, 'name' | 'stampValidityDays'>;
 
+export interface MerchantPublicData {
+  id: string;
+  name: string;
+  stampValidityDays: number | null;
+  Promotion: {
+    targetStamps: number;
+    rewardName: string;
+    isActive: boolean;
+  }[];
+}
+
+export async function getMerchantWithActivePromo(merchantId: string): Promise<MerchantPublicData | null> {
+  const { data, error } = await supabase
+    .from('Merchant')
+    .select(`
+      id,
+      name,
+      stampValidityDays,
+      Promotion (
+        targetStamps,
+        rewardName,
+        isActive
+      )
+    `)
+    .eq('id', merchantId)
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
+  // Filter promotions to only include active ones, and cast type
+  return {
+    ...data,
+    Promotion: data.Promotion.filter((p: any) => p.isActive)
+  } as unknown as MerchantPublicData;
+}
+
 export async function getMerchant(merchantId: string): Promise<Merchant | null> {
   const { data, error } = await supabase
     .from('Merchant')

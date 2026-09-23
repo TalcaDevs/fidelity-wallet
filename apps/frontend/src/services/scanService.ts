@@ -9,8 +9,7 @@ export interface ScanResult {
   error?: string;
 }
 
-// MOCK API CALL - Replace with real API later (Dev 1 task)
-export const mockProcessScan = async (identifier: string): Promise<ScanResult> => {
+const mockProcessScan = async (identifier: string): Promise<ScanResult> => {
   return new Promise((resolve) => {
     setTimeout(() => {
       const rand = Math.random();
@@ -25,4 +24,31 @@ export const mockProcessScan = async (identifier: string): Promise<ScanResult> =
       }
     }, 800);
   });
+};
+
+export const processScan = async (identifier: string): Promise<ScanResult> => {
+  if (import.meta.env.VITE_USE_MOCK_SCAN === 'true') {
+    return mockProcessScan(identifier);
+  }
+
+  try {
+    const response = await fetch('/api/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier })
+    });
+    
+    if (!response.ok) {
+      if (response.status === 400 || response.status === 404) {
+        const errorData = await response.json();
+        return { ok: false, error: errorData.error || 'Pase inválido o de otro local' };
+      }
+      return { ok: false, error: 'Ocurrió un error al procesar el pase' };
+    }
+    
+    const data = await response.json();
+    return data as ScanResult;
+  } catch (error) {
+    return { ok: false, error: 'Error de red o de servidor' };
+  }
 };

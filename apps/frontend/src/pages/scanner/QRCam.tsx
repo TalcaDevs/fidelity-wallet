@@ -9,13 +9,14 @@ interface QRCamProps {
 export function QRCam({ onScanSuccess, isActive }: QRCamProps) {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const isScanningRef = useRef(false);
+  const lastScanRef = useRef<{ text: string; time: number } | null>(null);
 
   useEffect(() => {
     if (!isActive) {
       if (scannerRef.current && isScanningRef.current) {
         scannerRef.current.stop().then(() => {
           isScanningRef.current = false;
-        }).catch(console.error);
+        }).catch(() => {});
       }
       return;
     }
@@ -34,9 +35,15 @@ export function QRCam({ onScanSuccess, isActive }: QRCamProps) {
               qrbox: { width: 250, height: 250 },
             },
             (decodedText: string) => {
-              // Haptic feedback if supported
-              if (navigator.vibrate) navigator.vibrate(50);
-              onScanSuccess(decodedText);
+              const now = Date.now();
+              const lastScan = lastScanRef.current;
+              // Cooldown: 2 seconds for the exact same QR code, 1 second for a different one
+              const cooldown = lastScan && lastScan.text === decodedText ? 2000 : 1000;
+              
+              if (!lastScan || (now - lastScan.time > cooldown)) {
+                lastScanRef.current = { text: decodedText, time: now };
+                onScanSuccess(decodedText);
+              }
             },
             () => {
               // ignore background scan errors
@@ -44,7 +51,8 @@ export function QRCam({ onScanSuccess, isActive }: QRCamProps) {
           );
           isScanningRef.current = true;
         } catch (err) {
-          console.error("Camera access failed", err);
+          // Ignore camera access failed visually, but it should gracefully fallback or show a message
+          // The manual fallback button is available on the screen.
         }
       }
     };
@@ -55,7 +63,7 @@ export function QRCam({ onScanSuccess, isActive }: QRCamProps) {
       if (scannerRef.current && isScanningRef.current) {
         scannerRef.current.stop().then(() => {
           isScanningRef.current = false;
-        }).catch(console.error);
+        }).catch(() => {});
       }
     };
   }, [isActive, onScanSuccess]);
@@ -71,9 +79,6 @@ export function QRCam({ onScanSuccess, isActive }: QRCamProps) {
           <div className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-blue-400 rounded-tr-lg" />
           <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-blue-400 rounded-bl-lg" />
           <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-blue-400 rounded-br-lg" />
-          
-          {/* Scanning line animation */}
-          <div className="absolute inset-0 w-full h-0.5 bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.8)] animate-scan-line" />
         </div>
       </div>
     </div>

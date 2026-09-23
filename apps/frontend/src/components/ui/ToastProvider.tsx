@@ -37,7 +37,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             key={toast.id}
             type="button"
             onClick={() => dismiss(toast.id)}
-            className={`pointer-events-auto px-5 py-4 rounded-2xl font-bold shadow-lg text-left max-w-sm animate-in fade-in slide-in-from-bottom-2 duration-200 ${TONE_STYLES[toast.tone]}`}
+            className={`pointer-events-auto px-5 py-4 rounded-2xl font-bold shadow-lg text-left max-w-sm duration-200 ${TONE_STYLES[toast.tone]}`}
           >
             {toast.message}
           </button>

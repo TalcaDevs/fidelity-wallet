@@ -1,11 +1,20 @@
+let audioCtx: AudioContext | null = null;
+
 export const getAudioContext = () => {
-  const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-  return new AudioContext();
+  if (!audioCtx) {
+    const win = window as unknown as { webkitAudioContext?: typeof AudioContext };
+    const AudioContextClass = window.AudioContext || win.webkitAudioContext;
+    if (AudioContextClass) {
+      audioCtx = new AudioContextClass();
+    }
+  }
+  return audioCtx!;
 };
 
 export const playSuccessSound = () => {
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     
@@ -23,13 +32,14 @@ export const playSuccessSound = () => {
     osc.start();
     osc.stop(ctx.currentTime + 0.2);
   } catch (e) {
-    // Ignore errors on devices without audio support
+    // Ignore errors
   }
 };
 
 export const playRewardSound = () => {
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     
@@ -49,13 +59,14 @@ export const playRewardSound = () => {
     osc.start();
     osc.stop(ctx.currentTime + 0.4);
   } catch (e) {
-    // Ignore errors on devices without audio support
+    // Ignore errors
   }
 };
 
 export const playErrorSound = () => {
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     
@@ -72,6 +83,31 @@ export const playErrorSound = () => {
     
     osc.start();
     osc.stop(ctx.currentTime + 0.3);
+  } catch (e) {
+    // Ignore errors
+  }
+};
+
+export const playAlreadyScannedSound = () => {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(400, ctx.currentTime);
+    osc.frequency.setValueAtTime(300, ctx.currentTime + 0.1);
+    
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    osc.start();
+    osc.stop(ctx.currentTime + 0.2);
   } catch (e) {
     // Ignore errors
   }
