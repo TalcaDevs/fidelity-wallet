@@ -36,7 +36,7 @@ export function ScanSuccess({ result, onReset }: { result: ScanResult, onReset: 
   );
 }
 
-export function ScanAlreadyScanned({ result, onReset }: { result: ScanResult, onReset: () => void }) {
+export function ScanAlreadyScanned({ onReset }: { result: ScanResult, onReset: () => void }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center duration-300 px-6 text-center">
       <div className="w-28 h-28 bg-amber-500 rounded-full flex items-center justify-center shadow-[0_0_60px_rgba(245,158,11,0.3)] mb-8">
