@@ -127,7 +127,7 @@ export function Scan() {
           </div>
         )}
 
-        {isStarted && state === 'manual' && <ManualFallback isLoading={state === 'loading'} onSubmit={(t) => handleScan(t, true)} onCancel={resetScanner} />}
+        {isStarted && state === 'manual' && <ManualFallback isLoading={false} onSubmit={(t) => handleScan(t, true)} onCancel={resetScanner} />}
         {state === 'loading' && <ScanLoading />}
         {state === 'success' && result && <ScanSuccess result={result} onReset={resetScanner} />}
         {state === 'alreadyScanned' && result && <ScanAlreadyScanned onReset={resetScanner} />}

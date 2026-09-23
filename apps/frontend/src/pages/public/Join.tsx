@@ -1,14 +1,14 @@
 import { useState, FormEvent, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { validateRUT, isPhone } from '../../utils/validators';
-import { getMerchantWithActivePromo, MerchantPublicData } from '../../services/merchantService';
+import { getMerchantWithActivePromo, MerchantWithPromo } from '../../services/merchantService';
 import { JoinNotFound } from './JoinNotFound';
 import { JoinSuccess } from './JoinSuccess';
 
 export function Join() {
   const { merchantName } = useParams<{ merchantName: string }>();
   
-  const [merchant, setMerchant] = useState<MerchantPublicData | null>(null);
+  const [merchant, setMerchant] = useState<MerchantWithPromo | null>(null);
   const [loadingData, setLoadingData] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
