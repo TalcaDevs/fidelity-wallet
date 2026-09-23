@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { QRCam } from './QRCam';
 import { ManualFallback } from './ManualFallback';
-import { useAuth } from '../../hooks/useAuth';
+
 import { useScanFeedback } from '../../hooks/useScanFeedback';
 import { supabase } from '../../lib/supabase';
 import { Session } from '@supabase/supabase-js';
@@ -22,7 +22,7 @@ export function Scan({ merchantId, session }: { merchantId: string, session: Ses
     setScannedText({ text, isManual });
     const res = await processScan({
       merchantId,
-      action: 'SCAN',
+      action: 'STAMP',
       passToken: isManual ? undefined : text,
       identifier: isManual ? text : undefined
     });
