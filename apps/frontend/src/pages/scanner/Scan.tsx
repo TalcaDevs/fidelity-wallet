@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { QRCam } from './QRCam';
 import { ManualFallback } from './ManualFallback';
 
@@ -7,7 +7,7 @@ import { supabase } from '../../lib/supabase';
 import { Session } from '@supabase/supabase-js';
 import { processScan, ScanResult, ScanTarget } from '../../services/scanService';
 import { IdentifierValue } from '../../components/ui/IdentifierInput';
-import { ScanLoading, ScanSuccess, ScanAlreadyScanned, ScanReward, ScanError, ScanRedeemSuccess } from './ScanViews';
+import { ScanLoading, ScanSuccess, ScanAlreadyScanned, ScanReward, ScanError, ScanRedeemSuccess, ScanOffline, ScanSessionExpired } from './ScanViews';
 
 type ScanState = 'camera' | 'manual' | 'loading' | 'success' | 'alreadyScanned' | 'reward' | 'error' | 'redeemSuccess';
 
@@ -16,8 +16,33 @@ export function Scan({ merchantId, session }: { merchantId: string, session: Ses
   const [isStarted, setIsStarted] = useState(false);
   const [state, setState] = useState<ScanState>('camera');
   const [result, setResult] = useState<ScanResult | null>(null);
-  // A quién se escaneó (QR o RUT/teléfono), para reutilizarlo si después se canjea.
   const [target, setTarget] = useState<ScanTarget | null>(null);
+  
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isSessionExpired, setIsSessionExpired] = useState(false);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Monitor Supabase auth state for unexpected session invalidation
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        setIsSessionExpired(true);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   const handleScan = useCallback(async (nextTarget: ScanTarget) => {
     setState('loading');
@@ -31,7 +56,11 @@ export function Scan({ merchantId, session }: { merchantId: string, session: Ses
       setState('reward');
     } else if (!res.ok) {
       triggerFeedback('error');
-      setState('error');
+      if (res.error === 'No tienes permisos para realizar esta acción' || res.error?.includes('sesión')) {
+        setIsSessionExpired(true);
+      } else {
+        setState('error');
+      }
     } else if (res.alreadyScanned) {
       triggerFeedback('alreadyScanned');
       setState('alreadyScanned');
@@ -49,7 +78,11 @@ export function Scan({ merchantId, session }: { merchantId: string, session: Ses
 
     if (!res.ok) {
       triggerFeedback('error');
-      setState('error');
+      if (res.error === 'No tienes permisos para realizar esta acción' || res.error?.includes('sesión')) {
+        setIsSessionExpired(true);
+      } else {
+        setState('error');
+      }
     } else if (res.alreadyScanned) {
       // Doble toque sobre el mismo premio: el canje ya estaba hecho. NO es un "premio entregado"
       // nuevo; mostrarlo así haría que el cajero lo entregue dos veces.
@@ -116,7 +149,13 @@ export function Scan({ merchantId, session }: { merchantId: string, session: Ses
         ) : state === 'camera' && (
           <div className="flex-1 relative duration-300 flex flex-col">
             <div className="flex-1 w-full relative">
-              <QRCam isActive={true} onScanSuccess={(passToken) => handleScan({ passToken })} />
+              {!isOnline ? (
+                <div className="w-full h-full bg-slate-900 rounded-2xl flex items-center justify-center">
+                  <p className="text-slate-500 font-bold">Cámara pausada (Sin red)</p>
+                </div>
+              ) : (
+                <QRCam isActive={!isSessionExpired} onScanSuccess={(passToken) => handleScan({ passToken })} />
+              )}
             </div>
             <p className="text-center text-slate-400 mt-6 font-medium px-8">
               Apunta la cámara al pase del cliente para registrar su visita.
@@ -132,6 +171,9 @@ export function Scan({ merchantId, session }: { merchantId: string, session: Ses
         {state === 'reward' && result && <ScanReward key={result.scanId ?? result.passId} result={result} onReset={resetScanner} onRedeem={handleRedeem} />}
         {state === 'error' && <ScanError result={result} onReset={resetScanner} />}
       </main>
+
+      {!isOnline && <ScanOffline />}
+      {isSessionExpired && <ScanSessionExpired onRelogin={() => supabase.auth.signOut()} />}
     </div>
   );
 }

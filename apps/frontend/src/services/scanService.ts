@@ -101,7 +101,7 @@ export const processScan = async (params: ScanParams): Promise<ScanResult> => {
       ...(params.promotionId ? { promotionId: params.promotionId } : {})
     };
 
-    const response = await fetch(apiUrl('/api/scan'), {
+    let response = await fetch(apiUrl('/api/scan'), {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
@@ -110,6 +110,20 @@ export const processScan = async (params: ScanParams): Promise<ScanResult> => {
       body: JSON.stringify(body)
     });
     
+    if (!response.ok && response.status === 401) {
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      if (!refreshError && refreshData.session) {
+        response = await fetch(apiUrl('/api/scan'), {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${refreshData.session.access_token}`
+          },
+          body: JSON.stringify(body)
+        });
+      }
+    }
+
     if (!response.ok) {
       const errorData: unknown = await response.json().catch(() => null);
       if (response.status === 401) {

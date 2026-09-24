@@ -17,6 +17,13 @@ export function useAuth() {
       setLoading(false);
     });
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        supabase.auth.refreshSession();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (event === 'PASSWORD_RECOVERY') setIsRecoveringPassword(true);
       if (event === 'SIGNED_OUT') setIsRecoveringPassword(false);
@@ -24,6 +31,7 @@ export function useAuth() {
     });
 
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       data?.subscription.unsubscribe();
     };
   }, []);

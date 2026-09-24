@@ -178,3 +178,41 @@ export function ScanRedeemSuccess({ result, onReset }: { result: ScanResult, onR
     </div>
   );
 }
+
+export function ScanOffline() {
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/95 backdrop-blur-md px-6 text-center">
+      <div className="w-24 h-24 bg-red-500/20 rounded-full flex items-center justify-center mb-6">
+        <svg className="w-12 h-12 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3l18 18M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m1.336-1.336l2.671-2.671a4.5 4.5 0 016.364 0l1.757 1.757M16 16v.01" />
+        </svg>
+      </div>
+      <h2 className="text-3xl font-black text-white mb-2">Sin Conexión</h2>
+      <p className="text-slate-400 text-lg font-medium max-w-xs">
+        Se perdió la conexión a internet. El escáner se reactivará automáticamente cuando vuelva la red.
+      </p>
+    </div>
+  );
+}
+
+export function ScanSessionExpired({ onRelogin }: { onRelogin: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/95 backdrop-blur-md px-6 text-center">
+      <div className="w-24 h-24 bg-amber-500/20 rounded-full flex items-center justify-center mb-6">
+        <svg className="w-12 h-12 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        </svg>
+      </div>
+      <h2 className="text-3xl font-black text-white mb-2">Sesión Caducada</h2>
+      <p className="text-slate-400 text-lg font-medium max-w-xs mb-8">
+        Por tu seguridad, tu sesión ha expirado. Vuelve a iniciar sesión para continuar.
+      </p>
+      <button 
+        onClick={onRelogin} 
+        className="w-full max-w-sm py-4 bg-amber-500 hover:bg-amber-400 text-amber-950 rounded-2xl font-black text-lg transition-colors"
+      >
+        Volver al Login
+      </button>
+    </div>
+  );
+}
