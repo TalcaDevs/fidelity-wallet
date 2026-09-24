@@ -9,3 +9,4 @@ scratch_triggers.sql
 *.mjs
 *.tsbuildinfo
 .claude/
+skills
