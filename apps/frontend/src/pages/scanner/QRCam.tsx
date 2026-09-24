@@ -1,73 +1,84 @@
 import { useEffect, useRef, useState } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 
 interface QRCamProps {
   onScanSuccess: (decodedText: string) => void;
   isActive: boolean;
 }
 
+// Zona de lectura: 80% del lado menor del video. El marco azul del overlay mide 250px de CSS,
+// pero el video se recorta con object-cover, así que un qrbox fijo en px del video no coincide
+// con lo que el cajero ve. Leyendo casi todo el cuadro, lo que está dentro del marco se decodifica.
+const qrbox = (viewfinderWidth: number, viewfinderHeight: number) => {
+  const size = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.8);
+  return { width: size, height: size };
+};
+
 export function QRCam({ onScanSuccess, isActive }: QRCamProps) {
-  const scannerRef = useRef<Html5Qrcode | null>(null);
-  const isScanningRef = useRef(false);
   const lastScanRef = useRef<{ text: string; time: number } | null>(null);
+  // start()/stop() de html5-qrcode son asíncronos y fallan si se solapan sobre el mismo
+  // elemento (StrictMode monta, desmonta y vuelve a montar). Se encadenan en una sola cola.
+  const lifecycleRef = useRef<Promise<void>>(Promise.resolve());
+  // El callback cambia en cada render del padre; guardarlo en un ref evita reiniciar la cámara.
+  const onScanRef = useRef(onScanSuccess);
   const [cameraError, setCameraError] = useState(false);
 
   useEffect(() => {
-    if (!isActive) {
-      if (scannerRef.current && isScanningRef.current) {
-        scannerRef.current.stop().then(() => {
-          isScanningRef.current = false;
-        }).catch(() => {});
-      }
-      return;
-    }
+    onScanRef.current = onScanSuccess;
+  }, [onScanSuccess]);
 
-    const startScanner = async () => {
-      if (!scannerRef.current) {
-        scannerRef.current = new Html5Qrcode("reader");
-      }
+  useEffect(() => {
+    if (!isActive) return;
 
-      if (!isScanningRef.current) {
-        try {
-          await scannerRef.current.start(
-            { facingMode: "environment" },
-            {
-              fps: 10,
-              qrbox: { width: 250, height: 250 },
-            },
-            (decodedText: string) => {
-              const now = Date.now();
-              const lastScan = lastScanRef.current;
-              // Cooldown: 2 seconds for the exact same QR code, 1 second for a different one
-              const cooldown = lastScan && lastScan.text === decodedText ? 2000 : 1000;
-              
-              if (!lastScan || (now - lastScan.time > cooldown)) {
-                lastScanRef.current = { text: decodedText, time: now };
-                onScanSuccess(decodedText);
-              }
-            },
-            () => {
-              // ignore background scan errors
+    let cancelled = false;
+    let scanner: Html5Qrcode | null = null;
+
+    lifecycleRef.current = lifecycleRef.current.then(async () => {
+      if (cancelled) return;
+      scanner = new Html5Qrcode('reader', {
+        verbose: false,
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        // Usa el BarcodeDetector nativo (Chrome/Android) cuando existe: detecta mucho mejor.
+        useBarCodeDetectorIfSupported: true,
+      });
+      try {
+        await scanner.start(
+          { facingMode: 'environment' },
+          { fps: 15, qrbox },
+          (decodedText: string) => {
+            const now = Date.now();
+            const lastScan = lastScanRef.current;
+            // Cooldown: 2 seconds for the exact same QR code, 1 second for a different one
+            const cooldown = lastScan && lastScan.text === decodedText ? 2000 : 1000;
+
+            if (!lastScan || (now - lastScan.time > cooldown)) {
+              lastScanRef.current = { text: decodedText, time: now };
+              onScanRef.current(decodedText.trim());
             }
-          );
-          isScanningRef.current = true;
-          setCameraError(false);
-        } catch (err) {
-          setCameraError(true);
-        }
+          },
+          () => {
+            // ignore background scan errors
+          }
+        );
+        if (!cancelled) setCameraError(false);
+      } catch {
+        if (!cancelled) setCameraError(true);
       }
-    };
-
-    startScanner();
+    });
 
     return () => {
-      if (scannerRef.current && isScanningRef.current) {
-        scannerRef.current.stop().then(() => {
-          isScanningRef.current = false;
-        }).catch(() => {});
-      }
+      cancelled = true;
+      lifecycleRef.current = lifecycleRef.current.then(async () => {
+        if (!scanner) return;
+        try {
+          if (scanner.isScanning) await scanner.stop();
+          scanner.clear();
+        } catch {
+          // el elemento pudo haberse desmontado ya
+        }
+      });
     };
-  }, [isActive, onScanSuccess]);
+  }, [isActive]);
 
   if (cameraError) {
     return (

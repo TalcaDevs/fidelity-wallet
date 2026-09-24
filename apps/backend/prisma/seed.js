@@ -14,61 +14,57 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   }
 });
 
-async function main() {
-  console.log("Creating owner...");
-  const { data: ownerData, error: ownerError } = await supabase.auth.admin.createUser({
-    email: 'owner@example.com',
-    password: 'password123',
-    email_confirm: true
-  });
-  
-  if (ownerError) {
-    console.error("Error creating owner:", ownerError);
-    return;
-  }
-  console.log("Owner created:", ownerData.user.id);
-  
-  // Wait a bit for trigger to create Merchant
-  await new Promise(r => setTimeout(r, 1000));
-  
-  // Fetch the Merchant ID created by the trigger
-  const { data: merchantData, error: merchantError } = await supabase
-    .from('MerchantUser')
-    .select('merchantId')
-    .eq('userId', ownerData.user.id)
-    .single();
-    
-  if (merchantError || !merchantData) {
-    console.error("Error fetching merchant:", merchantError);
-    return;
-  }
-  const merchantId = merchantData.merchantId;
-  console.log("Merchant ID:", merchantId);
+const PASSWORD = 'password123';
 
-  console.log("Creating staff...");
-  const { data: staffData, error: staffError } = await supabase.auth.admin.createUser({
-    email: 'staff@example.com',
-    password: 'password123',
-    email_confirm: true
-  });
-  if (staffError) {
-    console.error("Error creating staff:", staffError);
-    return;
-  }
-  console.log("Staff created:", staffData.user.id);
+const OWNER = { email: 'owner@example.com', fullName: 'Dueño / Administrador' };
 
-  console.log("Assigning staff to MerchantUser...");
-  const { error: insertError } = await supabase.from('MerchantUser').insert({
-    userId: staffData.user.id,
-    merchantId: merchantId,
-    role: 'STAFF'
-  });
+const STAFF = [
+  { email: 'cajero1@example.com', fullName: 'Cajero Turno Mañana' },
+  { email: 'cajero2@example.com', fullName: 'Cajero Turno Tarde' },
+  { email: 'mesero@example.com', fullName: 'Mesero Salón' },
+  { email: 'staff@example.com', fullName: 'Staff General' },
+];
 
-  if (insertError) {
-    console.error("Error assigning staff to merchant:", insertError);
-  } else {
-    console.log("Staff assigned to merchant successfully.");
-  }
+async function createUser(email, metadata) {
+  const { data, error } = await supabase.auth.admin.createUser({
+    email,
+    password: PASSWORD,
+    email_confirm: true,
+    user_metadata: metadata
+  });
+  if (error) throw new Error(`Error creating ${email}: ${error.message}`);
+  return data.user;
 }
 
-main().catch(console.error);
+async function main() {
+  // Sin merchant_id en la metadata, el trigger handle_new_user crea el Merchant
+  // (id = auth.users.id) y la membresia OWNER.
+  console.log(`Creating owner ${OWNER.email}...`);
+  const owner = await createUser(OWNER.email, { full_name: OWNER.fullName });
+  const merchantId = owner.id;
+  console.log("Owner created, Merchant ID:", merchantId);
+
+  // Con merchant_id + role en la metadata, el trigger solo inserta la membresia STAFF
+  // en ese local (no le crea un Merchant propio).
+  for (const staff of STAFF) {
+    console.log(`Creating staff ${staff.email}...`);
+    const user = await createUser(staff.email, {
+      full_name: staff.fullName,
+      merchant_id: merchantId,
+      role: 'STAFF'
+    });
+    console.log("Staff created:", user.id);
+  }
+
+  const { data: members, error } = await supabase
+    .from('MerchantUser')
+    .select('userId, role')
+    .eq('merchantId', merchantId);
+  if (error) throw error;
+  console.log(`Merchant ${merchantId} has ${members.length} members.`);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

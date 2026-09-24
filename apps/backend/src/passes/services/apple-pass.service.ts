@@ -78,7 +78,7 @@ export class ApplePassService {
           {
             key: 'terms',
             label: 'TÉRMINOS Y CONDICIONES',
-            value: `Acumula ${data.targetStamps} sellos en ${data.merchantName} y canjea tu "${data.rewardName}".`,
+            value: `Acumula ${data.targetStamps} sellos en ${data.merchantName} y canjea tu "${data.rewardName}". Tus sellos vigentes también sirven para cualquier otra promoción activa del local: eliges en caja cuál canjear.`,
           },
           {
             key: 'expiryInfo',

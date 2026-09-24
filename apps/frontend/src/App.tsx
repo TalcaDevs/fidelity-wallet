@@ -9,6 +9,7 @@ import { NotFound } from './pages/NotFound';
 import { NotFoundScreen } from './components/NotFoundScreen';
 import { Home } from './pages/public/Home';
 import { Join } from './pages/public/Join';
+import { Terms } from './pages/public/Terms';
 import { Scan } from './pages/scanner/Scan';
 import { ToastProvider } from './components/ui/ToastProvider';
 import { RecoveryGate, RedirectIfAuthenticated, RequireRole } from './components/routing/RouteGuards';
@@ -39,6 +40,7 @@ export default function App() {
           {/* Públicas: funcionan con y sin sesión */}
           <Route path={ROUTES.home} element={<Home />} />
           <Route path="/join/:merchantName" element={<Join />} />
+          <Route path={ROUTES.terms} element={<Terms />} />
           <Route path={ROUTES.resetPassword} element={<PasswordResetRoute onDone={finishPasswordRecovery} />} />
 
           <Route element={<RedirectIfAuthenticated session={session} />}>

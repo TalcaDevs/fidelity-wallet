@@ -232,17 +232,14 @@ export class PassesService {
 
     if (!promotion) return null;
 
+    // El saldo es único del pase (sirve para cualquier promoción activa); la promoción solo
+    // define la meta que se muestra en la tarjeta: la más reciente, o la pedida explícitamente.
     const now = new Date();
-    const promotionFilter = {
-      OR: [{ promotionId: promotion.id }, { promotionId: null }],
-    };
-
     const activeStamps = await this.prisma.stamp.count({
       where: {
         passId: pass.id,
         consumedAt: null,
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-        AND: [promotionFilter],
       },
     });
 
@@ -251,7 +248,6 @@ export class PassesService {
         passId: pass.id,
         consumedAt: null,
         expiresAt: { gt: now },
-        AND: [promotionFilter],
       },
       orderBy: { expiresAt: 'asc' },
       select: { expiresAt: true },

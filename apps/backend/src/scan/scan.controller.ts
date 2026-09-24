@@ -27,11 +27,11 @@ export class ScanController {
   @ApiOperation({
     summary: 'Procesar escaneo de pase: agregar sello o canjear premio',
     description:
-      'Valida el pase de forma transaccional con bloqueo pesimista de fila, ventana anti-duplicado de 90 segundos, consumo FIFO en canje y auditoría del mesero autenticado.',
+      'Valida el pase de forma transaccional con bloqueo pesimista de fila, bloqueo de 30 minutos entre sellos del mismo pase (QR o manual), anti-doble canje de 90 segundos, consumo FIFO en canje y auditoría del mesero autenticado.',
   })
   @ApiResponse({
     status: 200,
-    description: 'Escaneo procesado exitosamente (o duplicado ignorado de forma segura dentro de la ventana de 90s)',
+    description: 'Escaneo procesado exitosamente (o sello ignorado por el bloqueo de 30 min, alreadyScanned=true)',
     type: ScanResultDto,
   })
   @ApiResponse({ status: 400, description: 'Acción inválida o sellos insuficientes para canje' })

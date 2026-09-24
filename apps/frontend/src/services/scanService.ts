@@ -1,5 +1,15 @@
 import { supabase } from '../lib/supabase';
 import { apiUrl } from '../lib/api';
+import { validateRUT } from '../utils/validators';
+
+// Promoción activa del local y si el saldo del cliente alcanza para canjearla.
+export interface PromotionOption {
+  id: string;
+  name: string;
+  rewardName: string;
+  targetStamps: number;
+  canRedeem: boolean;
+}
 
 export interface ScanResult {
   ok: boolean;
@@ -9,8 +19,17 @@ export interface ScanResult {
   rewardUnlocked?: boolean;
   rewardName?: string;
   alreadyScanned?: boolean;
+  // Los sellos son un saldo único: el cliente elige en caja cuál de estas canjear.
+  availablePromotions?: PromotionOption[];
+  // Mensaje del backend; en un sello bloqueado dice cuántos minutos faltan.
+  message?: string;
   error?: string;
 }
+
+const MOCK_PROMOTIONS = (stamps: number): PromotionOption[] => [
+  { id: 'mock-promo-cafe', name: 'Café', rewardName: 'Café Gratis', targetStamps: 5, canRedeem: stamps >= 5 },
+  { id: 'mock-promo-almuerzo', name: 'Almuerzo', rewardName: 'Almuerzo Gratis', targetStamps: 10, canRedeem: stamps >= 10 },
+];
 
 const mockProcessScan = async (id: string, action: 'STAMP' | 'REDEEM'): Promise<ScanResult> => {
   return new Promise((resolve) => {
@@ -26,7 +45,7 @@ const mockProcessScan = async (id: string, action: 'STAMP' | 'REDEEM'): Promise<
       } else if (rand < 0.2) {
         resolve({ ok: true, alreadyScanned: true, customerLabel: '···678-5', stampsCount: 4, targetStamps: 5 });
       } else if (rand < 0.4) {
-        resolve({ ok: true, rewardUnlocked: true, rewardName: 'Café Gratis', customerLabel: '···123-K', stampsCount: 5, targetStamps: 5 });
+        resolve({ ok: true, rewardUnlocked: true, rewardName: 'Café Gratis', customerLabel: '···123-K', stampsCount: 6, targetStamps: 5, availablePromotions: MOCK_PROMOTIONS(6) });
       } else {
         resolve({ ok: true, rewardUnlocked: false, customerLabel: '···' + id.slice(-3), stampsCount: Math.floor(Math.random() * 4) + 1, targetStamps: 5 });
       }
@@ -39,6 +58,8 @@ export interface ScanParams {
   action: 'STAMP' | 'REDEEM';
   passToken?: string;
   identifier?: string;
+  // Solo en REDEEM: la promoción que eligió el cliente.
+  promotionId?: string;
 }
 
 export const processScan = async (params: ScanParams): Promise<ScanResult> => {
@@ -54,15 +75,16 @@ export const processScan = async (params: ScanParams): Promise<ScanResult> => {
 
     let customer: { rut?: string, phone?: string } | undefined = undefined;
     if (params.identifier) {
-      const isPhone = /^\+569\d{8}$/.test(params.identifier);
-      customer = isPhone ? { phone: params.identifier } : { rut: params.identifier };
+      // ManualFallback ya validó que sea RUT o teléfono; el backend normaliza el formato.
+      customer = validateRUT(params.identifier) ? { rut: params.identifier } : { phone: params.identifier };
     }
 
     const body = {
       merchantId: params.merchantId,
       action: params.action,
       ...(params.passToken ? { passToken: params.passToken } : {}),
-      ...(customer ? { customer } : {})
+      ...(customer ? { customer } : {}),
+      ...(params.promotionId ? { promotionId: params.promotionId } : {})
     };
 
     const response = await fetch(apiUrl('/api/scan'), {
@@ -94,7 +116,9 @@ export const processScan = async (params: ScanParams): Promise<ScanResult> => {
       targetStamps: data.targetStamps,
       rewardUnlocked: data.rewardUnlocked,
       rewardName: data.rewardName,
-      alreadyScanned: data.alreadyScanned
+      alreadyScanned: data.alreadyScanned,
+      availablePromotions: data.availablePromotions ?? [],
+      message: data.message
     };
   } catch (error) {
     return { ok: false, error: 'Error de red o de servidor' };

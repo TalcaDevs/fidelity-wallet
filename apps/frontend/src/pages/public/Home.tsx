@@ -226,12 +226,20 @@ export function Home() {
             <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
               Fidelity Wallet · Fidelización por sellos para comercios
             </p>
+            <div className="flex items-center gap-5">
+            <Link
+              to={ROUTES.terms}
+              className="text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+            >
+              Términos y condiciones
+            </Link>
             <Link
               to={ROUTES.login}
               className="text-sm font-bold text-brand-blue hover:text-blue-500 transition-colors"
             >
               Entrar al panel →
             </Link>
+            </div>
           </div>
         </footer>
       </div>

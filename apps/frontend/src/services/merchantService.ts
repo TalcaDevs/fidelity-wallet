@@ -56,19 +56,23 @@ export async function getMerchantWithActivePromo(merchantName: string): Promise<
   
   const data = await response.json();
   
-  // Mapear la respuesta del backend al contrato esperado por el frontend
+  // Mapear la respuesta del backend al contrato esperado por el frontend.
+  // Promotion[0] es la más reciente (la que se destaca); el resto también se puede canjear
+  // con los mismos sellos.
+  type ApiPromotion = { id: string; name?: string; targetStamps: number; rewardName: string };
+  const promotions: ApiPromotion[] =
+    data.activePromotions ?? (data.activePromotion ? [data.activePromotion] : []);
+
   return {
     id: data.id,
     name: data.name,
     stampValidityDays: data.stampValidityDays,
-    Promotion: data.activePromotion ? [
-      {
-        id: data.activePromotion.id,
-        name: data.activePromotion.name || 'Promoción Activa',
-        targetStamps: data.activePromotion.targetStamps,
-        rewardName: data.activePromotion.rewardName
-      }
-    ] : []
+    Promotion: promotions.map((p) => ({
+      id: p.id,
+      name: p.name || 'Promoción Activa',
+      targetStamps: p.targetStamps,
+      rewardName: p.rewardName
+    }))
   };
 }
 

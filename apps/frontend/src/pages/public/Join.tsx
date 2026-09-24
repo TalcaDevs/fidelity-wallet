@@ -1,6 +1,7 @@
 import { useState, FormEvent, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { validateRUT, isPhone } from '../../utils/validators';
+import { FieldValue, PhoneField, RutField } from '../../components/ui/IdentifierInput';
+import { ROUTES } from '../../components/routing/routePaths';
 import { getMerchantWithActivePromo, MerchantWithPromo } from '../../services/merchantService';
 import { JoinNotFound } from './JoinNotFound';
 import { JoinSuccess } from './JoinSuccess';
@@ -13,7 +14,11 @@ export function Join() {
   const [loadingData, setLoadingData] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
-  const [identifier, setIdentifier] = useState('');
+  // El alta exige RUT **y** teléfono, más la aceptación de los términos.
+  const [rut, setRut] = useState<FieldValue>({ value: '', isValid: false });
+  const [phone, setPhone] = useState<FieldValue>({ value: '', isValid: false });
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
@@ -43,24 +48,9 @@ export function Join() {
     e.preventDefault();
     setError('');
     
-    const cleanId = identifier.trim();
-    if (!cleanId) return;
-
-    const isRutLike = cleanId.includes('-') || cleanId.includes('.') || cleanId.toLowerCase().endsWith('k');
-    let validRut = false;
-    let validPhone = false;
-    
-    if (validateRUT(cleanId)) validRut = true;
-    if (isPhone(cleanId)) validPhone = true;
-
-    if (!validRut && !validPhone) {
-      if (isRutLike) {
-        setError('El RUT ingresado no es válido (ej: 12.345.678-9)');
-      } else {
-        setError('Ingresa un RUT o un teléfono válido');
-      }
-      return;
-    }
+    setSubmitted(true);
+    // Los errores de formato los muestra cada campo; el de términos, el checkbox.
+    if (!rut.isValid || !phone.isValid || !acceptedTerms) return;
 
     setLoading(true);
     
@@ -72,21 +62,23 @@ export function Join() {
       }, 1500);
     } else {
       try {
-        const payload = validRut ? { rut: cleanId } : { phone: cleanId };
-        
         const response = await fetch(apiUrl('/api/customers'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             merchantId: merchant?.id,
-            ...payload
+            rut: rut.value,
+            phone: phone.value,
+            acceptedTerms
           })
         });
         
         const data = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-          throw new Error(data.message || 'Error al generar pase');
+          // La validación de Nest devuelve message como arreglo: se muestra el primero.
+          const message = Array.isArray(data.message) ? data.message[0] : data.message;
+          throw new Error(message || 'Error al generar pase');
         }
         
         if (data.appleWalletUrl || data.googleWalletUrl) {
@@ -132,7 +124,10 @@ export function Join() {
     );
   }
 
+  // Se destaca la promoción activa más reciente, pero los sellos son un saldo único:
+  // sirven para cualquiera de las activas y el cliente elige en caja cuál canjear.
   const promo = merchant.Promotion && merchant.Promotion.length > 0 ? merchant.Promotion[0] : null;
+  const otherPromos = merchant.Promotion ? merchant.Promotion.slice(1) : [];
   const rewardText = promo ? `Junta ${promo.targetStamps} sellos, llévate ${promo.rewardName}` : 'Acumula sellos y gana increíbles premios';
 
   return (
@@ -161,7 +156,26 @@ export function Join() {
             {rewardText}
           </p>
         </div>
-        
+
+        {otherPromos.length > 0 && (
+          <div className="w-full -mt-4 mb-8 rounded-2xl border border-blue-100 bg-blue-50/60 px-5 py-4">
+            <p className="text-sm font-bold text-slate-700 mb-2">
+              Tus sellos también sirven para:
+            </p>
+            <ul className="space-y-1.5 mb-3">
+              {otherPromos.map((p) => (
+                <li key={p.id} className="flex items-center justify-between gap-3 text-sm">
+                  <span className="font-semibold text-slate-800">{p.rewardName}</span>
+                  <span className="shrink-0 font-bold text-blue-700">{p.targetStamps} sellos</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs font-medium text-slate-500">
+              Sigue juntando y elige en caja en qué premio gastarlos, siempre que tus sellos estén vigentes.
+            </p>
+          </div>
+        )}
+
         {/* Modo de uso */}
         <div className="w-full bg-slate-50 rounded-3xl p-6 mb-8 border border-slate-100 shadow-sm">
           <h3 className="font-bold text-slate-800 mb-4 text-lg">¿Cómo funciona?</h3>
@@ -194,21 +208,48 @@ export function Join() {
 
         {/* Formulario */}
         <form onSubmit={handleSubmit} className="w-full bg-white p-1">
-          <div className="mb-2">
-            <label htmlFor="identifier" className="block text-sm font-bold text-slate-700 mb-2 px-1">
-              Ingresa tu RUT o Teléfono
-            </label>
-            <input
-              id="identifier"
-              type="text"
-              value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
-              placeholder="Ej: 12345678-9 o +569..."
-              className="w-full bg-white border-2 border-slate-300 focus:border-blue-600 focus:ring-4 focus:ring-blue-600/10 rounded-2xl px-5 py-4 text-lg font-medium outline-none transition-all shadow-sm"
-              autoComplete="off"
+          <div className="space-y-4 mb-2">
+            <RutField
+              label="RUT"
+              onChange={(next) => { setRut(next); setError(''); }}
+              showErrors={submitted}
             />
+            <PhoneField
+              label="Teléfono celular"
+              onChange={(next) => { setPhone(next); setError(''); }}
+              showErrors={submitted}
+            />
+
+            <label className="flex items-start gap-3 px-1 pt-1 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={acceptedTerms}
+                onChange={(e) => { setAcceptedTerms(e.target.checked); setError(''); }}
+                className="mt-0.5 h-5 w-5 shrink-0 rounded border-slate-300 accent-blue-600"
+              />
+              <span className="text-sm text-slate-600 font-medium leading-snug">
+                Acepto los{' '}
+                {/* Pestaña nueva: volver atrás desde /terminos borraría lo que ya escribió */}
+                <a
+                  href={ROUTES.terms}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-bold text-blue-700 underline underline-offset-2"
+                >
+                  términos y condiciones
+                </a>{' '}
+                y el tratamiento de mis datos para gestionar mis sellos.
+              </span>
+            </label>
+            {submitted && !acceptedTerms && (
+              <p role="alert" className="text-red-500 text-sm font-bold px-1">
+                Debes aceptar los términos y condiciones para obtener tu tarjeta.
+              </p>
+            )}
+
+            {/* Errores del servidor; los de formato los muestra cada campo */}
             {error && (
-              <p className="text-red-500 text-sm font-bold mt-2 px-1">
+              <p className="text-red-500 text-sm font-bold px-1">
                 {error}
               </p>
             )}
@@ -216,7 +257,7 @@ export function Join() {
 
           <button
             type="submit"
-            disabled={loading || !identifier.trim()}
+            disabled={loading}
             className="w-full h-14 mt-6 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-black text-lg rounded-2xl shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2"
           >
             {loading ? (
@@ -228,7 +269,7 @@ export function Join() {
         </form>
 
         <p className="text-[11px] text-slate-400 mt-10 text-center max-w-xs leading-relaxed font-medium">
-          Al continuar, aceptas que almacenemos estos datos únicamente para gestionar tus sellos, conforme a la Ley 19.628 de Protección de Datos Personales.
+          Usamos tu RUT y teléfono únicamente para identificar tu tarjeta y gestionar tus sellos, conforme a la Ley 19.628 de Protección de la Vida Privada. Puedes pedir su eliminación cuando quieras.
         </p>
       </div>
     </div>

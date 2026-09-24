@@ -43,14 +43,16 @@ export function Scan({ merchantId, session }: { merchantId: string, session: Ses
     }
   }, [triggerFeedback, merchantId]);
 
-  const handleRedeem = useCallback(async () => {
+  // promotionId: el premio que eligió el cliente (los sellos sirven para cualquier promoción activa).
+  const handleRedeem = useCallback(async (promotionId?: string) => {
     if (!scannedText) return;
     setState('loading');
     const res = await processScan({
       merchantId,
       action: 'REDEEM',
       passToken: scannedText.isManual ? undefined : scannedText.text,
-      identifier: scannedText.isManual ? scannedText.text : undefined
+      identifier: scannedText.isManual ? scannedText.text : undefined,
+      promotionId
     });
     setResult(res);
     
@@ -124,7 +126,7 @@ export function Scan({ merchantId, session }: { merchantId: string, session: Ses
         {state === 'loading' && <ScanLoading />}
         {state === 'success' && result && <ScanSuccess result={result} onReset={resetScanner} />}
         {state === 'redeemSuccess' && result && <ScanRedeemSuccess result={result} onReset={resetScanner} />}
-        {state === 'alreadyScanned' && result && <ScanAlreadyScanned onReset={resetScanner} />}
+        {state === 'alreadyScanned' && result && <ScanAlreadyScanned result={result} onReset={resetScanner} />}
         {state === 'reward' && result && <ScanReward result={result} onReset={resetScanner} onRedeem={handleRedeem} />}
         {state === 'error' && <ScanError result={result} onReset={resetScanner} />}
       </main>

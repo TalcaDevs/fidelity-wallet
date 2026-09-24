@@ -2,7 +2,9 @@
 
 > Documento de traspaso para **Dev 1 (Backend / Motor de Pases)** y **Dev 2 (Frontend PWA & Cliente Final)**.
 > Escrito por Dev 3 (infraestructura, base de datos y panel de administración).
-> Última actualización: **2026-09-20** · Rama de referencia: `dev` / `feature/stamp-expiry-roles-routing`.
+> Última actualización: **2026-09-24** · Rama de referencia: `dev`.
+
+> **¿Llegas nuevo o vuelves después de unos días?** Empieza por el **§3: checklist de lo hecho y lo que falta por dev**. Las secciones 0–2 explican el porqué; el §3 dice en qué estamos.
 
 ---
 
@@ -56,7 +58,7 @@ SaaS **B2B2C**: le cobramos (suscripción mensual por local) al **comercio**, no
 |---|---|---|
 | Tiempo de emisión del pase (QR → tarjeta en la billetera) | < 15 s | Dev 1 + Dev 2 |
 | Tiempo de escaneo en caja (cámara → confirmación en pantalla) | < 2 s | Dev 2 |
-| Conversión del landing `/join/:merchantId` | > 60% | Dev 2 |
+| Conversión del landing `/join/:merchantName` | > 60% | Dev 2 |
 | Entrega del push "premio desbloqueado" | < 10 s tras el sello | Dev 1 |
 | Uso semanal del panel por el dueño | ≥ 1 sesión/semana | Dev 3 |
 
@@ -102,7 +104,7 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
 ┌──────────────▼───────────────────┐
 │  API NestJS  (Dev 1)             │  reglas de negocio + motor de pases
 │   ├── passkit-generator (.pkpass)│
-│   ├── googleapis (JWT Wallet)    │
+│   ├── jsonwebtoken (JWT Wallet)  │
 │   └── APNs / Google Wallet API   │  push de actualización
 └──────────────┬───────────────────┘
                │ Prisma
@@ -128,50 +130,112 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
 
 | Ruta | Qué es | Acceso | Dueño |
 |---|---|---|---|
-| `/` | Landing estática explicativa | **Público** | ver §8.6 |
+| `/` | Landing estática explicativa | **Público** | ✅ existe (`pages/public/Home.tsx`) — ver §8.6 |
 | `/admin/login` | Login del dueño | Público | Dev 3 |
 | `/admin/reset` | Recuperación de contraseña | Público | Dev 3 |
 | `/admin/dashboard` · `/admin/promotions` · `/admin/customers` · `/admin/settings` | Panel | **Protegido, solo `OWNER`** (un `STAFF` cae a `/scan`) | Dev 3 |
-| `/join/:merchantName` | Landing de emisión del cliente final | Público, sin login | Dev 2 |
+| `/join/:merchantName` | Landing de emisión del cliente final. El parámetro es `Merchant.slug` (ej. `/join/localcito`) | Público, sin login | Dev 2 |
 | `/scan` | PWA del cajero | **Protegido: requiere sesión (`STAFF` u `OWNER`)** | Dev 2 |
 
 **Por qué el panel queda namespaceado bajo `/admin/*`:** si mañana la landing se mueve a un sitio estático prerenderizado (por SEO y velocidad), **las URLs del panel no cambian**. Es la razón del prefijo; no es cosmética.
 
 ---
 
-## 3. Estado real del repositorio (verificado 2026-09-20)
+## 3. Estado del proyecto — qué está hecho y qué falta (verificado 2026-09-24)
 
-### ✅ Hecho
-| Área | Detalle |
-|---|---|
-| Monorepo | `pnpm-workspace.yaml`, scripts raíz `dev / build / test / typecheck / lint` |
-| CI | `.github/workflows/pr-checks.yml`: install, `prisma generate`, `pnpm audit`, lint, typecheck, test y build en cada PR a `main`/`dev` |
-| Base de datos | Migraciones: `20260919182348_init`, `20260919182411_add_merchant_trigger`, `20260920041500_harden_rls_and_trigger`, `20260921010000_stamps_with_expiry`, `20260921020000_merchant_users_and_roles` |
-| Modelos | `Merchant`, `MerchantUser`, `Promotion`, `Customer`, `Pass`, `Stamp`, `Scan`, enums `ScanType` y `MerchantRole` |
-| Sellos con vencimiento | Tabla `Stamp` + `Merchant.stampValidityDays` + vista `PassStampBalance` (`security_invoker = true`). La migración **backfillea** una fila `Stamp` por cada sello del viejo `stampsCount` (con `expiresAt` NULL: los sellos anteriores a la funcionalidad **no vencen**) y recién después dropea la columna |
-| RLS | Activa en `Merchant`, `MerchantUser`, `Promotion`, `Customer`, `Pass`, `Scan` y `Stamp`, ya reescrita contra la membresía (SELECT para cualquier miembro, escritura solo `OWNER`), con `search_path` fijo en todas las funciones |
-| Auth comercios | Supabase Auth + trigger de alta de `Merchant`, ya corregido para no crear un comercio por cada mesero invitado |
-| Panel admin | Login, layout con sidebar responsive, Dashboard con métricas y últimos escaneos, módulo de Promociones (listar, crear, editar, activar/desactivar) |
-| Capa de servicios FE | `services/promotionsService.ts`, `services/dashboardService.ts`, hooks `useAuth` y `useDashboardStats`, componentes `StatCard` / `ErrorAlert` con tests |
+> Verificado contra el código de `dev`, corriendo los tests y probando el flujo completo en local. Lo marcado **(2026-09-24)** está hecho pero **todavía no tiene PR mergeado**: si no lo ves en tu rama, está en camino.
 
-### 🚧 Recién aterrizado hoy (Dev 3, rama `feature/stamp-expiry-roles-routing`) — verificalo al hacer pull
-| Área | Detalle |
-|---|---|
-| Roles y RLS por membresía | `20260921020000_merchant_users_and_roles`: tabla `MerchantUser` + reescritura de **todas** las políticas contra la membresía, con funciones `SECURITY DEFINER STABLE` de `search_path` fijo (`current_merchant_ids()`, `is_merchant_owner()`), separando SELECT (cualquier miembro) de INSERT/UPDATE/DELETE (solo `OWNER`). Reemplaza la política provisoria `stamp_own` que había creado `20260921010000` |
-| Routing | `App.tsx` ya implementa el mapa de §2: `/` público, `/join/:merchantId`, `/scan`, panel bajo `/admin/*` con guard de rol, y redirecciones desde las URLs viejas (`/dashboard` → `/admin/dashboard`) |
-| Placeholder `/scan` | Ruta reservada dentro de `apps/frontend` (`src/pages/scanner/`) para que Dev 2 no colisione con el routing. **Es un placeholder: todavía no escanea nada** |
-| Resuelto en esta rama | Las páginas del panel ya reciben el `merchantId` de la membresía, no lo derivan de `session.user.id` (§7.8) |
+### 3.1 ✅ Lo que ya está hecho
 
-### ❌ No hecho (esto es el trabajo que se traspasa)
-| Área | Detalle |
-|---|---|
-| Backend | `apps/backend/src` es **el boilerplate de NestJS sin tocar**: solo `AppController.getHello()`. No hay `PrismaModule`, ni módulos de dominio, ni endpoints, ni validación, ni Swagger |
-| PWA del cajero | **No está implementada.** Va en `apps/frontend`, ruta `/scan` — **`apps/scanner` quedó sin efecto, no crearla** (decisión 3) |
-| Invitación de meseros | No existe el endpoint para crear usuarios `STAFF`. Hoy las filas de `MerchantUser` se crean **a mano**. Asignado a Dev 1, ver §5.6 |
-| Landing pública `/` | **No existe.** Ver §8.6 (falta definir quién la hace y qué lleva) |
-| Landing de emisión | **No existe** la ruta `/join/:merchantName` |
-| Motor de pases | No están instalados `passkit-generator` ni `googleapis`, ni hay certificados |
-| Seeds | No hay seed reproducible de datos de demo |
+**Infraestructura y base de datos**
+- [x] Monorepo pnpm (`apps/backend` + `apps/frontend`) con scripts raíz `dev / build / test / typecheck / lint`.
+- [x] CI en cada PR a `main`/`dev` (`.github/workflows/pr-checks.yml`): install, `prisma generate`, `pnpm audit`, lint, typecheck, test y build.
+- [x] Modelos `Merchant`, `MerchantUser`, `Promotion`, `Customer`, `Pass`, `Stamp`, `Scan` y la vista `PassStampBalance` (§4).
+- [x] Sellos con vencimiento FIFO: un sello = una fila de `Stamp`. El saldo se calcula al leer; `Pass.stampsCount` ya no existe.
+- [x] RLS por membresía en todas las tablas (SELECT para cualquier miembro, escritura solo `OWNER`), con `search_path` fijo en las funciones.
+- [x] Grants de mínimo privilegio (`20260922120000_least_privilege_grants`): `anon` sin acceso a tablas; `authenticated` no puede leer `Pass.passToken`.
+- [x] Trigger `handle_new_user`: crea el `Merchant` solo para dueños; a un mesero invitado (con `merchant_id` en la metadata) solo lo asocia como `STAFF`.
+- [x] **(2026-09-24)** `Merchant.slug`, identificador público de `/join/:slug`. Migración `20260924120000_merchant_slug`: backfill de los locales existentes, sufijo `-2`, `-3` si hay colisión y generación automática en el trigger. **Es estable: renombrar el local no lo cambia**, porque ya puede estar impreso en los QR de las mesas.
+- [x] **(2026-09-24)** Seed reproducible `apps/backend/prisma/seed.js`: 1 `OWNER` + 4 `STAFF` en un mismo local (§9). Antes el seed le creaba por error un local propio a cada `STAFF`.
+- [x] `.env.example` versionado en backend y frontend.
+
+**Backend — Dev 1** (PR #9 + cambios del 2026-09-24)
+- [x] Fundaciones: `PrismaModule`, `ValidationPipe` estricta (`whitelist` + `forbidNonWhitelisted`), filtro de excepciones, `ConfigModule`, CORS, rate limiting (Throttler) y Swagger en `/api/docs`.
+- [x] `POST /api/customers`: alta idempotente. **(2026-09-24)** Exige **RUT (módulo 11) y teléfono (`+569…`), los dos**, más `acceptedTerms: true`. Guarda la prueba del consentimiento en `Customer.termsAcceptedAt` y `termsVersion` (migración `20260924170000_customer_terms_acceptance`). A un cliente antiguo le completa el dato que le faltaba, pero **nunca sobrescribe** un RUT o teléfono ya registrado. Devuelve las URLs de billetera **solo la primera vez**, para que conocer un RUT ajeno no alcance para robarle la tarjeta.
+- [x] `POST /api/passes/generate` (autenticado, requiere membresía) y `GET /api/passes/:passToken/apple` (`.pkpass`). `passToken` de 32 bytes aleatorios.
+- [x] `POST /api/scan` (`STAMP` / `REDEEM`): transacción con `SELECT … FOR UPDATE` sobre el `Pass`, `expiresAt` congelado al sellar, canje FIFO con verificación atómica, `createdByUserId` en `Scan` y `Stamp` y datos del cliente enmascarados.
+- [x] **(2026-09-24)** Ingreso manual: `/api/scan` acepta `customer: { rut | phone }` en lugar de `passToken`. La búsqueda queda acotada al comercio del cajero, y la membresía se valida antes de buscar.
+- [x] **(2026-09-24)** Bloqueo antifraude: tras un sello, el pase no puede recibir otro durante **30 minutos**, ni por QR ni manual. Responde `alreadyScanned: true` con `nextStampAvailableAt` y los minutos restantes. Se configura con `STAMP_COOLDOWN_MINUTES`. El canje mantiene su ventana de 90 s contra el doble toque (§5.4).
+- [x] **(2026-09-24)** `GET /api/merchants/by-slug/:slug`: público y con rate limit. Devuelve nombre, vigencia y promoción activa; nunca el email del dueño.
+- [x] `POST /api/merchants/:merchantId/staff/invite`: solo `OWNER`, usa la `service_role key` en el backend e invita por email o crea el usuario con contraseña (§5.6).
+- [x] Modo desarrollo `ALLOW_MOCK_PASSES=true`: emite pases de prueba sin certificados de Apple/Google.
+- [x] **(2026-09-24)** **Varias promociones activas con un saldo único de sellos** (decisión §8.2):
+  - todo sello vigente sirve para cualquier promoción activa, y el cliente elige en caja cuál canjear;
+  - `STAMP` ya no necesita saber la promoción;
+  - `REDEEM` recibe `promotionId` (obligatorio si hay más de una activa) y consume FIFO solo los sellos que esa promoción pide;
+  - la respuesta trae `availablePromotions` con `canRedeem` por promoción;
+  - migración `20260924150000_scan_redeemed_promotion`: `Scan.promotionId` registra qué promoción se canjeó.
+- [x] **(2026-09-24)** `GET /api/merchants/by-slug/:slug` devuelve también `activePromotions` (todas las activas, de la más reciente a la más antigua).
+- [x] 81 tests de Vitest (incluye validación del DTO de alta): sellado, anti-duplicado, bloqueo de 30 min, FIFO, varias promociones con saldo compartido, concurrencia de canje, ingreso manual, alta de clientes, emisión, invitación de staff, slug y utilidades de RUT/teléfono.
+
+**Frontend — Dev 2 y Dev 3** (PR #7, PR #10 + cambios del 2026-09-24)
+- [x] Landing pública `/` (`pages/public/Home.tsx`).
+- [x] Panel `/admin/*`: login, recuperación de contraseña, dashboard con métricas, CRUD de promociones, clientes con saldo desde `PassStampBalance` y configuración (nombre del local + vigencia de los sellos).
+- [x] Guards de rol: un `STAFF` que entra a `/admin/*` termina en `/scan`. El panel usa el `merchantId` de la membresía (§7.8).
+- [x] `/join/:merchantName` conectado al backend: muestra el local, la promoción y la vigencia, valida el RUT/teléfono, incluye el aviso de la Ley 19.628 y muestra botones de billetera según la plataforma.
+- [x] `/scan`: cámara con `html5-qrcode`; estados de sello, premio, error y "ya escaneado"; feedback sonoro y háptico; canje con confirmación.
+- [x] **(2026-09-24)** Ingreso manual del escáner conectado al backend. Antes llamaba a un contrato que no existía.
+- [x] **(2026-09-24)** Cámara estabilizada (`QRCam.tsx`): no arranca dos veces con `StrictMode`, no se reinicia en cada render, la zona de lectura coincide con el marco visible y usa el `BarcodeDetector` nativo cuando existe.
+- [x] **(2026-09-24)** La pantalla amarilla muestra los minutos que faltan para el siguiente sello.
+- [x] **(2026-09-24)** Campos `RutField` y `PhoneField` (`components/ui/IdentifierInput.tsx`). `/join` usa los dos a la vez (ambos obligatorios); el ingreso manual de `/scan` usa `IdentifierInput`, que agrega un selector RUT / Teléfono porque ahí basta con uno para buscar al cliente:
+  - el RUT se autoformatea a `12.345.678-5` mientras se escribe y se valida por módulo 11, con 7 u 8 dígitos igual que el backend;
+  - el teléfono lleva el **prefijo `+56` fijo** y exige 9 dígitos que empiecen con 9; si se pega un número con `+56`, no se duplica;
+  - envía siempre `+569XXXXXXXX`.
+- [x] **(2026-09-24)** `/join` destaca la promoción activa más reciente y, si hay otras, las lista con el aviso de que los sellos vigentes sirven para cualquiera y se elige en caja.
+- [x] **(2026-09-24)** Pantalla de premio en `/scan`: lista todas las promociones activas; las que el saldo no cubre aparecen deshabilitadas con "Faltan N". Si hay una sola canjeable queda preseleccionada, y siempre existe la opción "No canjear ahora, seguir juntando".
+- [x] **(2026-09-24)** `/join` exige RUT + teléfono y un **checkbox obligatorio de aceptación** con link a los términos, que abre en pestaña nueva para no perder lo escrito.
+- [x] **(2026-09-24)** Página pública **`/terminos`** (`pages/public/Terms.tsx`) con términos y condiciones estándar para el programa: registro, sellos sin valor monetario, bloqueo de 30 min, vigencia, saldo compartido entre promociones, uso indebido, datos personales (Ley 19.628) con derechos y vía de contacto, responsabilidad y ley aplicable (Ley 19.496). Enlazada desde `/join` y el footer de `/`.
+- [x] 105 tests de Vitest + Testing Library.
+
+**Flujo completo verificado en local (2026-09-24), con pases mock:** `/join/localcito` → alta del cliente → sello por QR y por RUT/teléfono → bloqueo de 30 min → premio desbloqueado → canje FIFO. También se verificó con **dos promociones activas**: se puede sellar, el canje exige elegir, rechaza si el saldo no alcanza y descuenta solo lo de la promoción elegida.
+
+### 3.2 ⏳ Lo que falta, por responsable
+
+Prioridad: 🔴 bloquea el piloto · 🟠 necesario para el piloto · 🟡 deuda · ⚪ opcional.
+
+#### Dev 1 — Backend y motor de pases
+- [ ] 🔴 **Credenciales reales de Apple y Google Wallet** (§7.3) y probar la emisión en teléfonos reales. **Es el bloqueante para salir a producción:** sin ellas solo funciona el modo mock, y el cliente no tiene cómo ver su QR (el `.pkpass` mock es un JSON y el link de Google no abre).
+- [ ] 🔴 **Push de actualización real** (§5.5). `notifyPassUpdate` hoy solo escribe un log. Falta el web service de PassKit (`/v1/devices/...`) con APNs, y el PATCH del `loyaltyObject` en la Google Wallet API. Sin esto la tarjeta del cliente nunca cambia de `0 / 5`.
+- [ ] 🟠 **`POST /api/customers` debe ser atómico.** Si falla la generación de las URLs de billetera, el `Customer` y el `Pass` ya quedaron creados, y el reintento responde `isNew: false` **sin URLs**: el cliente queda registrado pero sin tarjeta y sin forma de obtenerla.
+- [ ] 🟠 **Recuperar un pase perdido.** `JoinSuccess` le promete al cliente "pronto podrás recuperarlo", pero no existe el flujo. Necesita verificación (por ejemplo OTP por SMS): devolver el pase solo con el RUT permitiría suplantar al cliente.
+- [ ] 🟡 Tests pendientes del DoD (§5.7): vencimiento contra una BD real (hoy la query está mockeada), no-retroactividad de `stampValidityDays` y e2e reales (`test/app.e2e-spec.ts` sigue siendo el del boilerplate).
+- [ ] 🟡 **Borrado de datos personales** (Ley 19.628, §7.2). Los términos ya ofrecen pedirlo por correo; falta el proceso o endpoint que elimine al `Customer`, sus pases y sellos.
+- [ ] ⚪ Opcional: pase web `/pase/:passToken` como respaldo para quien no usa billetera, que además facilita las pruebas sin credenciales.
+
+#### Dev 2 — PWA del cajero y landing del cliente
+- [ ] 🔴 **Probar la cámara en iOS Safari y Android Chrome reales** tras los cambios del 2026-09-24 a `QRCam.tsx`, y medir el objetivo de < 2 s. Fuera de `localhost` la cámara exige **HTTPS**.
+- [ ] 🟠 **PWA instalable:** no hay `manifest` ni service worker.
+- [ ] 🟠 **Distinguir sesión vencida de caída de red** (§6.1, §7.9). Hoy los dos casos terminan en "Error de red o de servidor".
+- [ ] 🟡 Badges oficiales de Apple y Google Wallet en `JoinSuccess`. Hoy son botones propios, y ambas marcas tienen guías estrictas.
+- [ ] 🟡 **Probar en un teléfono real la pantalla de elección de premio** con 3 o más promociones: lista larga en pantallas chicas y uso con una mano.
+- [ ] ⚪ Opcional: mostrar al cajero `nextExpiryAt` ("te vence un sello el jueves"); el backend ya lo devuelve.
+
+#### Dev 3 — Panel admin y base de datos
+- [ ] 🔴 **Mostrar al dueño su link `/join/<slug>` y un QR imprimible para las mesas.** Hoy el panel no lo muestra en ningún lado: el dueño no tiene cómo saber su propia URL.
+- [ ] 🟠 **Slug de los locales nuevos:** se genera al registrarse a partir del nombre por defecto `Mi Local (<usuario>)`, así que queda como `mi-local-<usuario>`. Decidir si el dueño puede elegirlo o editarlo una vez (sabiendo que cambiarlo rompe los QR ya impresos).
+- [ ] 🟠 **UI para invitar, listar y dar de baja meseros** sobre el endpoint que ya existe (§5.6). Hoy solo se puede por API o con el seed.
+- [ ] 🟡 **Métricas por promoción en el dashboard:** `Scan.promotionId` ya dice qué premio se canjeó en cada `REWARD_REDEEMED` (qué promoción rinde más, cuánto se entrega de cada una). Hoy el dashboard solo cuenta canjes totales.
+- [ ] 🟡 **Texto del panel de promociones:** explicarle al dueño que puede tener varias activas y que los sellos de sus clientes sirven para cualquiera, así que activar una promoción cara no les quita sellos a los que juntan para otra.
+- [ ] 🟡 Llaves de producción y despliegue (§7.5).
+
+#### Equipo — legal
+- [ ] 🔴 **Completar y validar los términos antes de producción.** En `pages/public/Terms.tsx`, el objeto `LEGAL` tiene marcadores `[RAZÓN SOCIAL]`, `[RUT]`, `[DOMICILIO]` y `[CORREO DE CONTACTO]` que hoy se ven en la página pública. El texto es una plantilla estándar y **necesita revisión de un abogado**, incluida la adecuación a la Ley 21.719 de protección de datos cuando entre en vigencia.
+- [ ] 🟡 Si cambia el texto de los términos, subir `TERMS_VERSION` en `Terms.tsx` **y** en `apps/backend/src/customers/terms.ts` en el mismo PR.
+
+#### Equipo — decisiones abiertas (§8)
+- [ ] §8.5 — ¿Quién puede anular un sello mal dado o agregar uno manual sin cliente presente?
+- [ ] §8.8 — Aviso de vencimiento: con cuánta antelación, por qué canal y quién lo construye.
+- [ ] §8.1 — Confirmar token estático + bloqueo de 30 min como política antifraude del MVP.
 
 ---
 
@@ -181,13 +245,13 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
 
 | Modelo | Campos clave | Notas que importan |
 |---|---|---|
-| `Merchant` | `id` (UUID = auth user id del `OWNER`), `name`, `email` (único), `stampValidityDays?` | Creado por trigger al registrarse el dueño. **Esa igualdad ya no define permisos** — ver `MerchantUser` y §7.8. `stampValidityDays` **nullable: `null` = los sellos de este local no vencen.** Es una regla del local, no del premio: el dueño la configura una sola vez en Configuración, junto al nombre del negocio |
+| `Merchant` | `id` (UUID = auth user id del `OWNER`), `name`, `email` (único), `slug` (único), `stampValidityDays?` | Creado por trigger al registrarse el dueño. **`slug` (2026-09-24)** es el identificador público de `/join/:slug`: lo genera el trigger, no cambia al renombrar el local y **nunca se usa para escribir** (las escrituras van por `id`). **Esa igualdad ya no define permisos** — ver `MerchantUser` y §7.8. `stampValidityDays` **nullable: `null` = los sellos de este local no vencen.** Es una regla del local, no del premio: el dueño la configura una sola vez en Configuración, junto al nombre del negocio |
 | `MerchantUser` | `userId` (= `auth.users.id`), `merchantId`, `role` (`OWNER` \| `STAFF`), PK compuesta `[userId, merchantId]` | **Nuevo 2026-09-20.** Es la fuente de verdad de los permisos. Todas las políticas RLS se evalúan contra esta tabla |
-| `Promotion` | `merchantId`, `name`, `targetStamps`, `rewardName`, `isActive` | La vigencia de los sellos **no vive acá**: se movió a `Merchant` (2026-09-21). **La BD permite varias promociones activas por comercio a la vez** — ver §8.2 |
-| `Customer` | `rut?` (único), `phone?` (único) | Ambos opcionales; al menos uno debe venir — **validación aún no implementada** |
-| `Pass` | `customerId`, `merchantId`, `passToken` (único), `@@unique([customerId, merchantId])` | **`stampsCount` FUE ELIMINADO (2026-09-20).** El saldo se lee de `PassStampBalance`. **Un solo pase por cliente por comercio.** El pase **no tiene `promotionId`** — ver §8.2 |
-| `Stamp` | `passId`, `merchantId`, `promotionId?`, `earnedAt`, `expiresAt?`, `consumedAt?`, `consumedByScanId?`, `sourceScanId?`, `createdByUserId?` | **Nuevo 2026-09-20. Un sello = una fila.** `expiresAt` se **congela al sellar** (`earnedAt` + `Merchant.stampValidityDays`) y no se recalcula: cambiar la vigencia **no afecta retroactivamente** sellos ya entregados. `promotionId` es `ON DELETE SET NULL` a propósito: borrar una promoción no puede vaciarle la tarjeta a nadie |
-| `Scan` | `passId`, `merchantId`, `type`, `createdByUserId?` | `ScanType = STAMP_ADDED \| REWARD_REDEEMED`. Es el libro contable: no se edita ni se borra. **`createdByUserId` (nuevo) dice qué mesero dio cada sello** — es lo que permite detectar al que se auto-sella |
+| `Promotion` | `merchantId`, `name`, `targetStamps`, `rewardName`, `isActive` | La vigencia de los sellos **no vive acá**: se movió a `Merchant` (2026-09-21). **Puede haber varias promociones activas a la vez, y es intencional** (decisión §8.2, 2026-09-24): todas se canjean contra el mismo saldo de sellos. La más reciente es la "de referencia", la que destacan la landing y el pase |
+| `Customer` | `rut?` (único), `phone?` (único), `termsAcceptedAt?`, `termsVersion?` | **Desde 2026-09-24 el alta exige los dos datos** y la aceptación de los términos. Lo valida y normaliza el backend en `POST /api/customers` (RUT `12345678-5`, teléfono `+569XXXXXXXX`). En la BD siguen siendo nullables porque hay clientes antiguos con un solo dato y sin aceptación registrada |
+| `Pass` | `customerId`, `merchantId`, `passToken` (único), `@@unique([customerId, merchantId])` | **`stampsCount` FUE ELIMINADO (2026-09-20).** El saldo se lee de `PassStampBalance`. **Un solo pase por cliente por comercio.** El pase **no tiene `promotionId`, y no lo necesita**: su saldo sirve para todas las promociones activas (§8.2) |
+| `Stamp` | `passId`, `merchantId`, `promotionId?`, `earnedAt`, `expiresAt?`, `consumedAt?`, `consumedByScanId?`, `sourceScanId?`, `createdByUserId?` | **Nuevo 2026-09-20. Un sello = una fila.** `expiresAt` se **congela al sellar** (`earnedAt` + `Merchant.stampValidityDays`) y no se recalcula: cambiar la vigencia **no afecta retroactivamente** sellos ya entregados. `promotionId` es `ON DELETE SET NULL` a propósito: borrar una promoción no puede vaciarle la tarjeta a nadie. **Desde 2026-09-24 los sellos nuevos se crean con `promotionId` NULL**, porque un sello es saldo del pase y no de una promoción. La columna queda solo como historial y **no se usa para contar saldo** |
+| `Scan` | `passId`, `merchantId`, `type`, `promotionId?`, `createdByUserId?` | `ScanType = STAMP_ADDED \| REWARD_REDEEMED`. Es el libro contable: no se edita ni se borra. **`promotionId` (2026-09-24) solo se llena en `REWARD_REDEEMED`: qué premio eligió el cliente.** **`createdByUserId` (nuevo) dice qué mesero dio cada sello** — es lo que permite detectar al que se auto-sella |
 | `PassStampBalance` *(vista)* | `passId`, `merchantId`, `customerId`, `activeStamps`, `nextExpiryAt` | **Nueva. El saldo se calcula al leer**: `activeStamps` cuenta los sellos no consumidos y no vencidos. Creada con `security_invoker = true` para que **el RLS siga aplicando** (una vista normal corre con los permisos de su dueño y saltearía el RLS). `nextExpiryAt` ignora a propósito los sellos sin fecha de vencimiento |
 
 **Convenciones:** tablas y columnas en **PascalCase/camelCase** entrecomilladas en SQL (`"Stamp"."expiresAt"`), no snake_case. Los IDs son UUID generados por Postgres (`gen_random_uuid()`).
@@ -208,10 +272,12 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
 ### 5.2 `POST /api/customers` — alta del cliente final
 ```jsonc
 // request
-{ "merchantId": "uuid", "rut": "12.345.678-5", "phone": "+56912345678" }  // rut o phone, al menos uno
+{ "merchantId": "uuid", "rut": "12.345.678-5", "phone": "+56912345678", "acceptedTerms": true }  // los tres obligatorios
 // response 201
-{ "customerId": "uuid", "passId": "uuid", "isNew": true }
+{ "customerId": "uuid", "passId": "uuid", "isNew": true,
+  "appleWalletUrl": "...", "googleWalletUrl": "..." }  // URLs solo si el pase se creó en esta llamada
 ```
+*(✅ Implementado. El comercio se resuelve antes por su slug con `GET /api/merchants/by-slug/:slug` → `{ id, name, slug, stampValidityDays, activePromotion, activePromotions }`.)*
 - Normalizar el RUT (sin puntos, con guion, dígito verificador en mayúscula) **antes** de consultar, y validar el módulo 11. Sin esto, `12345678-5` y `12.345.678-5` crean dos clientes distintos.
 - Idempotente: si el cliente ya existe se reutiliza; si ya tiene pase en ese comercio se devuelve el existente (lo fuerza el `@@unique`).
 
@@ -225,31 +291,46 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
 ### 5.4 `POST /api/scan` — el corazón del sistema
 *(Reescrito 2026-09-20 — decisión 1. La versión anterior hacía `stampsCount: { increment: 1 }`; esa columna ya no existe.)*
 
+*(Contrato actualizado 2026-09-24: es el que implementa el backend. La fuente de verdad es el Swagger en `/api/docs`.)*
+
 ```jsonc
-// request
-{ "passToken": "...", "action": "STAMP" | "REDEEM", "merchantId": "uuid" }
+// request — QR o ingreso manual (uno de los dos)
+{ "merchantId": "uuid", "action": "STAMP" | "REDEEM", "passToken": "..." }
+{ "merchantId": "uuid", "action": "STAMP" | "REDEEM", "customer": { "rut": "12.345.678-5" } }  // o { "phone": "912345678" }
+// "promotionId": "uuid" — solo en REDEEM: el premio que eligió el cliente. Obligatorio si hay más de una
+// promoción activa. En STAMP se ignora: el sello va al saldo del pase, no a una promoción (§8.2)
+
 // response 200
 {
-  "ok": true,
-  "customerLabel": "···678-5",          // lo que el cajero lee en pantalla
-  "stampsCount": 4,                     // sale de PassStampBalance.activeStamps — ya no de Pass
-  "targetStamps": 5,
-  "rewardUnlocked": false,
-  "rewardName": "Café gratis"
+  "success": true,
+  "alreadyScanned": false,              // true = ignorado por el bloqueo de 30 min (sello) o de 90 s (canje)
+  "action": "STAMP",
+  "passId": "uuid",
+  "activeStamps": 4,                    // saldo del pase: sellos vigentes y no consumidos
+  "targetStamps": 5,                    // STAMP: de la promoción más reciente · REDEEM: de la canjeada
+  "rewardUnlocked": true,               // el saldo alcanza para AL MENOS una promoción activa
+  "rewardName": "Café gratis",
+  "availablePromotions": [              // todas las activas, más reciente primero
+    { "id": "uuid", "name": "Almuerzo", "rewardName": "Almuerzo gratis", "targetStamps": 8, "canRedeem": false },
+    { "id": "uuid", "name": "Café", "rewardName": "Café gratis", "targetStamps": 3, "canRedeem": true }
+  ],
+  "nextExpiryAt": "2026-10-24T03:30:39Z",
+  "nextStampAvailableAt": "...",        // solo en un sello bloqueado
+  "customer": { "id": "uuid", "rut": "12.***.*78-5", "phone": null },
+  "message": "Sello agregado exitosamente (4/5)"
 }
 ```
-*(El nombre del campo en el contrato y si se expone `nextExpiryAt` al cajero están sin decidir — §8.9.)*
 
 Reglas, **todas dentro de una transacción de base de datos**:
 1. Resolver `passToken` → `Pass`. Si no existe o no pertenece al `merchantId` que escanea → **403, y no se registra nada**.
-2. Validar que exista una `Promotion` activa para ese comercio.
-3. Insertar la fila en `Scan` (`STAMP_ADDED` o `REWARD_REDEEMED`), con `createdByUserId` = el usuario autenticado que ejecuta el escaneo.
-4. **En `STAMP`: insertar una fila en `Stamp`** con `passId`, `merchantId`, `promotionId`, `earnedAt = now()`, `sourceScanId` = el `Scan` recién creado, `createdByUserId`, y `expiresAt` = `earnedAt` + `Merchant.stampValidityDays`, o `NULL` si el comercio no define vigencia. Al vivir en el comercio, el cálculo no depende de resolver antes qué promoción aplica (§8.2). **`expiresAt` se congela acá y no se vuelve a tocar nunca.**
-5. Leer el saldo de `PassStampBalance` (`activeStamps`). Si `activeStamps >= targetStamps` → marcar premio desbloqueado.
-6. **En `REDEEM`:** rechazar si `activeStamps < targetStamps`. Al canjear, **consumir los `targetStamps` sellos activos MÁS ANTIGUOS (FIFO, por `earnedAt` ascendente)** marcándolos con `consumedAt = now()` y `consumedByScanId`. Seleccionarlos y marcarlos dentro de la misma transacción, con bloqueo de filas, para que dos cajas no consuman el mismo sello.
+2. Validar que exista **al menos una** `Promotion` activa para ese comercio. Puede haber varias (§8.2).
+3. Insertar la fila en `Scan` (`STAMP_ADDED` o `REWARD_REDEEMED`), con `createdByUserId` = el usuario autenticado que ejecuta el escaneo y, en el canje, `promotionId` = la promoción elegida.
+4. **En `STAMP`: insertar una fila en `Stamp`** con `passId`, `merchantId`, `promotionId = NULL` (el sello es saldo del pase), `earnedAt = now()`, `sourceScanId` = el `Scan` recién creado, `createdByUserId`, y `expiresAt` = `earnedAt` + `Merchant.stampValidityDays`, o `NULL` si el comercio no define vigencia. Al vivir en el comercio, el cálculo no depende de resolver antes qué promoción aplica (§8.2). **`expiresAt` se congela acá y no se vuelve a tocar nunca.**
+5. Leer el saldo del pase (`activeStamps`), que es el mismo que calcula `PassStampBalance`: **todos** los sellos vigentes, sin filtrar por promoción. Para cada promoción activa, `canRedeem = activeStamps >= targetStamps`; el premio está desbloqueado si alguna lo cumple.
+6. **En `REDEEM`:** el cliente elige la promoción (`promotionId`). Rechazar si no está activa o si `activeStamps < targetStamps` **de esa promoción**. Al canjear, **consumir los `targetStamps` de esa promoción, tomando los sellos activos MÁS ANTIGUOS del saldo (FIFO, por `earnedAt` ascendente)** marcándolos con `consumedAt = now()` y `consumedByScanId`. Seleccionarlos y marcarlos dentro de la misma transacción, con bloqueo de filas, para que dos cajas no consuman el mismo sello.
 7. **El saldo se calcula SIEMPRE al leer.** Nunca se guarda un contador y **ningún cron es responsable de la corrección**: un sello vencido deja de contar solo, porque la vista lo filtra. Un job programado servirá más adelante **únicamente** para disparar el push de aviso de vencimiento (§7.7), no para arreglar saldos.
 
-**Anti-fraude mínimo del MVP:** ignorar (respondiendo éxito idempotente) un segundo escaneo del mismo pase en el mismo comercio dentro de una ventana corta — sugerido **90 segundos** — para evitar el doble timbre por doble toque del cajero. Devolver `alreadyScanned: true` para que la PWA lo muestre distinto.
+**Anti-fraude mínimo del MVP:** tras sumar un sello, el pase queda **bloqueado 30 minutos** para recibir otro en ese comercio, llegue por QR o por ingreso manual (RUT/teléfono). Un escaneo dentro del bloqueo responde éxito idempotente con `alreadyScanned: true`, `nextStampAvailableAt` y un mensaje con los minutos restantes, para que la PWA lo muestre distinto. El bloqueo se evalúa dentro del lock de fila del `Pass`, así que dos cajeros simultáneos no pueden colar un segundo sello. Se configura con `STAMP_COOLDOWN_MINUTES` (por defecto 30). El **canje** mantiene su propia ventana de 90 segundos contra el doble toque. *(Decisión 2026-09-24: antes eran 90 s para ambos.)*
 
 ### 5.5 Actualización de la billetera (push)
 - Apple: endpoints de registro de dispositivo del protocolo PassKit (`/v1/devices/...`) + APNs para disparar la relectura del pase.
@@ -259,22 +340,27 @@ Reglas, **todas dentro de una transacción de base de datos**:
 - Cuidado con el ruido: con sellos que vencen, el saldo también **baja solo**, y cada caída dispara una actualización del pase. Leer §7.7 antes de conectar el push a cada cambio.
 
 ### 5.6 Invitar meseros `STAFF` (tarea nueva, **asignada a Dev 1**)
-*(Nueva 2026-09-20 — decisión 4. Hoy es lo único que falta para que los roles funcionen de punta a punta.)*
+*(Nueva 2026-09-20 — decisión 4.)*
+
+> ✅ **Hecho (PR #9):** `POST /api/merchants/:merchantId/staff/invite`, solo para `OWNER`. Sin `password` invita por email (`inviteUserByEmail`); con `password` crea el usuario directamente. **Falta la UI en el panel** — la tiene Dev 3 (§3.2).
 
 - Invitar un usuario `STAFF` exige la **`service_role key`** (Supabase Admin API), así que **no se puede hacer desde el frontend con la `anon key`**. Hace falta **un endpoint de backend** para crear/invitar usuarios `STAFF` de un comercio.
 - Ese endpoint **setea `merchant_id` y `role` en la metadata del usuario nuevo** — de ahí lo lee el trigger `handle_new_user` para no crearle un `Merchant` propio (§2).
-- **Hasta que exista, las filas de `MerchantUser` se crean a mano** contra la base.
+- ~~Hasta que exista, las filas de `MerchantUser` se crean a mano~~ — ya no hace falta: usar el endpoint o el seed (§9).
 
 ### 5.7 Definition of Done (Dev 1)
-- [ ] DTOs validados en todos los endpoints.
-- [ ] Swagger publicado en `/api/docs`.
-- [ ] Tests de Vitest sobre la lógica de sellado, incluyendo el borde `activeStamps == targetStamps` y el doble escaneo.
-- [ ] **Test del vencimiento:** un sello con `expiresAt` pasado no cuenta en el saldo; uno con `expiresAt` NULL nunca vence.
-- [ ] **Test del FIFO:** al canjear se consumen los sellos más antiguos, no los últimos.
+*(Revisado 2026-09-24.)*
+- [x] DTOs validados en todos los endpoints.
+- [x] Swagger publicado en `/api/docs`.
+- [x] Tests de Vitest sobre la lógica de sellado, incluyendo el borde `activeStamps == targetStamps` y el doble escaneo (ahora, el bloqueo de 30 min).
+- [ ] **Test del vencimiento:** un sello con `expiresAt` pasado no cuenta en el saldo; uno con `expiresAt` NULL nunca vence. *Parcial: está cubierto que `stampValidityDays = null` deja `expiresAt` en NULL, pero el filtro de vencidos solo se prueba con Prisma mockeado. Falta un test contra una BD real.*
+- [x] **Test del FIFO:** al canjear se consumen los sellos más antiguos, no los últimos.
 - [ ] **Test de no-retroactividad:** cambiar `stampValidityDays` en el comercio no mueve el `expiresAt` de sellos ya entregados.
-- [ ] **`/api/scan` graba `createdByUserId`** en `Scan` y en `Stamp`.
-- [ ] **Endpoint de invitación de `STAFF` (§5.6)** funcionando con `service_role key`, y esa key **nunca** expuesta al frontend.
-- [ ] `lint`, `typecheck`, `test` y `build` en verde.
+- [x] **`/api/scan` graba `createdByUserId`** en `Scan` y en `Stamp`.
+- [x] **Endpoint de invitación de `STAFF` (§5.6)** funcionando con `service_role key`, y esa key **nunca** expuesta al frontend.
+- [x] `lint`, `typecheck`, `test` y `build` en verde (lint solo con advertencias `unbound-method` en los specs).
+- [ ] **Emisión real** con certificados de Apple y Google, probada en teléfonos (§7.3).
+- [ ] **Push de actualización** real (§5.5).
 
 ---
 
@@ -283,7 +369,7 @@ Reglas, **todas dentro de una transacción de base de datos**:
 **Objetivo:** las dos superficies donde el producto se gana o se pierde en la calle. Ambas viven dentro de `apps/frontend`; el mapa de rutas completo está en §2.
 
 ### 6.1 PWA de escaneo — ruta `/scan` dentro de `apps/frontend`
-> ⚠️ **Cambio 2026-09-20 (decisión 3):** la versión anterior de este documento mandaba crear `apps/scanner` como app nueva del monorepo. **Eso queda sin efecto.** La PWA del cajero se construye **dentro de `apps/frontend`, en la ruta `/scan`**. Ya hay un placeholder reservando esa ruta para que no colisionemos.
+> ⚠️ **Cambio 2026-09-20 (decisión 3):** la versión anterior de este documento mandaba crear `apps/scanner` como app nueva del monorepo. **Eso queda sin efecto.** La PWA del cajero se construye **dentro de `apps/frontend`, en la ruta `/scan`**. *(2026-09-24: ya no es un placeholder; está implementada y conectada al backend. Lo pendiente está en §3.2.)*
 
 - App liviana instalable (manifest + service worker), pensada para **tablet o teléfono en el mesón**, orientación vertical, uso con una mano.
 - Escaneo con `@zxing/library` o `html5-qrcode`. Objetivo duro: **< 2 s desde apuntar hasta confirmación**.
@@ -316,14 +402,18 @@ Flujo completo en una sola pantalla, sin scroll innecesario:
 Si el comercio tiene `stampValidityDays`, **decirlo acá** en lenguaje humano ("tus sellos valen 3 meses"). Enterarse del vencimiento cuando el contador ya bajó es la peor forma de enterarse (§7.7).
 
 ### 6.3 Definition of Done (Dev 2)
-- [ ] Probado en **iOS Safari y Android Chrome reales**, no solo en el emulador de escritorio — los permisos de cámara se comportan distinto.
-- [ ] Tests de los componentes críticos, lint/typecheck en verde.
-- [ ] PWA instalable verificada.
-- [ ] **El scanner vive en `apps/frontend` bajo `/scan`** — no se agregó ninguna app nueva al monorepo.
-- [ ] **Login del cajero funcionando**, con sesión persistente y **refresh de token probado tras varias horas con la pantalla abierta**.
+*(Revisado 2026-09-24.)*
+- [ ] Probado en **iOS Safari y Android Chrome reales**, no solo en el emulador de escritorio — los permisos de cámara se comportan distinto. *Hay que re-probar tras los cambios del 2026-09-24 a `QRCam.tsx`.*
+- [x] Tests de los componentes críticos, lint/typecheck en verde.
+- [ ] PWA instalable verificada. *No hay manifest ni service worker.*
+- [x] **El scanner vive en `apps/frontend` bajo `/scan`** — no se agregó ninguna app nueva al monorepo.
+- [ ] **Login del cajero funcionando**, con sesión persistente y **refresh de token probado tras varias horas con la pantalla abierta**. *Login y sesión persistente funcionan (Supabase); falta la prueba de varias horas.*
 - [ ] **Sesión vencida y caída de red se muestran distinto**, y ninguna de las dos deja la pantalla en blanco.
-- [ ] Un `STAFF` que entra a `/admin/*` termina en `/scan` (y no en una pantalla rota).
-- [ ] La pantalla del cajero lee el saldo de `PassStampBalance` / de la respuesta de `/api/scan`, **nunca de `Pass.stampsCount`** (ya no existe).
+- [x] Un `STAFF` que entra a `/admin/*` termina en `/scan` (y no en una pantalla rota).
+- [x] La pantalla del cajero lee el saldo de la respuesta de `/api/scan` (`activeStamps`), **nunca de `Pass.stampsCount`** (ya no existe).
+- [x] Fallback manual por RUT/teléfono funcionando contra el backend.
+- [x] Landing `/join/:merchantName` conectada al backend, con vigencia y aviso de datos personales.
+- [ ] Badges oficiales de Apple/Google Wallet en la confirmación.
 
 ---
 
@@ -339,18 +429,20 @@ Lo que queda abierto es más fino y más caro: **las políticas originales eran 
 **Bug concreto que esto destapó y ya se corrigió:** el trigger `handle_new_user` creaba un `Merchant` por **cada** usuario nuevo de `auth.users`, así que **el primer mesero invitado se habría auto-creado su propio local**. Ahora distingue por el `merchant_id` que viene en `raw_user_meta_data`.
 
 ### 7.2 🟠 Datos personales (Ley 19.628 / RUT)
-Estamos guardando RUT y teléfono de clientes finales. Hace falta, como mínimo: aviso de privacidad en el landing, propósito declarado y una vía para solicitar borrado. Evitar exponer el RUT completo en la pantalla del cajero (mostrar solo los últimos dígitos, como en §5.4).
+Estamos guardando RUT y teléfono de clientes finales. Hace falta, como mínimo: aviso de privacidad en el landing, propósito declarado y una vía para solicitar borrado.
+*Estado 2026-09-24:* hay aviso en el landing, términos en `/terminos` con el propósito, los datos tratados y los derechos del titular, y **consentimiento expreso registrado** (checkbox obligatorio + `Customer.termsAcceptedAt` / `termsVersion`). Falta el proceso real de borrado (§3.2, Dev 1) y la revisión legal del texto (§3.2, Equipo). Evitar exponer el RUT completo en la pantalla del cajero (mostrar solo los últimos dígitos, como en §5.4).
 
 ### 7.3 🟠 Certificados Apple / Google (bloqueante para Dev 1)
 `passkit-generator` necesita certificados reales de una cuenta **Apple Developer (USD 99/año)**: Pass Type ID, `.p12` y certificado WWDR. Google Wallet requiere una Service Account de Google Cloud y el alta del Issuer. Sin esto no se puede probar la emisión real ni APNs.
 *Mitigación:* arrancar con pases estáticos de prueba y una interfaz `PassProvider` que permita cambiar la implementación después, para que el resto del flujo (`/api/scan`, PWA, landing) avance en paralelo. Los push quedan bloqueados igual.
+*Estado 2026-09-24:* **sigue abierto; es el bloqueante número uno para producción.** Mientras tanto, `ALLOW_MOCK_PASSES=true` en `apps/backend/.env` deja emitir pases de prueba y el resto del flujo funciona completo. En modo mock el cliente no tiene cómo ver su QR: para probar, el cajero usa el ingreso manual o un QR generado a mano (§9).
 
 ### 7.4 🟡 Latencia y permisos de cámara en navegador
 El escaneo depende de Safari/Chrome, del permiso de cámara y de la luz del local; puede ser más lento que una app nativa.
 *Mitigación:* contraste UI fuerte, encuadre guiado y fallback por RUT bien probado. Medir el tiempo real en un local, no en la oficina.
 
 ### 7.5 🟡 Gestión de secretos
-Hoy los `.env` viven solo en local (están en `.gitignore`, correcto). Falta un `.env.example` versionado por app y un lugar acordado para las llaves de producción antes del despliegue. Con el endpoint de invitación de meseros (§5.6) entra la **`service_role key`** al backend: esa nunca puede terminar en el bundle del frontend.
+Hoy los `.env` viven solo en local (están en `.gitignore`, correcto). Ya hay `.env.example` versionado en `apps/backend` y `apps/frontend`. Falta un lugar acordado para las llaves de producción antes del despliegue. Con el endpoint de invitación de meseros (§5.6) entra la **`service_role key`** al backend: esa nunca puede terminar en el bundle del frontend.
 
 ### 7.6 ✅ Resuelto: este archivo ya viaja en el repositorio
 *(Cerrado el 2026-09-21, a pedido de la revisión del PR #7.)* `HANDOFF.md` estaba en `.gitignore`, así que las decisiones de arquitectura no le llegaban a Dev 1 ni a Dev 2 por `git pull`. Se quitó del `.gitignore` y el documento se versiona junto al código: a partir de ahora, quien cambie un contrato que está acá lo actualiza en el mismo PR.
@@ -382,11 +474,24 @@ No lo escondemos: es el costo consciente de que los sellos generen urgencia. El 
 Apple Wallet permite un QR estático por pase. ¿Usamos un `passToken` fijo por cliente (simple, funciona con el pase offline, pero una foto del QR es reutilizable) o lo rotamos (más seguro, exige que el pase se actualice contra el servidor)?
 **Impacta:** la validación en `/api/scan` (Dev 1) y la ventana anti-doble-escaneo.
 **Recomendación para el MVP:** token estático + ventana de 90 s + registro completo en `Scan`. El fraude posible (un amigo usando tu QR) es de valor económico bajísimo.
+*Nota 2026-09-24:* hoy se usa token estático, y la ventana para sellos subió a **30 minutos por pase** (QR y manual) para que un cliente no acumule varios sellos en una misma visita (§5.4). Falta confirmar en equipo que esta es la política del MVP.
 
-### 8.2 ¿Cómo se relaciona un `Pass` con una `Promotion`?
+### 8.2 ✅ DECIDIDA (2026-09-24) — ¿Cómo se relaciona un `Pass` con una `Promotion`?
+**Decisión: varias promociones activas y un saldo único de sellos por pase.** Ninguna de las dos opciones de abajo:
+- El dueño puede tener **varias promociones activas a la vez**.
+- **Los sellos no pertenecen a ninguna promoción:** son saldo del pase. Todo sello vigente sirve para cualquier promoción activa.
+- **El cliente elige en caja** en cuál gastarlos, entre las que su saldo alcanza. También puede no canjear y seguir juntando para una más cara.
+- El canje consume FIFO **solo los `targetStamps` de la promoción elegida**; el resto sigue vivo, con su vencimiento original.
+- **La landing y el pase destacan la promoción activa más reciente** y avisan que los sellos también sirven para las demás mientras estén vigentes.
+
+**Implementación:** §5.4 (reglas 2 a 6 y contrato), `Scan.promotionId` para saber qué se canjeó, `activePromotions` en `GET /api/merchants/by-slug/:slug` y la pantalla de elección de premio en `/scan`.
+**Consecuencia para producto:** desactivar una promoción no le quita sellos a nadie; solo deja de ofrecerse como canje.
+
+*(Texto original, abierta 2026-09-20:)*
 Hoy `Pass` **no tiene `promotionId`**, pero `Promotion` permite varias promociones activas simultáneas por comercio. Cuando llega un escaneo, el backend no tiene forma determinista de saber **qué promoción aplica**.
 **Opciones:** (a) restringir a una sola promoción activa por comercio (índice único parcial + validación en el panel), más simple y alineado al MVP; (b) agregar `promotionId` a `Pass` y emitir un pase por promoción, lo que obliga a revisar el `@@unique([customerId, merchantId])`.
 **Recomendación:** (a) para el MVP. **Decisión bloqueante para Dev 1.**
+*Estado previo a la decisión (2026-09-24):* el backend exigía `promotionId` cuando había más de una promoción activa, la PWA no lo enviaba y con dos promociones activas todo escaneo respondía 400. **Corregido.**
 *Nota 2026-09-20:* `Stamp.promotionId` registra a qué promoción se atribuyó cada sello, pero **no decide cuál aplica** en el momento del escaneo: la duda sigue abierta.
 
 ### 8.3 ✅ DECIDIDA (2026-09-20) — Flujo post-canje
@@ -403,11 +508,13 @@ Hoy `Pass` **no tiene `promotionId`**, pero `Promotion` permite varias promocion
 ¿Puede el cajero agregar un sello sin escanear, o anular uno mal dado? Hoy no está contemplado y `Scan` es append-only. Probablemente haga falta en el primer piloto real.
 *Nota 2026-09-20:* con `Stamp` como entidad propia, "anular" tiene ahora una forma natural (marcar el sello), pero **quién puede hacerlo no está decidido**: el `STAFF` es solo lectura, así que hoy la corrección solo podría venir del `OWNER` o del backend. Se cruza con §8.7.
 
-### 8.6 ❓ ¿Quién construye la landing pública `/` y qué lleva?
-*(Abierta 2026-09-20.)* La decisión 2 reserva `/` para una **landing estática explicativa pública**, pero no se definió **quién la hace** (Dev 2 tiene las superficies públicas; Dev 3 tiene hoy `apps/frontend`), **qué contenido lleva**, ni **cuándo** se mueve al sitio estático prerenderizado que motivó el prefijo `/admin/*`. Mientras no se decida, `/` no existe.
+### 8.6 ✅ RESUELTA EN LA PRÁCTICA (2026-09-24) — Landing pública `/`
+Ya existe (`pages/public/Home.tsx`, PR #10). Sigue sin decidirse **cuándo** se mueve a un sitio estático prerenderizado.
+*(Texto original, abierta 2026-09-20:)* La decisión 2 reserva `/` para una **landing estática explicativa pública**, pero no se definió **quién la hace** (Dev 2 tiene las superficies públicas; Dev 3 tiene hoy `apps/frontend`), **qué contenido lleva**, ni **cuándo** se mueve al sitio estático prerenderizado que motivó el prefijo `/admin/*`. Mientras no se decida, `/` no existe.
 
-### 8.7 ❓ ¿Un `STAFF` puede sellar y canjear?
-*(Abierta 2026-09-20 — es la ambigüedad más urgente de la decisión 4.)* El rol `STAFF` se definió como **solo lectura** del saldo + el scanner, y las políticas RLS dejan INSERT/UPDATE/DELETE **solo para `OWNER`**. Pero escanear **escribe** (`Scan` y `Stamp`). Las dos lecturas posibles:
+### 8.7 ✅ RESUELTA POR IMPLEMENTACIÓN (2026-09-24) — ¿Un `STAFF` puede sellar y canjear?
+**Sí, por la vía (a):** el `STAFF` sella y canjea solo a través de `/api/scan`. El backend valida la membresía y escribe con Prisma, y el RLS restrictivo sigue intacto. El `STAFF` ve el saldo del cliente dentro de `/scan`, en la respuesta del escaneo.
+*(Texto original, abierta 2026-09-20:)* El rol `STAFF` se definió como **solo lectura** del saldo + el scanner, y las políticas RLS dejan INSERT/UPDATE/DELETE **solo para `OWNER`**. Pero escanear **escribe** (`Scan` y `Stamp`). Las dos lecturas posibles:
 - (a) El `STAFF` nunca escribe directo contra Supabase: `/api/scan` pasa por el backend, que valida la membresía por su cuenta. El RLS restrictivo queda correcto tal cual.
 - (b) Hace falta una política de INSERT acotada para `STAFF` sobre `Scan` y `Stamp`.
 **Bloquea a Dev 1** (§5.4) y a Dev 3 (política RLS). Relacionado: si vale (a), **dónde ve el `STAFF` el saldo de un cliente** si no puede entrar a `/admin/*` — se asume que dentro del propio `/scan`, pero no está especificado.
@@ -415,8 +522,9 @@ Hoy `Pass` **no tiene `promotionId`**, pero `Promotion` permite varias promocion
 ### 8.8 ❓ Aviso de vencimiento: antelación, canal y frecuencia
 *(Abierta 2026-09-20.)* Está decidido que **un job programado disparará el push de aviso de vencimiento más adelante** y que hay que **avisar antes, no después** (§7.7). No está decidido: **con cuánta antelación**, **por qué canal** (¿solo la actualización del pase en la billetera?), **cada cuánto** se puede avisar sin volverse ruido, ni **quién lo construye**. Sin esto, la mitigación del riesgo 7.7 es una intención, no un plan.
 
-### 8.9 ❓ Nombre del saldo en el contrato de la API
-*(Abierta 2026-09-20.)* La respuesta de `/api/scan` sigue llamando `stampsCount` a un valor que ahora sale de `PassStampBalance.activeStamps`. ¿Se renombra el campo en el contrato (más honesto, rompe lo que Dev 2 ya tenga mockeado) o se mantiene el nombre por compatibilidad? ¿Se expone también `nextExpiryAt` para que el cajero pueda decirle al cliente "te vence un sello el jueves"? Decidir **antes** de publicar el Swagger, que es el contrato entre Dev 1 y Dev 2.
+### 8.9 ✅ RESUELTA (2026-09-24) — Nombre del saldo en el contrato de la API
+El contrato usa **`activeStamps`** y expone **`nextExpiryAt`** (§5.4). La PWA lo mapea internamente. Si la pantalla del cajero debe mostrar el vencimiento queda como mejora opcional de Dev 2 (§3.2).
+*(Texto original, abierta 2026-09-20:)* La respuesta de `/api/scan` sigue llamando `stampsCount` a un valor que ahora sale de `PassStampBalance.activeStamps`. ¿Se renombra el campo en el contrato (más honesto, rompe lo que Dev 2 ya tenga mockeado) o se mantiene el nombre por compatibilidad? ¿Se expone también `nextExpiryAt` para que el cajero pueda decirle al cliente "te vence un sello el jueves"? Decidir **antes** de publicar el Swagger, que es el contrato entre Dev 1 y Dev 2.
 
 ---
 
@@ -430,20 +538,45 @@ pnpm install
 pnpm run dev
 
 # Base de datos
-pnpm --filter backend exec prisma generate
+pnpm --filter backend exec prisma generate        # OJO: correrlo tras cada pull que toque schema.prisma
 pnpm --filter backend exec prisma migrate dev     # aplica migraciones
 pnpm --filter backend exec prisma studio          # inspeccionar datos
 ```
 
-**Variables de entorno** (los `.env` no se versionan; pedirlos al equipo):
-- `apps/frontend/.env` → `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
-- `apps/backend/.env` → `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
-- Dev 1 sumará: `APPLE_PASS_TYPE_ID`, `APPLE_TEAM_ID`, `APPLE_CERT_P12`, `APPLE_CERT_PASSWORD`, `APPLE_WWDR_CERT`, `GOOGLE_WALLET_ISSUER_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON`
+> Si `pnpm run dev` falla con `Property 'merchantUser' does not exist on type 'PrismaService'` (o `stamp`, `slug`…), el cliente de Prisma está desactualizado: corre `prisma generate` y reinicia.
 
-**Cuenta de prueba del panel:** `adminlocal1@example.com` (Supabase Auth local, rol `OWNER`).
-**Cuenta de mesero:** todavía no hay una de prueba. Hasta que exista el endpoint de §5.6, la fila de `MerchantUser` con `role = STAFF` se crea a mano.
+**Resetear la base y cargar el seed** (borra todo, incluidos los usuarios de Supabase Auth):
+```bash
+npx supabase db reset                                        # desde la raíz
+cd apps/backend && npx prisma migrate deploy
+node --env-file=.env prisma/seed.js
+```
+
+**Variables de entorno** (los `.env` no se versionan; copiar el `.env.example` de cada app):
+- `apps/frontend/.env` → `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL` (por defecto `http://localhost:3000`).
+- `apps/backend/.env` → `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
+- Desarrollo sin certificados: **`ALLOW_MOCK_PASSES=true`**. Sin esta variable, `POST /api/customers` responde 500.
+- Antifraude: `STAMP_COOLDOWN_MINUTES` (por defecto 30). Para probar localmente sin esperar, usar `1`.
+- Billeteras reales (Dev 1): `APPLE_PASS_TYPE_IDENTIFIER`, `APPLE_TEAM_IDENTIFIER`, `APPLE_PASS_CERT`, `APPLE_PASS_KEY`, `APPLE_PASS_PASSWORD`, `APPLE_WWDR_CERT`, `GOOGLE_WALLET_ISSUER_ID`, `GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_WALLET_PRIVATE_KEY`.
+- Tras editar el `.env` del backend hay que **reiniciar `pnpm run dev`**: el modo watch no lo vuelve a leer.
+
+**Cuentas de prueba** (las crea el seed; contraseña `password123` para todas):
+
+| Rol | Correo | Entra a |
+|---|---|---|
+| `OWNER` | `owner@example.com` | `/admin/*` (panel completo) |
+| `STAFF` | `cajero1@example.com` · `cajero2@example.com` · `mesero@example.com` · `staff@example.com` | `/scan` |
+
+El local del seed se llama "Mi Local (owner)"; su slug se genera al registrarse (`/join/mi-local-owner`) y **no cambia** si lo renombras en Configuración.
+
+**Probar el flujo del cliente de punta a punta:**
+1. Abrir `/join/<slug>` en una ventana de incógnito y registrarse con un RUT **y** un teléfono nuevos, aceptando los términos.
+2. En otra ventana, entrar como `cajero1` y abrir `/scan`.
+3. Sumar el sello con el **ingreso manual** (RUT/teléfono) o con la cámara. En modo mock el QR del cliente no se ve en ninguna parte: el `passToken` está en el link "Add to Apple Wallet" (`/api/passes/<passToken>/apple`) y se convierte en imagen localmente con `npx qrcode -o pase.png <passToken>`.
+4. Repetir hasta el premio (con `STAMP_COOLDOWN_MINUTES=1`) y canjear.
 
 ---
+
 
 ## 10. Cómo trabajamos
 
@@ -453,4 +586,4 @@ pnpm --filter backend exec prisma studio          # inspeccionar datos
 - **Cambios de esquema:** siempre por migración Prisma, nunca SQL suelto contra la base, y avisando en el PR — el panel admin tipa contra esas tablas.
 - **Nueva app en el monorepo:** va en `apps/` y debe exponer los scripts `dev`, `build`, `lint`, `typecheck` y `test` para no romper la CI. **Ojo: el scanner NO es una app nueva** — vive en `apps/frontend` bajo `/scan` (decisión 3).
 - **Contrato entre Dev 1 y Dev 2:** el Swagger en `/api/docs` es la fuente de verdad. Si un endpoint cambia de forma, se avisa antes de mergear.
-- **Dependencias entre personas:** Dev 2 puede avanzar UI y escaneo con mocks; solo la integración final depende de Dev 1. Dev 1 puede construir todo `/api/scan` sin los certificados de Apple. **Lo que sí bloquea de verdad hoy:** sin el endpoint de §5.6 no hay usuarios `STAFF` reales para probar el login del cajero — mientras tanto, crear la fila de `MerchantUser` a mano.
+- **Dependencias entre personas:** Dev 2 puede avanzar UI y escaneo con mocks; solo la integración final depende de Dev 1. Dev 1 puede construir todo `/api/scan` sin los certificados de Apple. **Lo que sí bloquea de verdad hoy (2026-09-24):** las credenciales de Apple/Google Wallet (Dev 1), sin las que el cliente no recibe su tarjeta real. El resto se puede avanzar en paralelo: ver §3.2.
