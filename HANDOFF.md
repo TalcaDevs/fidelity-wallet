@@ -132,7 +132,7 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
 | `/admin/login` | Login del dueño | Público | Dev 3 |
 | `/admin/reset` | Recuperación de contraseña | Público | Dev 3 |
 | `/admin/dashboard` · `/admin/promotions` · `/admin/customers` · `/admin/settings` | Panel | **Protegido, solo `OWNER`** (un `STAFF` cae a `/scan`) | Dev 3 |
-| `/join/:merchantId` | Landing de emisión del cliente final | Público, sin login | Dev 2 |
+| `/join/:merchantName` | Landing de emisión del cliente final | Público, sin login | Dev 2 |
 | `/scan` | PWA del cajero | **Protegido: requiere sesión (`STAFF` u `OWNER`)** | Dev 2 |
 
 **Por qué el panel queda namespaceado bajo `/admin/*`:** si mañana la landing se mueve a un sitio estático prerenderizado (por SEO y velocidad), **las URLs del panel no cambian**. Es la razón del prefijo; no es cosmética.
@@ -169,7 +169,7 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
 | PWA del cajero | **No está implementada.** Va en `apps/frontend`, ruta `/scan` — **`apps/scanner` quedó sin efecto, no crearla** (decisión 3) |
 | Invitación de meseros | No existe el endpoint para crear usuarios `STAFF`. Hoy las filas de `MerchantUser` se crean **a mano**. Asignado a Dev 1, ver §5.6 |
 | Landing pública `/` | **No existe.** Ver §8.6 (falta definir quién la hace y qué lleva) |
-| Landing de emisión | **No existe** la ruta `/join/:merchantId` |
+| Landing de emisión | **No existe** la ruta `/join/:merchantName` |
 | Motor de pases | No están instalados `passkit-generator` ni `googleapis`, ni hay certificados |
 | Seeds | No hay seed reproducible de datos de demo |
 
@@ -300,7 +300,7 @@ Reglas, **todas dentro de una transacción de base de datos**:
 - **Fallback manual obligatorio:** pantalla para buscar por RUT o teléfono cuando la cámara falla (permiso denegado, poca luz, pantalla rota del cliente). No es opcional: es la diferencia entre "se cayó el sistema" y "seguimos atendiendo".
 - Comportamiento offline mínimo: si se cae la red, avisar claramente en vez de fallar en silencio. Lo mismo vale para la sesión: distinguir "sin internet" de "sesión vencida, volvé a entrar".
 
-### 6.2 Landing de adquisición `/join/:merchantId`
+### 6.2 Landing de adquisición `/join/:merchantName`
 Flujo completo en una sola pantalla, sin scroll innecesario:
 1. El cliente escanea el QR físico de la mesa y aterriza aquí.
 2. Ve el nombre del local y la promoción vigente ("Junta 5 sellos, llévate un café").
@@ -310,6 +310,8 @@ Flujo completo en una sola pantalla, sin scroll innecesario:
 6. Pantalla de confirmación con instrucción explícita de qué hacer en la próxima visita.
 
 **Requisitos no negociables del landing:** carga rápida en 4G, cero login, cero contraseñas, mobile-first, texto legible sin zoom y una línea sobre el tratamiento de datos personales (§7.2).
+
+**Decisión importante (URL vs DB):** El slug o nombre del local va en la URL (`/join/:merchantName`) por usabilidad, SEO y confianza del cliente final, pero toda escritura en la base de datos (como la emisión del pase) sigue usando estrictamente el `merchantId` (UUID) para evitar colisiones y por seguridad. El frontend es responsable de consultar un endpoint público para resolver el nombre de la URL y obtener el `merchantId` real antes de iniciar la emisión.
 
 Si el comercio tiene `stampValidityDays`, **decirlo acá** en lenguaje humano ("tus sellos valen 3 meses"). Enterarse del vencimiento cuando el contador ya bajó es la peor forma de enterarse (§7.7).
 

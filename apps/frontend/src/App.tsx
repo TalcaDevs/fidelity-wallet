@@ -38,12 +38,16 @@ export default function App() {
         <Routes>
           {/* Públicas: funcionan con y sin sesión */}
           <Route path={ROUTES.home} element={<Home />} />
-          <Route path="/join/:merchantId" element={<Join />} />
-          <Route path={ROUTES.scan} element={<Scan />} />
+          <Route path="/join/:merchantName" element={<Join />} />
           <Route path={ROUTES.resetPassword} element={<PasswordResetRoute onDone={finishPasswordRecovery} />} />
 
           <Route element={<RedirectIfAuthenticated session={session} />}>
             <Route path={ROUTES.login} element={<SupabaseAuth />} />
+          </Route>
+
+          {/* Scanner: requiere sesión y rol OWNER o STAFF */}
+          <Route element={<RequireRole session={session} membership={membership} allow={['OWNER', 'STAFF']} />}>
+            <Route path={ROUTES.scan} element={session && membership.merchantId ? <Scan merchantId={membership.merchantId} session={session} /> : null} />
           </Route>
 
           {/* Panel: requiere sesión y rol OWNER */}

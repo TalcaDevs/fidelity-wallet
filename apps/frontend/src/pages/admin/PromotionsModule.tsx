@@ -86,7 +86,7 @@ export function PromotionsModule({ merchantId }: { merchantId: string | null }) 
 
       {isModalOpen && merchantId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60 backdrop-blur-sm transition-opacity">
-          <div className="animate-in fade-in zoom-in-95 duration-200">
+          <div className="duration-200">
             <PromotionSettings
               merchantId={merchantId}
               promoId={editingPromoId}

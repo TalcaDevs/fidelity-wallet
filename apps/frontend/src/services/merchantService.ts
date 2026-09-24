@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { isValidStampValidityDays } from '../lib/stampExpiry';
+import { apiUrl } from '../lib/api';
 
 export interface Merchant {
   id: string;
@@ -12,6 +13,64 @@ export interface Merchant {
 }
 
 export type MerchantSettings = Pick<Merchant, 'name' | 'stampValidityDays'>;
+
+export interface MerchantWithPromo {
+  id: string;
+  name: string;
+  stampValidityDays: number | null;
+  Promotion: {
+    id: string;
+    name: string;
+    targetStamps: number;
+    rewardName: string;
+  }[];
+}
+
+export async function getMerchantWithActivePromo(merchantName: string): Promise<MerchantWithPromo | null> {
+  // Manejo de Mocks si Dev 3 aún no abre el RLS, o para tests
+  if (import.meta.env.VITE_USE_MOCKS === 'true') {
+    return {
+      id: 'mock-merchant-id',
+      name: merchantName || 'Mi Local (Mock)',
+      stampValidityDays: 30,
+      Promotion: [
+        {
+          id: 'mock-promo-id',
+          name: 'Promo 10 Sellos',
+          targetStamps: 10,
+          rewardName: 'Café Gratis'
+        }
+      ]
+    };
+  }
+
+  const response = await fetch(apiUrl('/api/merchants/by-slug/' + encodeURIComponent(merchantName)));
+  
+  if (response.status === 404) {
+    return null;
+  }
+  
+  if (!response.ok) {
+    throw new Error('No se pudo cargar la información del local. Por favor, reintenta.');
+  }
+  
+  const data = await response.json();
+  
+  // Mapear la respuesta del backend al contrato esperado por el frontend
+  return {
+    id: data.id,
+    name: data.name,
+    stampValidityDays: data.stampValidityDays,
+    Promotion: data.activePromotion ? [
+      {
+        id: data.activePromotion.id,
+        name: data.activePromotion.name || 'Promoción Activa',
+        targetStamps: data.activePromotion.targetStamps,
+        rewardName: data.activePromotion.rewardName
+      }
+    ] : []
+  };
+}
 
 export async function getMerchant(merchantId: string): Promise<Merchant | null> {
   const { data, error } = await supabase
