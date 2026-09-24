@@ -3,13 +3,37 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, type Customer } from '@prisma/client';
 import { normalizePhone } from '../common/utils/phone.util.js';
 import { cleanRut, validateRut } from '../common/utils/rut.util.js';
 import { PassesService } from '../passes/passes.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateCustomerDto, CustomerResponseDto } from './dto/create-customer.dto.js';
 import { TERMS_VERSION } from './terms.js';
+
+// Mismo mensaje para todo cruce de identidad: no revela cuál de los dos datos ya existe.
+const IDENTITY_MISMATCH_MESSAGE =
+  'Los datos proporcionados no coinciden o no son válidos para emitir el pase.';
+
+/**
+ * El cliente encontrado debe tener exactamente el RUT y el teléfono enviados.
+ *
+ * Un cliente antiguo (anterior al 2026-09-24) puede tener solo uno de los dos. El dato
+ * faltante NO se completa con lo que llega: sin verificación (OTP), eso permitiría adjuntar el
+ * teléfono de un tercero a la ficha de otra persona y luego resolver su pase en caja por ese
+ * teléfono. Mientras no exista la verificación, basta con que coincida el dato que sí tiene.
+ */
+function assertSameIdentity(
+  customer: Pick<Customer, 'rut' | 'phone'>,
+  rut: string,
+  phone: string,
+): void {
+  const rutMatches = customer.rut === null || customer.rut === rut;
+  const phoneMatches = customer.phone === null || customer.phone === phone;
+  if (!rutMatches || !phoneMatches) {
+    throw new BadRequestException(IDENTITY_MISMATCH_MESSAGE);
+  }
+}
 
 @Injectable()
 export class CustomersService {
@@ -77,9 +101,7 @@ export class CustomersService {
       : null;
 
     if (customerByRut && customerByPhone && customerByRut.id !== customerByPhone.id) {
-      throw new BadRequestException(
-        'Los datos proporcionados no coinciden o no son válidos para emitir el pase.',
-      );
+      throw new BadRequestException(IDENTITY_MISMATCH_MESSAGE);
     }
 
     let customer = customerByRut ?? customerByPhone;
@@ -107,22 +129,24 @@ export class CustomersService {
             },
           });
           if (!customer) throw err;
+          assertSameIdentity(customer, normalizedRut, normalizedPhone);
         } else {
           throw err;
         }
       }
     } else {
-      // Cliente existente: completa el dato que le faltaba (clientes antiguos con un solo dato)
-      // y registra la nueva aceptación de los términos. Un RUT o teléfono que ya tenía NO se
-      // sobrescribe: sin verificación, eso permitiría secuestrar la ficha de otra persona.
-      customer = await this.prisma.customer.update({
-        where: { id: customer.id },
-        data: {
-          rut: customer.rut ?? normalizedRut,
-          phone: customer.phone ?? normalizedPhone,
-          ...termsAcceptance,
-        },
-      });
+      // Cliente existente: el RUT y el teléfono enviados deben coincidir con los guardados.
+      // Conocer solo el RUT de alguien no alcanza para emitirle una tarjeta a su nombre.
+      assertSameIdentity(customer, normalizedRut, normalizedPhone);
+
+      // La aceptación se registra una vez por versión: re-enviar el formulario no pisa la fecha
+      // en que el cliente aceptó por primera vez esta versión (es la prueba del consentimiento).
+      if (customer.termsVersion !== TERMS_VERSION) {
+        customer = await this.prisma.customer.update({
+          where: { id: customer.id },
+          data: termsAcceptance,
+        });
+      }
     }
 
     // 3. Buscar o crear el Pase (tarjeta) para este comercio específico mediante PassesService

@@ -11,6 +11,7 @@ import { ScanType } from '@prisma/client';
 import { maskPhone, maskRut } from '../common/utils/mask.util.js';
 import { normalizePhone } from '../common/utils/phone.util.js';
 import { cleanRut, validateRut } from '../common/utils/rut.util.js';
+import { ConfigService } from '@nestjs/config';
 import { PassesService } from '../passes/passes.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
@@ -20,6 +21,7 @@ import {
   ScanActionType,
   ScanResultDto,
 } from './dto/scan-action.dto.js';
+import { ManualLookupLimiter } from './manual-lookup-limiter.js';
 
 // Canje: evita el doble toque del cajero sobre el botón de canjear.
 export const REDEEM_DUPLICATE_WINDOW_MS = 90 * 1000; // 90 seconds
@@ -28,10 +30,12 @@ export const REDEEM_DUPLICATE_WINDOW_MS = 90 * 1000; // 90 seconds
 // otro durante este tiempo. Evita que un mismo cliente acumule varios sellos en una visita.
 export const DEFAULT_STAMP_COOLDOWN_MINUTES = 30;
 
-/** Lee STAMP_COOLDOWN_MINUTES (útil para acortarlo en pruebas locales); si no es válido, usa 30. */
-export function resolveStampCooldownMs(
-  raw: string | undefined = process.env.STAMP_COOLDOWN_MINUTES,
-): number {
+/**
+ * Convierte STAMP_COOLDOWN_MINUTES a milisegundos. Función pura: sin valor por defecto
+ * tomado del entorno, para que el resultado dependa solo del argumento (y los tests no
+ * cambien según el .env de quien los corre). Vacío, inválido o negativo → 30 min; 0 lo desactiva.
+ */
+export function resolveStampCooldownMs(raw: string | undefined): number {
   const minutes = raw === undefined || raw.trim() === '' ? NaN : Number(raw);
   const safeMinutes =
     Number.isFinite(minutes) && minutes >= 0 ? minutes : DEFAULT_STAMP_COOLDOWN_MINUTES;
@@ -67,12 +71,18 @@ const toPromotionOptions = (
 
 @Injectable()
 export class ScanService {
-  private readonly stampCooldownMs = resolveStampCooldownMs();
+  private readonly stampCooldownMs: number;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly passesService: PassesService,
-  ) {}
+    configService: ConfigService,
+    private readonly manualLookupLimiter: ManualLookupLimiter,
+  ) {
+    this.stampCooldownMs = resolveStampCooldownMs(
+      configService.get<string>('STAMP_COOLDOWN_MINUTES'),
+    );
+  }
 
   async processScan(dto: ScanActionDto, callerUserId: string): Promise<ScanResultDto> {
     if (!callerUserId) {
@@ -94,6 +104,12 @@ export class ScanService {
       );
     }
 
+    // El límite va después de validar la membresía (un extraño no consume el cupo de nadie) y
+    // antes de buscar (el intento cuenta aunque el RUT no exista: eso es justo lo que se frena).
+    if (!dto.passToken) {
+      this.manualLookupLimiter.consume(callerUserId);
+    }
+
     const pass = await this.resolvePass(dto);
 
     // Los sellos son un saldo único del pase: cualquier sello vigente sirve para cualquier
@@ -107,9 +123,9 @@ export class ScanService {
       throw new BadRequestException('El comercio no tiene una promoción activa válida');
     }
 
+    // Solo datos enmascarados: el cajero no necesita el id interno del cliente.
     const maskedCustomer: MaskedCustomerDto | undefined = pass.customer
       ? {
-          id: pass.customer.id,
           rut: pass.customer.rut ? maskRut(pass.customer.rut) : null,
           phone: pass.customer.phone ? maskPhone(pass.customer.phone) : null,
         }
@@ -253,16 +269,20 @@ export class ScanService {
     callerUserId: string,
     maskedCustomer?: MaskedCustomerDto,
   ): Promise<ScanResultDto> {
-    const now = new Date();
-    const expiresAt =
-      pass.merchant.stampValidityDays && pass.merchant.stampValidityDays > 0
-        ? new Date(now.getTime() + pass.merchant.stampValidityDays * 24 * 60 * 60 * 1000)
-        : null;
     const featured = activePromotions[0];
 
     return this.prisma.$transaction(async (tx) => {
       // Bloqueo pesimista de fila en Pass para serializar operaciones sobre el mismo pase
       await tx.$queryRaw`SELECT id FROM "Pass" WHERE id = ${pass.id}::uuid FOR UPDATE`;
+
+      // "now" se toma DESPUÉS del lock: si se tomara antes, el que esperó el lock compararía
+      // contra un sello creado "en el futuro" (diferencia negativa) y quedaría bloqueado aunque
+      // el cooldown fuera 0.
+      const now = new Date();
+      const expiresAt =
+        pass.merchant.stampValidityDays && pass.merchant.stampValidityDays > 0
+          ? new Date(now.getTime() + pass.merchant.stampValidityDays * 24 * 60 * 60 * 1000)
+          : null;
 
       // Bloqueo por pase: un sello cada stampCooldownMs. Se evalúa dentro del lock de fila,
       // así que dos cajeros escaneando a la vez no pueden colar un segundo sello.
@@ -275,7 +295,11 @@ export class ScanService {
         orderBy: { createdAt: 'desc' },
       });
 
-      if (latestScan && now.getTime() - latestScan.createdAt.getTime() < this.stampCooldownMs) {
+      if (
+        this.stampCooldownMs > 0 &&
+        latestScan &&
+        now.getTime() - latestScan.createdAt.getTime() < this.stampCooldownMs
+      ) {
         const nextStampAvailableAt = new Date(latestScan.createdAt.getTime() + this.stampCooldownMs);
         const minutesLeft = Math.max(
           1,
@@ -355,18 +379,20 @@ export class ScanService {
     callerUserId: string,
     maskedCustomer?: MaskedCustomerDto,
   ): Promise<ScanResultDto> {
-    const now = new Date();
-
     return this.prisma.$transaction(async (tx) => {
       // Bloqueo pesimista de fila en Pass para serializar operaciones sobre el mismo pase
       await tx.$queryRaw`SELECT id FROM "Pass" WHERE id = ${pass.id}::uuid FOR UPDATE`;
+      const now = new Date();
 
-      // Ventana anti-duplicado de 90 segundos para canje (doble toque)
+      // Ventana anti-duplicado de 90 s (doble toque) POR PROMOCIÓN. Si fuera por pase, canjear
+      // A y enseguida B respondería "ya canjeado" con los datos de B sin consumir sellos, y la
+      // caja mostraría "premio entregado": el cliente se llevaría B gratis.
       const latestRedeem = await tx.scan.findFirst({
         where: {
           passId: pass.id,
           merchantId: dto.merchantId,
           type: ScanType.REWARD_REDEEMED,
+          promotionId: promotion.id,
         },
         orderBy: { createdAt: 'desc' },
       });

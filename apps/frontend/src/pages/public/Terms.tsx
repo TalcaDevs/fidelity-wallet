@@ -1,27 +1,19 @@
 import { Link } from 'react-router-dom';
 import { ROUTES } from '../../components/routing/routePaths';
+import { LEGAL, LEGAL_IS_DRAFT, TERMS_VERSION } from '../../lib/legal';
 
 /**
  * Términos y condiciones del cliente final (ruta pública /terminos).
  *
  * Es una plantilla estándar para un programa de fidelización por sellos en Chile, alineada con
  * cómo funciona el producto (saldo único de sellos, vencimiento, bloqueo antifraude, canje a
- * elección). ANTES DE PRODUCCIÓN: completar LEGAL con los datos reales de la empresa y pasar el
- * texto por revisión legal.
+ * elección). ANTES DE PRODUCCIÓN: definir VITE_LEGAL_* (ver .env.example) con los datos reales de
+ * la empresa y pasar el texto por revisión legal. Mientras falte alguno, la página muestra un
+ * aviso visible de borrador: así no se puede publicar "sin darse cuenta".
  *
- * Si cambia el contenido, subir TERMS_VERSION aquí y en apps/backend/src/customers/terms.ts en
- * el mismo PR: el backend guarda en Customer.termsVersion qué versión aceptó cada cliente.
+ * Si cambia el contenido, subir TERMS_VERSION en src/lib/legal.ts y en
+ * apps/backend/src/customers/terms.ts en el mismo PR (un test verifica que coincidan).
  */
-export const TERMS_VERSION = '2026-09-24';
-
-const LEGAL = {
-  platform: 'Fidelity Wallet',
-  company: '[RAZÓN SOCIAL DE LA EMPRESA]',
-  companyRut: '[RUT DE LA EMPRESA]',
-  address: '[DOMICILIO LEGAL]',
-  contactEmail: '[CORREO DE CONTACTO]',
-};
-
 interface Section {
   title: string;
   body: React.ReactNode;
@@ -146,7 +138,7 @@ const SECTIONS: Section[] = [
         <ul>
           <li><strong>Qué datos:</strong> tu RUT, tu número de teléfono celular y el historial de sellos y canjes de tu tarjeta (fecha, hora y Comercio).</li>
           <li><strong>Para qué:</strong> identificarte, emitir y actualizar tu tarjeta, registrar tus sellos y canjes, prevenir el uso indebido y, de forma agregada, entregar al Comercio estadísticas de su programa.</li>
-          <li><strong>Con quién se comparten:</strong> con el Comercio donde te registraste, que ve tu RUT y teléfono parcialmente ocultos al escanear tu tarjeta, y con los proveedores tecnológicos necesarios para operar el servicio (alojamiento y Apple o Google para tu tarjeta digital). <strong>No vendemos ni cedemos tus datos</strong> a terceros para publicidad.</li>
+          <li><strong>Con quién se comparten:</strong> con el Comercio donde te registraste: su personal de caja ve tu RUT y teléfono parcialmente ocultos al escanear tu tarjeta, y su dueño o administrador puede ver y exportar tu RUT y teléfono completos para gestionar su programa. También con los proveedores tecnológicos necesarios para operar el servicio (alojamiento y Apple o Google para tu tarjeta digital). <strong>No vendemos ni cedemos tus datos</strong> a terceros para publicidad.</li>
           <li><strong>Cuánto tiempo:</strong> mientras tengas una tarjeta activa y, después, solo el tiempo que exija la ley.</li>
           <li><strong>Tus derechos:</strong> puedes pedir acceso, rectificación, cancelación u oposición al tratamiento de tus datos, y solicitar la eliminación de tu tarjeta, escribiendo a {LEGAL.contactEmail}. Eliminar la tarjeta borra también sus sellos.</li>
         </ul>
@@ -192,6 +184,12 @@ export function Terms() {
         <Link to={ROUTES.home} className="text-sm font-bold text-blue-700 hover:underline">
           ← {LEGAL.platform}
         </Link>
+
+        {LEGAL_IS_DRAFT && (
+          <p role="note" className="mt-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">
+            Borrador: faltan los datos legales de la empresa. Este texto no es la versión definitiva.
+          </p>
+        )}
 
         <h1 className="mt-6 text-3xl font-black leading-tight sm:text-4xl">
           Términos y condiciones del programa de sellos

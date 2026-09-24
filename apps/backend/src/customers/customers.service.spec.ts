@@ -167,40 +167,57 @@ describe('CustomersService', () => {
     expect(passesServiceMock.getWalletUrlsForPass).not.toHaveBeenCalled();
   });
 
-  it('should complete the missing phone of a legacy customer and record the new terms acceptance', async () => {
-    prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
-    prismaMock.customer.findUnique.mockImplementation(({ where }: any) =>
-      Promise.resolve(where.rut ? { id: 'c-old', rut: '11111111-1', phone: null } : null),
-    );
-    prismaMock.customer.update.mockResolvedValue({ id: 'c-old' });
+  describe('identity of an existing customer (anti-impersonation)', () => {
+    const existing = (customer: object) =>
+      prismaMock.customer.findUnique.mockImplementation(({ where }: any) =>
+        Promise.resolve(where.rut ? { id: 'c-1', termsVersion: null, ...customer } : null),
+      );
 
-    await service.createOrFindCustomer(validDto());
-
-    expect(prismaMock.customer.update).toHaveBeenCalledWith({
-      where: { id: 'c-old' },
-      data: {
-        rut: '11111111-1',
-        phone: '+56912345678',
-        termsAcceptedAt: expect.any(Date),
-        termsVersion: TERMS_VERSION,
-      },
+    beforeEach(() => {
+      prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
+      prismaMock.customer.update.mockResolvedValue({ id: 'c-1' });
     });
-  });
 
-  it('should never overwrite a phone the customer already had', async () => {
-    prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
-    prismaMock.customer.findUnique.mockImplementation(({ where }: any) =>
-      Promise.resolve(where.rut ? { id: 'c-1', rut: '11111111-1', phone: '+56911112222' } : null),
-    );
-    prismaMock.customer.update.mockResolvedValue({ id: 'c-1' });
+    it('rejects a known RUT sent with a different phone (knowing a RUT is not enough)', async () => {
+      existing({ rut: '11111111-1', phone: '+56911112222' });
 
-    await service.createOrFindCustomer(validDto({ phone: '+56933334444' }));
+      await expect(service.createOrFindCustomer(validDto({ phone: '+56933334444' }))).rejects.toThrow(
+        'Los datos proporcionados no coinciden o no son válidos para emitir el pase.',
+      );
+      expect(prismaMock.customer.update).not.toHaveBeenCalled();
+      expect(passesServiceMock.findOrCreatePass).not.toHaveBeenCalled();
+    });
 
-    expect(prismaMock.customer.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ phone: '+56911112222' }),
-      }),
-    );
+    it('does NOT attach the sent phone to a legacy customer that had none (no verification yet)', async () => {
+      existing({ rut: '11111111-1', phone: null });
+
+      await service.createOrFindCustomer(validDto());
+
+      // Solo registra la aceptación; el teléfono no se escribe
+      expect(prismaMock.customer.update).toHaveBeenCalledWith({
+        where: { id: 'c-1' },
+        data: { termsAcceptedAt: expect.any(Date), termsVersion: TERMS_VERSION },
+      });
+    });
+
+    it('keeps the original consent date when the same terms version was already accepted', async () => {
+      existing({ rut: '11111111-1', phone: '+56912345678', termsVersion: TERMS_VERSION });
+
+      await service.createOrFindCustomer(validDto());
+
+      expect(prismaMock.customer.update).not.toHaveBeenCalled();
+    });
+
+    it('records a new acceptance when the customer accepted an older terms version', async () => {
+      existing({ rut: '11111111-1', phone: '+56912345678', termsVersion: '2020-01-01' });
+
+      await service.createOrFindCustomer(validDto());
+
+      expect(prismaMock.customer.update).toHaveBeenCalledWith({
+        where: { id: 'c-1' },
+        data: { termsAcceptedAt: expect.any(Date), termsVersion: TERMS_VERSION },
+      });
+    });
   });
 });
 

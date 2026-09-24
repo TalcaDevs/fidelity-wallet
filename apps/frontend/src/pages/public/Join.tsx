@@ -6,6 +6,13 @@ import { getMerchantWithActivePromo, MerchantWithPromo } from '../../services/me
 import { JoinNotFound } from './JoinNotFound';
 import { JoinSuccess } from './JoinSuccess';
 import { apiUrl } from '../../lib/api';
+import { extractApiError } from '../../lib/apiError';
+
+/** Respuesta de POST /api/customers (CustomerResponseDto): las URLs solo vienen si el pase es nuevo. */
+interface CustomerApiResponse {
+  appleWalletUrl?: string;
+  googleWalletUrl?: string;
+}
 
 export function Join() {
   const { merchantName } = useParams<{ merchantName: string }>();
@@ -24,10 +31,15 @@ export function Join() {
   const [error, setError] = useState('');
   const [walletUrls, setWalletUrls] = useState<{ apple?: string, google?: string }>({});
   const [alreadyExists, setAlreadyExists] = useState(false);
+  // Error de red o del servidor al cargar el local: distinto de "este local no existe".
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     async function fetchMerchant() {
       if (!merchantName) return;
+      setLoadingData(true);
+      setLoadError(false);
       try {
         const data = await getMerchantWithActivePromo(merchantName);
         if (!data) {
@@ -35,14 +47,14 @@ export function Join() {
         } else {
           setMerchant(data);
         }
-      } catch (err) {
-        setNotFound(true);
+      } catch {
+        setLoadError(true);
       } finally {
         setLoadingData(false);
       }
     }
     fetchMerchant();
-  }, [merchantName]);
+  }, [merchantName, reloadKey]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -73,13 +85,13 @@ export function Join() {
           })
         });
         
-        const data = await response.json().catch(() => ({}));
+        const body: unknown = await response.json().catch(() => null);
 
         if (!response.ok) {
-          // La validación de Nest devuelve message como arreglo: se muestra el primero.
-          const message = Array.isArray(data.message) ? data.message[0] : data.message;
-          throw new Error(message || 'Error al generar pase');
+          throw new Error(extractApiError(body) ?? 'Error al generar pase');
         }
+
+        const data = (body ?? {}) as CustomerApiResponse;
         
         if (data.appleWalletUrl || data.googleWalletUrl) {
           setWalletUrls({ apple: data.appleWalletUrl, google: data.googleWalletUrl });
@@ -109,8 +121,37 @@ export function Join() {
     );
   }
 
+  if (loadError) {
+    return (
+      <div className="min-h-[100dvh] flex flex-col items-center justify-center gap-4 bg-slate-50 p-6 text-center">
+        <p role="alert" className="text-lg font-bold text-slate-700">
+          No pudimos cargar la información del local. Revisa tu conexión.
+        </p>
+        <button
+          type="button"
+          onClick={() => setReloadKey((k) => k + 1)}
+          className="rounded-2xl bg-slate-900 px-6 py-3 font-bold text-white"
+        >
+          Reintentar
+        </button>
+      </div>
+    );
+  }
+
   if (notFound || !merchant) {
     return <JoinNotFound />;
+  }
+
+  // Sin promociones activas el alta falla en el backend: no se deja llenar el formulario en vano.
+  if (merchant.Promotion.length === 0) {
+    return (
+      <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
+        <h1 className="text-3xl font-black text-slate-900 mb-3">{merchant.name}</h1>
+        <p role="status" className="max-w-sm text-lg font-medium text-slate-600">
+          Este local aún no tiene un programa de sellos activo. Vuelve a intentarlo más adelante.
+        </p>
+      </div>
+    );
   }
 
   if (success) {
@@ -216,6 +257,7 @@ export function Join() {
             />
             <PhoneField
               label="Teléfono celular"
+              autoComplete="tel-national"
               onChange={(next) => { setPhone(next); setError(''); }}
               showErrors={submitted}
             />
@@ -223,6 +265,8 @@ export function Join() {
             <label className="flex items-start gap-3 px-1 pt-1 cursor-pointer">
               <input
                 type="checkbox"
+                aria-invalid={submitted && !acceptedTerms}
+                aria-describedby={submitted && !acceptedTerms ? 'terms-error' : undefined}
                 checked={acceptedTerms}
                 onChange={(e) => { setAcceptedTerms(e.target.checked); setError(''); }}
                 className="mt-0.5 h-5 w-5 shrink-0 rounded border-slate-300 accent-blue-600"
@@ -242,14 +286,14 @@ export function Join() {
               </span>
             </label>
             {submitted && !acceptedTerms && (
-              <p role="alert" className="text-red-500 text-sm font-bold px-1">
+              <p id="terms-error" role="alert" className="text-red-500 text-sm font-bold px-1">
                 Debes aceptar los términos y condiciones para obtener tu tarjeta.
               </p>
             )}
 
             {/* Errores del servidor; los de formato los muestra cada campo */}
             {error && (
-              <p className="text-red-500 text-sm font-bold px-1">
+              <p role="alert" className="text-red-500 text-sm font-bold px-1">
                 {error}
               </p>
             )}

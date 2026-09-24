@@ -1,4 +1,5 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsNotEmpty, IsString } from 'class-validator';
 
 export class PublicPromotionDto {
   @ApiProperty({ description: 'ID de la promoción', example: 'e4c08495-e224-4122-9f9f-e0117ab81cd7' })
@@ -27,7 +28,7 @@ export class PublicMerchantDto {
   @ApiProperty({ description: 'Identificador público de la landing /join/:slug', example: 'cafeteria-central' })
   slug: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     description: 'Vigencia de los sellos en días. null = no vencen',
     example: 90,
     nullable: true,
@@ -35,7 +36,7 @@ export class PublicMerchantDto {
   })
   stampValidityDays: number | null;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     description: 'Promoción activa más reciente (la que se destaca). null si el comercio no tiene ninguna activa',
     type: PublicPromotionDto,
     nullable: true,
@@ -48,4 +49,20 @@ export class PublicMerchantDto {
     type: [PublicPromotionDto],
   })
   activePromotions: PublicPromotionDto[];
+}
+
+export class UpdateSlugDto {
+  @ApiProperty({
+    description:
+      'Nuevo identificador público de /join/:slug. Se normaliza (minúsculas, sin tildes, guiones) y debe tener entre 3 y 60 caracteres',
+    example: 'cafe-central',
+  })
+  @IsString({ message: 'El slug debe ser una cadena de texto' })
+  @IsNotEmpty({ message: 'El slug no puede estar vacío' })
+  slug: string;
+}
+
+export class UpdateSlugResponseDto {
+  @ApiProperty({ example: 'cafe-central' })
+  slug: string;
 }

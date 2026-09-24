@@ -79,13 +79,20 @@ export function ScanReward({ result, onReset, onRedeem }: { result: ScanResult, 
         </svg>
       </div>
       <h2 className="text-3xl font-black text-amber-400 mb-1">¡Puede canjear un premio!</h2>
+      {result.alreadyScanned && (
+        // El cliente está en el bloqueo de 30 min: le alcanza para un premio, pero el sello de
+        // esta visita NO se sumó. Sin este aviso, el cajero cree que registró la visita.
+        <p role="status" className="w-full max-w-sm mt-2 mb-1 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-200">
+          Sello de esta visita no sumado. {result.message}
+        </p>
+      )}
       <p className="text-slate-300 text-lg font-medium mb-6">
         {result.customerLabel && <>Cliente {result.customerLabel} · </>}
         <span className="font-black text-white">{stamps} sellos</span>
       </p>
 
       {promotions.length > 0 ? (
-        <div role="radiogroup" aria-label="Premio a canjear" className="w-full max-w-sm space-y-2 mb-6 text-left">
+        <div role="group" aria-label="Premio a canjear" className="w-full max-w-sm space-y-2 mb-6 text-left">
           <p className="text-slate-400 text-sm font-bold uppercase tracking-widest mb-1">¿Qué premio elige el cliente?</p>
           {promotions.map((p) => {
             const isSelected = p.id === selectedId;
@@ -93,8 +100,7 @@ export function ScanReward({ result, onReset, onRedeem }: { result: ScanResult, 
               <button
                 key={p.id}
                 type="button"
-                role="radio"
-                aria-checked={isSelected}
+                aria-pressed={isSelected}
                 disabled={!p.canRedeem}
                 onClick={() => setSelectedId(p.id)}
                 className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border-2 transition-colors ${

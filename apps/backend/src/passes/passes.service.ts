@@ -215,7 +215,9 @@ export class PassesService {
 
   /**
    * Helper privado para armar el contrato PassData.
-   * Unifica el conteo de sellos activos y próximo vencimiento filtrando por la promoción activa.
+   * El saldo (sellos activos y próximo vencimiento) es único del pase y no depende de la
+   * promoción: la promoción solo define la meta y el premio que se muestran en la tarjeta (la
+   * indicada en explicitPromotionId o, si no, la activa más reciente).
    */
   private async buildPassData(
     pass: PassWithMerchantAndCustomer,

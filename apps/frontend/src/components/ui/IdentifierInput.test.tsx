@@ -44,7 +44,7 @@ describe('IdentifierInput', () => {
 
   it('switches to phone mode with a fixed +56 prefix and emits the full number', () => {
     const { last } = setup();
-    fireEvent.click(screen.getByRole('radio', { name: 'Teléfono' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Teléfono' }));
 
     expect(screen.getByText('+56')).toBeInTheDocument();
     const input = screen.getByPlaceholderText('9 1234 5678');
@@ -56,7 +56,7 @@ describe('IdentifierInput', () => {
 
   it('strips a pasted +56 so the prefix is never duplicated', () => {
     const { last } = setup();
-    fireEvent.click(screen.getByRole('radio', { name: 'Teléfono' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Teléfono' }));
     fireEvent.change(screen.getByPlaceholderText('9 1234 5678'), { target: { value: '+56 9 8765 4321' } });
 
     expect(last()).toEqual({ kind: 'phone', value: '+56987654321', isValid: true });
@@ -64,7 +64,7 @@ describe('IdentifierInput', () => {
 
   it('rejects a phone that does not start with 9', () => {
     const { last } = setup();
-    fireEvent.click(screen.getByRole('radio', { name: 'Teléfono' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Teléfono' }));
     fireEvent.change(screen.getByPlaceholderText('9 1234 5678'), { target: { value: '22345678' } });
 
     expect(last().isValid).toBe(false);
@@ -74,11 +74,11 @@ describe('IdentifierInput', () => {
   it('clears the value when switching type', () => {
     const { last } = setup();
     fireEvent.change(screen.getByPlaceholderText('12.345.678-9'), { target: { value: '123456785' } });
-    fireEvent.click(screen.getByRole('radio', { name: 'Teléfono' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Teléfono' }));
 
     expect(screen.getByPlaceholderText('9 1234 5678')).toHaveValue('');
     expect(last()).toEqual({ kind: 'phone', value: '', isValid: false });
-    expect(screen.getByRole('radio', { name: 'Teléfono' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('button', { name: 'Teléfono' })).toHaveAttribute('aria-pressed', 'true');
   });
 });
 

@@ -19,7 +19,8 @@ export class GeneratePassDto {
   merchantId: string;
 
   @ApiPropertyOptional({
-    description: 'ID opcional de la promoción a asociar (UUID v4)',
+    description:
+      'ID opcional de la promoción cuya meta y premio se muestran en el pase (UUID v4). No cambia el saldo: los sellos sirven para cualquier promoción activa',
     example: 'p0000000-0000-0000-0000-000000000001',
   })
   @IsOptional()

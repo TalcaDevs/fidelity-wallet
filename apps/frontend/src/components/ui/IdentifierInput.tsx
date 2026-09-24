@@ -1,4 +1,5 @@
-import { useId, useState } from 'react';
+import { useId, useLayoutEffect, useRef, useState } from 'react';
+import { reformatKeepingCaret } from './caret';
 import {
   PHONE_PREFIX,
   formatPhoneLocal,
@@ -33,7 +34,32 @@ interface FieldProps {
   autoFocus?: boolean;
   /** Etiqueta visible. Sin ella, la etiqueta queda solo para lectores de pantalla. */
   label?: string;
+  /** Autocompletado del navegador. Por defecto "off" (caja); el alta pública usa "tel-national". */
+  autoComplete?: string;
 }
+
+const isRutChar = (ch: string) => /[0-9kK]/.test(ch);
+const isDigit = (ch: string) => /[0-9]/.test(ch);
+
+/**
+ * Restaura el cursor después de reformatear: sin esto, al editar en medio del RUT o del
+ * teléfono el cursor salta al final en cada tecla.
+ */
+function useCaretRestore(value: string) {
+  const ref = useRef<HTMLInputElement>(null);
+  const pending = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const input = ref.current;
+    if (input && pending.current !== null && document.activeElement === input) {
+      input.setSelectionRange(pending.current, pending.current);
+    }
+    pending.current = null;
+  }, [value]);
+  return { ref, setPendingCaret: (caret: number) => (pending.current = caret) };
+}
+
+const inputTypeOf = (e: React.ChangeEvent<HTMLInputElement>) =>
+  (e.nativeEvent as InputEvent).inputType;
 
 const STYLES = {
   light: {
@@ -67,7 +93,9 @@ function rutError(display: string, force: boolean): string | null {
   const len = rutLength(display);
   if (len === 0) return force ? 'Ingresa tu RUT' : null;
   if (len >= 9 || force) {
-    return len < 8 ? 'El RUT está incompleto' : 'RUT inválido: revisa el dígito verificador';
+    // Con 8 caracteres no se distingue un RUT de 7 dígitos con DV malo de uno de 8 a medio escribir.
+    if (len < 8) return 'El RUT está incompleto';
+    return len === 8 ? 'RUT inválido o incompleto' : 'RUT inválido: revisa el dígito verificador';
   }
   return null;
 }
@@ -119,9 +147,10 @@ const inputClass = (variant: Variant) =>
   `w-full min-w-0 bg-transparent px-5 py-4 text-lg font-medium outline-none ${STYLES[variant].placeholder}`;
 
 /** RUT con autoformato "12.345.678-5" y validación de módulo 11. */
-export function RutField({ onChange, showErrors = false, variant = 'light', autoFocus = false, label }: FieldProps) {
+export function RutField({ onChange, showErrors = false, variant = 'light', autoFocus = false, label, autoComplete = 'off' }: FieldProps) {
   const [display, setDisplay] = useState('');
   const [touched, setTouched] = useState(false);
+  const { ref, setPendingCaret } = useCaretRestore(display);
   const error = rutError(display, showErrors || touched);
 
   return (
@@ -134,12 +163,21 @@ export function RutField({ onChange, showErrors = false, variant = 'light', auto
         <input
           id={id}
           type="text"
+          ref={ref}
           inputMode="text"
-          autoComplete="off"
+          autoComplete={autoComplete}
           autoFocus={autoFocus}
           value={display}
           onChange={(e) => {
-            const next = formatRutInput(e.target.value);
+            const { value: next, caret } = reformatKeepingCaret({
+              raw: e.target.value,
+              caret: e.target.selectionStart ?? e.target.value.length,
+              previous: display,
+              inputType: inputTypeOf(e),
+              format: formatRutInput,
+              isSignificant: isRutChar,
+            });
+            setPendingCaret(caret);
             setDisplay(next);
             const isValid = validateRUT(next);
             onChange({ value: isValid ? next : '', isValid });
@@ -156,9 +194,11 @@ export function RutField({ onChange, showErrors = false, variant = 'light', auto
 }
 
 /** Celular chileno: el +56 es fijo y el usuario escribe solo los 9 dígitos. */
-export function PhoneField({ onChange, showErrors = false, variant = 'light', autoFocus = false, label }: FieldProps) {
+export function PhoneField({ onChange, showErrors = false, variant = 'light', autoFocus = false, label, autoComplete = 'off' }: FieldProps) {
   const [digits, setDigits] = useState('');
   const [touched, setTouched] = useState(false);
+  const display = formatPhoneLocal(digits);
+  const { ref, setPendingCaret } = useCaretRestore(display);
   const error = phoneError(digits, showErrors || touched);
 
   return (
@@ -172,12 +212,22 @@ export function PhoneField({ onChange, showErrors = false, variant = 'light', au
         <input
           id={id}
           type="tel"
+          ref={ref}
           inputMode="numeric"
-          autoComplete="off"
+          autoComplete={autoComplete}
           autoFocus={autoFocus}
-          value={formatPhoneLocal(digits)}
+          value={display}
           onChange={(e) => {
-            const next = phoneLocalDigits(e.target.value);
+            const { value: formatted, caret } = reformatKeepingCaret({
+              raw: e.target.value,
+              caret: e.target.selectionStart ?? e.target.value.length,
+              previous: display,
+              inputType: inputTypeOf(e),
+              format: (raw) => formatPhoneLocal(phoneLocalDigits(raw)),
+              isSignificant: isDigit,
+            });
+            const next = phoneLocalDigits(formatted);
+            setPendingCaret(caret);
             setDigits(next);
             const isValid = isValidPhoneLocal(next);
             onChange({ value: isValid ? toFullPhone(next) : '', isValid });
@@ -217,13 +267,12 @@ export function IdentifierInput({ onChange, variant = 'light', ...fieldProps }: 
 
   return (
     <div>
-      <div role="radiogroup" aria-label="Tipo de identificación" className={`grid grid-cols-2 gap-1 p-1 rounded-2xl mb-3 ${s.tabs}`}>
+      <div role="group" aria-label="Tipo de identificación" className={`grid grid-cols-2 gap-1 p-1 rounded-2xl mb-3 ${s.tabs}`}>
         {(['rut', 'phone'] as const).map((k) => (
           <button
             key={k}
             type="button"
-            role="radio"
-            aria-checked={kind === k}
+            aria-pressed={kind === k}
             onClick={() => handleKind(k)}
             className={`py-2.5 rounded-xl text-sm font-bold transition-colors ${kind === k ? s.tabActive : s.tabIdle}`}
           >

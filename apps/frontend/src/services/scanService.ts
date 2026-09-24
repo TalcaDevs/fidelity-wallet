@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { apiUrl } from '../lib/api';
-import { validateRUT } from '../utils/validators';
+import { extractApiError } from '../lib/apiError';
 
 // Promoción activa del local y si el saldo del cliente alcanza para canjearla.
 export interface PromotionOption {
@@ -13,6 +13,8 @@ export interface PromotionOption {
 
 export interface ScanResult {
   ok: boolean;
+  passId?: string;
+  scanId?: string;
   customerLabel?: string;
   stampsCount?: number;
   targetStamps?: number;
@@ -53,18 +55,37 @@ const mockProcessScan = async (id: string, action: 'STAMP' | 'REDEEM'): Promise<
   });
 };
 
+/** Contrato de POST /api/scan (ScanResultDto del backend), solo con lo que usa la PWA. */
+interface ScanApiResponse {
+  passId: string;
+  scanId?: string;
+  activeStamps: number;
+  targetStamps: number;
+  rewardUnlocked: boolean;
+  rewardName: string;
+  alreadyScanned: boolean;
+  availablePromotions?: PromotionOption[];
+  message?: string;
+  customer?: { rut?: string | null; phone?: string | null };
+}
+
+/** A quién se escanea: el QR del pase o, en el ingreso manual, el RUT o teléfono del cliente. */
+export type ScanTarget =
+  | { passToken: string }
+  | { customer: { rut: string } | { phone: string } };
+
 export interface ScanParams {
   merchantId: string;
   action: 'STAMP' | 'REDEEM';
-  passToken?: string;
-  identifier?: string;
+  target: ScanTarget;
   // Solo en REDEEM: la promoción que eligió el cliente.
   promotionId?: string;
 }
 
 export const processScan = async (params: ScanParams): Promise<ScanResult> => {
   if (import.meta.env.VITE_USE_MOCKS === 'true') {
-    return mockProcessScan(params.passToken || params.identifier || '123', params.action);
+    const id = 'passToken' in params.target ? params.target.passToken : Object.values(params.target.customer)[0];
+    return mockProcessScan(id, params.action);
   }
 
   try {
@@ -73,17 +94,10 @@ export const processScan = async (params: ScanParams): Promise<ScanResult> => {
       return { ok: false, error: 'No hay sesión activa' };
     }
 
-    let customer: { rut?: string, phone?: string } | undefined = undefined;
-    if (params.identifier) {
-      // ManualFallback ya validó que sea RUT o teléfono; el backend normaliza el formato.
-      customer = validateRUT(params.identifier) ? { rut: params.identifier } : { phone: params.identifier };
-    }
-
     const body = {
       merchantId: params.merchantId,
       action: params.action,
-      ...(params.passToken ? { passToken: params.passToken } : {}),
-      ...(customer ? { customer } : {}),
+      ...params.target,
       ...(params.promotionId ? { promotionId: params.promotionId } : {})
     };
 
@@ -97,20 +111,21 @@ export const processScan = async (params: ScanParams): Promise<ScanResult> => {
     });
     
     if (!response.ok) {
-      if (response.status === 400 || response.status === 404 || response.status === 403) {
-        const errorData = await response.json().catch(() => ({}));
-        let errorMessage = errorData.error || errorData.message;
-        if (Array.isArray(errorMessage)) {
-          errorMessage = errorMessage[0];
-        }
-        return { ok: false, error: errorMessage || 'Pase inválido o de otro local' };
+      const errorData: unknown = await response.json().catch(() => null);
+      if (response.status === 401) {
+        return { ok: false, error: 'Tu sesión venció. Vuelve a iniciar sesión.' };
+      }
+      if ([400, 403, 404, 409, 429].includes(response.status)) {
+        return { ok: false, error: extractApiError(errorData) ?? 'Pase inválido o de otro local' };
       }
       return { ok: false, error: 'Ocurrió un error al procesar el pase' };
     }
     
-    const data = await response.json();
+    const data = (await response.json()) as ScanApiResponse;
     return {
       ok: true,
+      passId: data.passId,
+      scanId: data.scanId,
       customerLabel: data.customer?.rut ?? data.customer?.phone ?? '',
       stampsCount: data.activeStamps,
       targetStamps: data.targetStamps,
@@ -120,7 +135,7 @@ export const processScan = async (params: ScanParams): Promise<ScanResult> => {
       availablePromotions: data.availablePromotions ?? [],
       message: data.message
     };
-  } catch (error) {
+  } catch {
     return { ok: false, error: 'Error de red o de servidor' };
   }
 };

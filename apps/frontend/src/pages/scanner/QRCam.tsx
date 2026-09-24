@@ -14,14 +14,19 @@ const qrbox = (viewfinderWidth: number, viewfinderHeight: number) => {
   return { width: size, height: size };
 };
 
+// start()/stop() de html5-qrcode son asíncronos y fallan si se solapan. La cola es del MÓDULO,
+// no de cada instancia: al volver de "Manual" a la cámara se monta un QRCam nuevo, y su start()
+// debe esperar al stop() del anterior (dos getUserMedia a la vez dan NotReadableError en
+// iOS/Android). También cubre el montaje doble de StrictMode.
+let cameraLifecycle: Promise<void> = Promise.resolve();
+
 export function QRCam({ onScanSuccess, isActive }: QRCamProps) {
   const lastScanRef = useRef<{ text: string; time: number } | null>(null);
-  // start()/stop() de html5-qrcode son asíncronos y fallan si se solapan sobre el mismo
-  // elemento (StrictMode monta, desmonta y vuelve a montar). Se encadenan en una sola cola.
-  const lifecycleRef = useRef<Promise<void>>(Promise.resolve());
   // El callback cambia en cada render del padre; guardarlo en un ref evita reiniciar la cámara.
   const onScanRef = useRef(onScanSuccess);
   const [cameraError, setCameraError] = useState(false);
+  // Cambiarlo reintenta abrir la cámara (botón "Reintentar" de la vista de error).
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     onScanRef.current = onScanSuccess;
@@ -33,7 +38,7 @@ export function QRCam({ onScanSuccess, isActive }: QRCamProps) {
     let cancelled = false;
     let scanner: Html5Qrcode | null = null;
 
-    lifecycleRef.current = lifecycleRef.current.then(async () => {
+    cameraLifecycle = cameraLifecycle.then(async () => {
       if (cancelled) return;
       scanner = new Html5Qrcode('reader', {
         verbose: false,
@@ -68,7 +73,7 @@ export function QRCam({ onScanSuccess, isActive }: QRCamProps) {
 
     return () => {
       cancelled = true;
-      lifecycleRef.current = lifecycleRef.current.then(async () => {
+      cameraLifecycle = cameraLifecycle.then(async () => {
         if (!scanner) return;
         try {
           if (scanner.isScanning) await scanner.stop();
@@ -78,7 +83,7 @@ export function QRCam({ onScanSuccess, isActive }: QRCamProps) {
         }
       });
     };
-  }, [isActive]);
+  }, [isActive, attempt]);
 
   if (cameraError) {
     return (
@@ -90,7 +95,17 @@ export function QRCam({ onScanSuccess, isActive }: QRCamProps) {
           </svg>
         </div>
         <h3 className="text-xl font-bold text-white mb-2">Error de cámara</h3>
-        <p className="text-slate-400 font-medium">No pudimos acceder a la cámara. Revisa los permisos de tu navegador o usa el ingreso manual arriba.</p>
+        <p className="text-slate-400 font-medium mb-6">No pudimos acceder a la cámara. Revisa los permisos de tu navegador o usa el ingreso manual arriba.</p>
+        <button
+          type="button"
+          onClick={() => {
+            setCameraError(false);
+            setAttempt((n) => n + 1);
+          }}
+          className="px-6 py-3 bg-slate-800 hover:bg-slate-700 rounded-2xl font-bold transition-colors"
+        >
+          Reintentar
+        </button>
       </div>
     );
   }

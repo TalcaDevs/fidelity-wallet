@@ -5,7 +5,8 @@ import { ManualFallback } from './ManualFallback';
 import { useScanFeedback } from '../../hooks/useScanFeedback';
 import { supabase } from '../../lib/supabase';
 import { Session } from '@supabase/supabase-js';
-import { processScan, ScanResult } from '../../services/scanService';
+import { processScan, ScanResult, ScanTarget } from '../../services/scanService';
+import { IdentifierValue } from '../../components/ui/IdentifierInput';
 import { ScanLoading, ScanSuccess, ScanAlreadyScanned, ScanReward, ScanError, ScanRedeemSuccess } from './ScanViews';
 
 type ScanState = 'camera' | 'manual' | 'loading' | 'success' | 'alreadyScanned' | 'reward' | 'error' | 'redeemSuccess';
@@ -15,17 +16,13 @@ export function Scan({ merchantId, session }: { merchantId: string, session: Ses
   const [isStarted, setIsStarted] = useState(false);
   const [state, setState] = useState<ScanState>('camera');
   const [result, setResult] = useState<ScanResult | null>(null);
-  const [scannedText, setScannedText] = useState<{ text: string, isManual: boolean } | null>(null);
+  // A quién se escaneó (QR o RUT/teléfono), para reutilizarlo si después se canjea.
+  const [target, setTarget] = useState<ScanTarget | null>(null);
 
-  const handleScan = useCallback(async (text: string, isManual = false) => {
+  const handleScan = useCallback(async (nextTarget: ScanTarget) => {
     setState('loading');
-    setScannedText({ text, isManual });
-    const res = await processScan({
-      merchantId,
-      action: 'STAMP',
-      passToken: isManual ? undefined : text,
-      identifier: isManual ? text : undefined
-    });
+    setTarget(nextTarget);
+    const res = await processScan({ merchantId, action: 'STAMP', target: nextTarget });
     
     setResult(res);
     
@@ -45,29 +42,34 @@ export function Scan({ merchantId, session }: { merchantId: string, session: Ses
 
   // promotionId: el premio que eligió el cliente (los sellos sirven para cualquier promoción activa).
   const handleRedeem = useCallback(async (promotionId?: string) => {
-    if (!scannedText) return;
+    if (!target) return;
     setState('loading');
-    const res = await processScan({
-      merchantId,
-      action: 'REDEEM',
-      passToken: scannedText.isManual ? undefined : scannedText.text,
-      identifier: scannedText.isManual ? scannedText.text : undefined,
-      promotionId
-    });
+    const res = await processScan({ merchantId, action: 'REDEEM', target, promotionId });
     setResult(res);
-    
+
     if (!res.ok) {
       triggerFeedback('error');
       setState('error');
+    } else if (res.alreadyScanned) {
+      // Doble toque sobre el mismo premio: el canje ya estaba hecho. NO es un "premio entregado"
+      // nuevo; mostrarlo así haría que el cajero lo entregue dos veces.
+      triggerFeedback('alreadyScanned');
+      setState('alreadyScanned');
     } else {
       triggerFeedback('success');
       setState('redeemSuccess');
     }
-  }, [scannedText, merchantId, triggerFeedback]);
+  }, [target, merchantId, triggerFeedback]);
+
+  const handleManual = useCallback((identifier: IdentifierValue) => {
+    void handleScan({
+      customer: identifier.kind === 'rut' ? { rut: identifier.value } : { phone: identifier.value },
+    });
+  }, [handleScan]);
 
   const resetScanner = () => {
     setResult(null);
-    setScannedText(null);
+    setTarget(null);
     setState('camera');
   };
 
@@ -114,7 +116,7 @@ export function Scan({ merchantId, session }: { merchantId: string, session: Ses
         ) : state === 'camera' && (
           <div className="flex-1 relative duration-300 flex flex-col">
             <div className="flex-1 w-full relative">
-              <QRCam isActive={true} onScanSuccess={(t) => handleScan(t, false)} />
+              <QRCam isActive={true} onScanSuccess={(passToken) => handleScan({ passToken })} />
             </div>
             <p className="text-center text-slate-400 mt-6 font-medium px-8">
               Apunta la cámara al pase del cliente para registrar su visita.
@@ -122,12 +124,12 @@ export function Scan({ merchantId, session }: { merchantId: string, session: Ses
           </div>
         )}
 
-        {isStarted && state === 'manual' && <ManualFallback onSubmit={(t) => handleScan(t, true)} onCancel={resetScanner} />}
+        {isStarted && state === 'manual' && <ManualFallback onSubmit={handleManual} onCancel={resetScanner} />}
         {state === 'loading' && <ScanLoading />}
         {state === 'success' && result && <ScanSuccess result={result} onReset={resetScanner} />}
         {state === 'redeemSuccess' && result && <ScanRedeemSuccess result={result} onReset={resetScanner} />}
         {state === 'alreadyScanned' && result && <ScanAlreadyScanned result={result} onReset={resetScanner} />}
-        {state === 'reward' && result && <ScanReward result={result} onReset={resetScanner} onRedeem={handleRedeem} />}
+        {state === 'reward' && result && <ScanReward key={result.scanId ?? result.passId} result={result} onReset={resetScanner} onRedeem={handleRedeem} />}
         {state === 'error' && <ScanError result={result} onReset={resetScanner} />}
       </main>
     </div>

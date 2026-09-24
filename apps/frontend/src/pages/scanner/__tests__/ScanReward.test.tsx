@@ -26,8 +26,8 @@ describe('ScanReward', () => {
     });
 
     expect(screen.getByText('4 sellos')).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /café gratis/i })).toBeEnabled();
-    expect(screen.getByRole('radio', { name: /almuerzo gratis/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^café gratis/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /^almuerzo gratis/i })).toBeDisabled();
     expect(screen.getByText('Faltan 4')).toBeInTheDocument();
   });
 
@@ -60,7 +60,7 @@ describe('ScanReward', () => {
     const confirm = screen.getByRole('button', { name: 'Elige un premio' });
     expect(confirm).toBeDisabled();
 
-    fireEvent.click(screen.getByRole('radio', { name: /almuerzo gratis/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^almuerzo gratis/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Entregar Almuerzo gratis' }));
 
     expect(redeemed).toEqual(['promo-almuerzo']);
@@ -78,5 +78,25 @@ describe('ScanReward', () => {
 
     expect(resets()).toBe(1);
     expect(redeemed).toEqual([]);
+  });
+
+  it('warns that this visit was NOT stamped when the customer is in the 30-min cooldown', () => {
+    renderReward({
+      ok: true,
+      stampsCount: 5,
+      rewardUnlocked: true,
+      alreadyScanned: true,
+      message: 'Este cliente ya recibió un sello. Podrá sumar otro en 12 min',
+      availablePromotions: [{ ...cafe, canRedeem: true }],
+    });
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Sello de esta visita no sumado. Este cliente ya recibió un sello. Podrá sumar otro en 12 min',
+    );
+  });
+
+  it('does not show the cooldown warning on a normal stamp', () => {
+    renderReward({ ok: true, stampsCount: 5, rewardUnlocked: true, availablePromotions: [{ ...cafe, canRedeem: true }] });
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 });

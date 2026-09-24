@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { getMerchant, updateMerchantSettings } from '../../services/merchantService';
+import { getMerchant, publicJoinUrl, updateMerchantSettings, updateMerchantSlug } from '../../services/merchantService';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
 import { isValidStampValidityDays } from '../../lib/stampExpiry';
 import { useToast } from '../../hooks/useToast';
@@ -27,6 +27,11 @@ export function Settings({ session, merchantId }: { session: Session | null; mer
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Link público de registro (/join/<slug>): lo imprime el dueño en el QR de las mesas.
+  const [slug, setSlug] = useState('');
+  const [slugDraft, setSlugDraft] = useState('');
+  const [isSavingSlug, setIsSavingSlug] = useState(false);
+  const [slugError, setSlugError] = useState<string | null>(null);
 
   const fetchMerchant = useCallback(async (id: string) => {
     setLoading(true);
@@ -34,6 +39,8 @@ export function Settings({ session, merchantId }: { session: Session | null; mer
       const merchant = await getMerchant(id);
       setName(merchant?.name ?? '');
       setStampValidityDays(merchant?.stampValidityDays ?? null);
+      setSlug(merchant?.slug ?? '');
+      setSlugDraft(merchant?.slug ?? '');
     } catch (err) {
       console.error('Error fetching merchant:', err);
       setError('No pudimos cargar los datos de tu local.');
@@ -65,6 +72,32 @@ export function Settings({ session, merchantId }: { session: Session | null; mer
       setError(err instanceof Error ? err.message : 'No pudimos guardar los cambios.');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleSaveSlug = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!merchantId || slugDraft.trim() === slug) return;
+    setIsSavingSlug(true);
+    setSlugError(null);
+    try {
+      const saved = await updateMerchantSlug(merchantId, slugDraft.trim());
+      setSlug(saved);
+      setSlugDraft(saved);
+      notifySuccess('Link actualizado. Recuerda reimprimir los QR de tus mesas.');
+    } catch (err) {
+      setSlugError(err instanceof Error ? err.message : 'No pudimos cambiar el link.');
+    } finally {
+      setIsSavingSlug(false);
+    }
+  };
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(publicJoinUrl(slug));
+      notifySuccess('Link copiado.');
+    } catch {
+      setSlugError('No pudimos copiar el link. Cópialo manualmente.');
     }
   };
 
@@ -153,6 +186,63 @@ export function Settings({ session, merchantId }: { session: Session | null; mer
           </form>
         )}
       </div>
+
+      {!loading && slug && (
+        <section
+          aria-labelledby="public-link-title"
+          className="mt-8 bg-white dark:bg-slate-800 rounded-[2rem] border border-slate-200/60 dark:border-slate-700/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.1)] p-8 max-w-2xl"
+        >
+          <h2 id="public-link-title" className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 uppercase tracking-wider">
+            Link de registro para tus clientes
+          </h2>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <p className="flex-1 min-w-0 break-all px-5 py-4 bg-slate-100 dark:bg-slate-900/50 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-medium">
+              {publicJoinUrl(slug)}
+            </p>
+            <button
+              type="button"
+              onClick={copyLink}
+              className="px-5 py-3 rounded-xl font-bold border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+            >
+              Copiar
+            </button>
+          </div>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-3 font-medium">
+            Ponlo en el QR de tus mesas o del mesón: ahí tus clientes sacan su tarjeta de sellos.
+          </p>
+
+          <form onSubmit={handleSaveSlug} className="mt-6">
+            <label htmlFor="merchant-slug" className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">
+              Personalizar el link
+            </label>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <input
+                id="merchant-slug"
+                type="text"
+                value={slugDraft}
+                onChange={(e) => setSlugDraft(e.target.value)}
+                aria-invalid={Boolean(slugError)}
+                aria-describedby="merchant-slug-help"
+                className="flex-1 min-w-0 px-5 py-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-4 focus:ring-brand-blue/20 focus:border-brand-blue transition-all text-slate-800 dark:text-slate-100 font-medium text-lg"
+                placeholder="ej. cafe-central"
+              />
+              <button
+                type="submit"
+                disabled={isSavingSlug || !slugDraft.trim() || slugDraft.trim() === slug}
+                className="px-6 py-3 bg-brand-blue hover:bg-blue-600 text-white rounded-xl font-bold transition-all disabled:opacity-50"
+              >
+                {isSavingSlug ? 'Guardando...' : 'Cambiar link'}
+              </button>
+            </div>
+            {slugError && (
+              <p role="alert" className="text-sm font-bold text-red-500 mt-2">{slugError}</p>
+            )}
+            <p id="merchant-slug-help" className="text-sm text-slate-500 dark:text-slate-400 mt-3 font-medium">
+              Solo letras, números y guiones (entre 3 y 60). <strong>Si ya imprimiste QR con el link actual, dejarán de funcionar</strong>: tendrás que reimprimirlos.
+            </p>
+          </form>
+        </section>
+      )}
     </>
   );
 }

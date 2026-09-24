@@ -122,7 +122,7 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
 - **Backend:** NestJS en ESM (`"type": "module"` — los imports internos llevan extensión `.js`), Prisma 6, Vitest.
 - **Frontend:** React 19 + Vite + Tailwind 4 + React Router 7; tests con Vitest + Testing Library. **Una sola app sirve landing, panel y scanner** (ver el mapa de rutas abajo).
 - **Base de datos:** Supabase local vía `supabase start` (API `:54321`, DB `:54322`, Studio `:54323`).
-- **Autenticación:** Supabase Auth, tanto para el `OWNER` como para el `STAFF`. El trigger `handle_new_user` crea la fila `Merchant` **solo cuando el usuario nuevo no trae `merchant_id` en `raw_user_meta_data`**; si lo trae, es un mesero invitado y se lo asocia al comercio existente en vez de crearle uno propio.
+- **Autenticación:** Supabase Auth, tanto para el `OWNER` como para el `STAFF`. El trigger `handle_new_user` crea la fila `Merchant` y la membresía `OWNER` **solo cuando el usuario nuevo no trae `merchant_id` en `raw_user_meta_data`**. Si lo trae, es un mesero invitado y el trigger **no crea nada**: la membresía `STAFF` la inserta `StaffService` con la `service_role key`. **La metadata nunca otorga permisos**, porque la escribe el propio cliente en `signUp` con la anon key (ver §7.1, corrección del 2026-09-24).
 - **`merchant.id === session.user.id` sigue siendo cierto para el `OWNER`** (el trigger reutiliza el UUID del usuario de auth), **pero ya no es la base de los permisos**: con dos roles eso se rompe. Los permisos salen de `MerchantUser`. Ver §7.8 por la deuda que esto deja en el panel.
 - **El panel admin hoy consulta Supabase directamente** con la `anon key` (ver `apps/frontend/src/services/*`); no pasa por el backend NestJS. Por eso el permiso de solo-lectura del `STAFF` **se aplica en RLS, no escondiendo items del menú**: si el control viviera solo en la UI, el mesero entra igual escribiendo la URL.
 
@@ -154,9 +154,10 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
 - [x] Sellos con vencimiento FIFO: un sello = una fila de `Stamp`. El saldo se calcula al leer; `Pass.stampsCount` ya no existe.
 - [x] RLS por membresía en todas las tablas (SELECT para cualquier miembro, escritura solo `OWNER`), con `search_path` fijo en las funciones.
 - [x] Grants de mínimo privilegio (`20260922120000_least_privilege_grants`): `anon` sin acceso a tablas; `authenticated` no puede leer `Pass.passToken`.
-- [x] Trigger `handle_new_user`: crea el `Merchant` solo para dueños; a un mesero invitado (con `merchant_id` en la metadata) solo lo asocia como `STAFF`.
-- [x] **(2026-09-24)** `Merchant.slug`, identificador público de `/join/:slug`. Migración `20260924120000_merchant_slug`: backfill de los locales existentes, sufijo `-2`, `-3` si hay colisión y generación automática en el trigger. **Es estable: renombrar el local no lo cambia**, porque ya puede estar impreso en los QR de las mesas.
-- [x] **(2026-09-24)** Seed reproducible `apps/backend/prisma/seed.js`: 1 `OWNER` + 4 `STAFF` en un mismo local (§9). Antes el seed le creaba por error un local propio a cada `STAFF`.
+- [x] Trigger `handle_new_user`: crea el `Merchant` + `OWNER` solo para dueños. **(2026-09-24)** Ya no crea membresías a partir de `raw_user_meta_data`, que controla el cliente: antes cualquiera podía registrarse como OWNER de un local ajeno enviando `merchant_id` y `role` en `signUp` (migración `20260924190000_harden_signup_and_slug`).
+- [x] **(2026-09-24)** `Merchant.slug`, identificador público de `/join/:slug`. Migración `20260924120000_merchant_slug`: backfill de los locales existentes, con sufijo `-2`, `-3` si hay colisión. **Los locales nuevos reciben un slug neutro `local-<8 hex del id>`** (`20260924190000`): no deriva del email del dueño y no colisiona. **Es estable: renombrar el local no lo cambia**, porque ya puede estar impreso en QR. Solo el OWNER lo cambia, con `PATCH /api/merchants/:merchantId/slug`: el panel no tiene permiso de escritura sobre esa columna.
+- [x] **(2026-09-24)** Seed reproducible `apps/backend/prisma/seed.js`: local **"Café Demo" (`/join/cafe-demo`)** con 2 promociones activas, 1 `OWNER` y 4 `STAFF` (§9). Antes el seed le creaba por error un local propio a cada `STAFF` y no creaba promociones.
+- [x] **(2026-09-24)** Mínimo privilegio: `anon` y `authenticated` no pueden ejecutar `slugify` ni `generate_merchant_slug` por `/rest/v1/rpc`, y `authenticated` solo puede actualizar `Merchant.name` y `stampValidityDays`.
 - [x] `.env.example` versionado en backend y frontend.
 
 **Backend — Dev 1** (PR #9 + cambios del 2026-09-24)
@@ -166,8 +167,12 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
 - [x] `POST /api/scan` (`STAMP` / `REDEEM`): transacción con `SELECT … FOR UPDATE` sobre el `Pass`, `expiresAt` congelado al sellar, canje FIFO con verificación atómica, `createdByUserId` en `Scan` y `Stamp` y datos del cliente enmascarados.
 - [x] **(2026-09-24)** Ingreso manual: `/api/scan` acepta `customer: { rut | phone }` en lugar de `passToken`. La búsqueda queda acotada al comercio del cajero, y la membresía se valida antes de buscar.
 - [x] **(2026-09-24)** Bloqueo antifraude: tras un sello, el pase no puede recibir otro durante **30 minutos**, ni por QR ni manual. Responde `alreadyScanned: true` con `nextStampAvailableAt` y los minutos restantes. Se configura con `STAMP_COOLDOWN_MINUTES`. El canje mantiene su ventana de 90 s contra el doble toque (§5.4).
-- [x] **(2026-09-24)** `GET /api/merchants/by-slug/:slug`: público y con rate limit. Devuelve nombre, vigencia y promoción activa; nunca el email del dueño.
-- [x] `POST /api/merchants/:merchantId/staff/invite`: solo `OWNER`, usa la `service_role key` en el backend e invita por email o crea el usuario con contraseña (§5.6).
+- [x] **(2026-09-24)** `GET /api/merchants/by-slug/:slug`: público y con rate limit. Devuelve nombre, vigencia y promociones activas; nunca el email del dueño.
+- [x] **(2026-09-24)** `PATCH /api/merchants/:merchantId/slug` (solo OWNER): normaliza y valida el slug, y responde 409 si ya lo usa otro local.
+- [x] **(2026-09-24)** El ingreso manual tiene un límite de **10 búsquedas por minuto por usuario** (`ManualLookupLimiter`, 429). Sin él, `/api/scan` servía para averiguar si un RUT es cliente. El escaneo por QR no tiene límite. La respuesta al cajero ya no incluye `customer.id`.
+- [x] **(2026-09-24)** La ventana anti-doble-canje de 90 s es **por promoción**. Antes, canjear A y enseguida B devolvía "ya canjeado" sin consumir sellos, y la caja mostraba "premio entregado".
+- [x] **(2026-09-24)** El alta verifica la identidad: si el cliente ya existe, el RUT **y** el teléfono deben coincidir con lo guardado. Un dato faltante de un cliente antiguo no se completa sin verificación, y la aceptación de los términos se registra una vez por versión, sin sobrescribir la fecha original.
+- [x] `POST /api/merchants/:merchantId/staff/invite`: solo `OWNER`, usa la `service_role key` en el backend e invita por email o crea el usuario con contraseña (§5.6). **(2026-09-24)** La membresía `STAFF` la crea este endpoint (`upsert`, sin degradar a nadie), no el trigger.
 - [x] Modo desarrollo `ALLOW_MOCK_PASSES=true`: emite pases de prueba sin certificados de Apple/Google.
 - [x] **(2026-09-24)** **Varias promociones activas con un saldo único de sellos** (decisión §8.2):
   - todo sello vigente sirve para cualquier promoción activa, y el cliente elige en caja cuál canjear;
@@ -176,7 +181,7 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
   - la respuesta trae `availablePromotions` con `canRedeem` por promoción;
   - migración `20260924150000_scan_redeemed_promotion`: `Scan.promotionId` registra qué promoción se canjeó.
 - [x] **(2026-09-24)** `GET /api/merchants/by-slug/:slug` devuelve también `activePromotions` (todas las activas, de la más reciente a la más antigua).
-- [x] 81 tests de Vitest (incluye validación del DTO de alta): sellado, anti-duplicado, bloqueo de 30 min, FIFO, varias promociones con saldo compartido, concurrencia de canje, ingreso manual, alta de clientes, emisión, invitación de staff, slug y utilidades de RUT/teléfono.
+- [x] 114 tests de Vitest (incluye validación de los DTO de alta y de escaneo, concurrencia de sellos y de canjes, límite manual, slug y la ventana de canje por promoción): sellado, anti-duplicado, bloqueo de 30 min, FIFO, varias promociones con saldo compartido, concurrencia de canje, ingreso manual, alta de clientes, emisión, invitación de staff, slug y utilidades de RUT/teléfono.
 
 **Frontend — Dev 2 y Dev 3** (PR #7, PR #10 + cambios del 2026-09-24)
 - [x] Landing pública `/` (`pages/public/Home.tsx`).
@@ -195,7 +200,15 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
 - [x] **(2026-09-24)** Pantalla de premio en `/scan`: lista todas las promociones activas; las que el saldo no cubre aparecen deshabilitadas con "Faltan N". Si hay una sola canjeable queda preseleccionada, y siempre existe la opción "No canjear ahora, seguir juntando".
 - [x] **(2026-09-24)** `/join` exige RUT + teléfono y un **checkbox obligatorio de aceptación** con link a los términos, que abre en pestaña nueva para no perder lo escrito.
 - [x] **(2026-09-24)** Página pública **`/terminos`** (`pages/public/Terms.tsx`) con términos y condiciones estándar para el programa: registro, sellos sin valor monetario, bloqueo de 30 min, vigencia, saldo compartido entre promociones, uso indebido, datos personales (Ley 19.628) con derechos y vía de contacto, responsabilidad y ley aplicable (Ley 19.496). Enlazada desde `/join` y el footer de `/`.
-- [x] 105 tests de Vitest + Testing Library.
+- [x] **(2026-09-24)** Configuración del panel: muestra el **link de registro** con botón para copiarlo y permite personalizarlo, con la advertencia de que invalida los QR impresos.
+- [x] **(2026-09-24)** Correcciones de la revisión del PR #11:
+  - `ScanReward` avisa "sello de esta visita no sumado" cuando hay cooldown;
+  - un doble toque de canje ya no se muestra como "premio entregado";
+  - los errores del backend muestran `message` y no "Bad Request" (`lib/apiError.ts`);
+  - el cursor no salta al editar el RUT o el teléfono, y el backspace sobre separadores funciona;
+  - la cámara usa una cola de start/stop a nivel de módulo y tiene botón "Reintentar";
+  - `/join` distingue un local inexistente de un error de red y no muestra el formulario si el local no tiene promociones.
+- [x] 117 tests de Vitest + Testing Library (incluye un test que falla si `TERMS_VERSION` difiere entre frontend y backend).
 
 **Flujo completo verificado en local (2026-09-24), con pases mock:** `/join/localcito` → alta del cliente → sello por QR y por RUT/teléfono → bloqueo de 30 min → premio desbloqueado → canje FIFO. También se verificó con **dos promociones activas**: se puede sellar, el canje exige elegir, rechaza si el saldo no alcanza y descuenta solo lo de la promoción elegida.
 
@@ -209,27 +222,30 @@ Prioridad: 🔴 bloquea el piloto · 🟠 necesario para el piloto · 🟡 deuda
 - [ ] 🟠 **`POST /api/customers` debe ser atómico.** Si falla la generación de las URLs de billetera, el `Customer` y el `Pass` ya quedaron creados, y el reintento responde `isNew: false` **sin URLs**: el cliente queda registrado pero sin tarjeta y sin forma de obtenerla.
 - [ ] 🟠 **Recuperar un pase perdido.** `JoinSuccess` le promete al cliente "pronto podrás recuperarlo", pero no existe el flujo. Necesita verificación (por ejemplo OTP por SMS): devolver el pase solo con el RUT permitiría suplantar al cliente.
 - [ ] 🟡 Tests pendientes del DoD (§5.7): vencimiento contra una BD real (hoy la query está mockeada), no-retroactividad de `stampValidityDays` y e2e reales (`test/app.e2e-spec.ts` sigue siendo el del boilerplate).
+- [ ] 🟠 **Verificación del cliente (OTP por SMS).** Mientras no exista, un cliente antiguo (anterior al 2026-09-24) con un solo dato guardado se identifica solo por ese dato. Quien conozca su RUT puede sacarle una tarjeta en otro local. Con OTP también se puede completar el dato faltante y resolver "recuperar pase perdido".
+- [ ] 🟡 **Tests del SQL** (`slugify`, `generate_merchant_slug`, `handle_new_user`) contra una BD real, con pgTAP o un e2e en `test/`. Hoy se prueba el equivalente en TypeScript (`common/utils/slug.util.ts`) y la migración se verificó a mano.
+- [ ] 🟡 **`ManualLookupLimiter` es en memoria y por instancia.** Con más de una instancia del backend hay que moverlo a un store compartido (Redis). Además, falta registrar en `Scan` si la búsqueda fue por QR o manual, para auditar.
 - [ ] 🟡 **Borrado de datos personales** (Ley 19.628, §7.2). Los términos ya ofrecen pedirlo por correo; falta el proceso o endpoint que elimine al `Customer`, sus pases y sellos.
 - [ ] ⚪ Opcional: pase web `/pase/:passToken` como respaldo para quien no usa billetera, que además facilita las pruebas sin credenciales.
 
 #### Dev 2 — PWA del cajero y landing del cliente
 - [ ] 🔴 **Probar la cámara en iOS Safari y Android Chrome reales** tras los cambios del 2026-09-24 a `QRCam.tsx`, y medir el objetivo de < 2 s. Fuera de `localhost` la cámara exige **HTTPS**.
 - [ ] 🟠 **PWA instalable:** no hay `manifest` ni service worker.
-- [ ] 🟠 **Distinguir sesión vencida de caída de red** (§6.1, §7.9). Hoy los dos casos terminan en "Error de red o de servidor".
+- [ ] 🟠 **Sesión vencida vs. caída de red** (§6.1, §7.9). *Parcial (2026-09-24):* un 401 ya muestra "Tu sesión venció". Falta refrescar la sesión automáticamente y probarlo con varias horas de pantalla abierta.
 - [ ] 🟡 Badges oficiales de Apple y Google Wallet en `JoinSuccess`. Hoy son botones propios, y ambas marcas tienen guías estrictas.
+- [ ] 🟡 **Tests de `Join.tsx` y `QRCam.tsx`**: checkbox obligatorio, contrato del alta, local sin promociones y error de red. Para la cámara, el ciclo de start/stop con la cola a nivel de módulo. Hay que respetar la convención de no usar `vi.fn` (por ejemplo, un `fetch` en memoria).
 - [ ] 🟡 **Probar en un teléfono real la pantalla de elección de premio** con 3 o más promociones: lista larga en pantallas chicas y uso con una mano.
 - [ ] ⚪ Opcional: mostrar al cajero `nextExpiryAt` ("te vence un sello el jueves"); el backend ya lo devuelve.
 
 #### Dev 3 — Panel admin y base de datos
-- [ ] 🔴 **Mostrar al dueño su link `/join/<slug>` y un QR imprimible para las mesas.** Hoy el panel no lo muestra en ningún lado: el dueño no tiene cómo saber su propia URL.
-- [ ] 🟠 **Slug de los locales nuevos:** se genera al registrarse a partir del nombre por defecto `Mi Local (<usuario>)`, así que queda como `mi-local-<usuario>`. Decidir si el dueño puede elegirlo o editarlo una vez (sabiendo que cambiarlo rompe los QR ya impresos).
+- [ ] 🟠 **QR imprimible del link de registro.** Configuración ya muestra el link y permite copiarlo y personalizarlo (2026-09-24). Falta generar el QR para imprimir.
 - [ ] 🟠 **UI para invitar, listar y dar de baja meseros** sobre el endpoint que ya existe (§5.6). Hoy solo se puede por API o con el seed.
 - [ ] 🟡 **Métricas por promoción en el dashboard:** `Scan.promotionId` ya dice qué premio se canjeó en cada `REWARD_REDEEMED` (qué promoción rinde más, cuánto se entrega de cada una). Hoy el dashboard solo cuenta canjes totales.
 - [ ] 🟡 **Texto del panel de promociones:** explicarle al dueño que puede tener varias activas y que los sellos de sus clientes sirven para cualquiera, así que activar una promoción cara no les quita sellos a los que juntan para otra.
 - [ ] 🟡 Llaves de producción y despliegue (§7.5).
 
 #### Equipo — legal
-- [ ] 🔴 **Completar y validar los términos antes de producción.** En `pages/public/Terms.tsx`, el objeto `LEGAL` tiene marcadores `[RAZÓN SOCIAL]`, `[RUT]`, `[DOMICILIO]` y `[CORREO DE CONTACTO]` que hoy se ven en la página pública. El texto es una plantilla estándar y **necesita revisión de un abogado**, incluida la adecuación a la Ley 21.719 de protección de datos cuando entre en vigencia.
+- [ ] 🔴 **Completar y validar los términos antes de producción.** Definir `VITE_LEGAL_COMPANY`, `VITE_LEGAL_COMPANY_RUT`, `VITE_LEGAL_ADDRESS` y `VITE_LEGAL_CONTACT_EMAIL` (ver `apps/frontend/.env.example`). Mientras falten, `/terminos` muestra los marcadores `[…]` y un aviso visible de borrador. El texto es una plantilla estándar y **necesita revisión de un abogado**, incluida la adecuación a la Ley 21.719 de protección de datos cuando entre en vigencia.
 - [ ] 🟡 Si cambia el texto de los términos, subir `TERMS_VERSION` en `Terms.tsx` **y** en `apps/backend/src/customers/terms.ts` en el mismo PR.
 
 #### Equipo — decisiones abiertas (§8)
@@ -307,22 +323,22 @@ Prioridad: 🔴 bloquea el piloto · 🟠 necesario para el piloto · 🟡 deuda
   "action": "STAMP",
   "passId": "uuid",
   "activeStamps": 4,                    // saldo del pase: sellos vigentes y no consumidos
-  "targetStamps": 5,                    // STAMP: de la promoción más reciente · REDEEM: de la canjeada
+  "targetStamps": 8,                    // STAMP: de la promoción más reciente · REDEEM: de la canjeada
   "rewardUnlocked": true,               // el saldo alcanza para AL MENOS una promoción activa
-  "rewardName": "Café gratis",
+  "rewardName": "Almuerzo gratis",
   "availablePromotions": [              // todas las activas, más reciente primero
     { "id": "uuid", "name": "Almuerzo", "rewardName": "Almuerzo gratis", "targetStamps": 8, "canRedeem": false },
     { "id": "uuid", "name": "Café", "rewardName": "Café gratis", "targetStamps": 3, "canRedeem": true }
   ],
   "nextExpiryAt": "2026-10-24T03:30:39Z",
   "nextStampAvailableAt": "...",        // solo en un sello bloqueado
-  "customer": { "id": "uuid", "rut": "12.***.*78-5", "phone": null },
-  "message": "Sello agregado exitosamente (4/5)"
+  "customer": { "rut": "12.***.*78-5", "phone": null },   // solo enmascarado, sin id interno
+  "message": "¡Sello agregado! El cliente ya puede canjear un premio (4 sellos)"
 }
 ```
 
 Reglas, **todas dentro de una transacción de base de datos**:
-1. Resolver `passToken` → `Pass`. Si no existe o no pertenece al `merchantId` que escanea → **403, y no se registra nada**.
+1. Resolver el `Pass` por `passToken` o, en el ingreso manual, por `customer { rut | phone }` dentro del `merchantId` que escanea. Token inexistente o cliente sin tarjeta en el local → **404**; pase de otro local → **403**. En ningún caso se registra nada. El ingreso manual tiene un límite de 10 búsquedas por minuto por usuario (429).
 2. Validar que exista **al menos una** `Promotion` activa para ese comercio. Puede haber varias (§8.2).
 3. Insertar la fila en `Scan` (`STAMP_ADDED` o `REWARD_REDEEMED`), con `createdByUserId` = el usuario autenticado que ejecuta el escaneo y, en el canje, `promotionId` = la promoción elegida.
 4. **En `STAMP`: insertar una fila en `Stamp`** con `passId`, `merchantId`, `promotionId = NULL` (el sello es saldo del pase), `earnedAt = now()`, `sourceScanId` = el `Scan` recién creado, `createdByUserId`, y `expiresAt` = `earnedAt` + `Merchant.stampValidityDays`, o `NULL` si el comercio no define vigencia. Al vivir en el comercio, el cálculo no depende de resolver antes qué promoción aplica (§8.2). **`expiresAt` se congela acá y no se vuelve a tocar nunca.**
@@ -342,7 +358,7 @@ Reglas, **todas dentro de una transacción de base de datos**:
 ### 5.6 Invitar meseros `STAFF` (tarea nueva, **asignada a Dev 1**)
 *(Nueva 2026-09-20 — decisión 4.)*
 
-> ✅ **Hecho (PR #9):** `POST /api/merchants/:merchantId/staff/invite`, solo para `OWNER`. Sin `password` invita por email (`inviteUserByEmail`); con `password` crea el usuario directamente. **Falta la UI en el panel** — la tiene Dev 3 (§3.2).
+> ✅ **Hecho (PR #9):** `POST /api/merchants/:merchantId/staff/invite`, solo para `OWNER`. Sin `password` invita por email (`inviteUserByEmail`); con `password` crea el usuario directamente. **Falta la UI en el panel** — la tiene Dev 3 (§3.2). *(2026-09-24: la membresía `STAFF` la crea este endpoint con la `service_role key`; el trigger ya no la deriva de la metadata.)*
 
 - Invitar un usuario `STAFF` exige la **`service_role key`** (Supabase Admin API), así que **no se puede hacer desde el frontend con la `anon key`**. Hace falta **un endpoint de backend** para crear/invitar usuarios `STAFF` de un comercio.
 - Ese endpoint **setea `merchant_id` y `role` en la metadata del usuario nuevo** — de ahí lo lee el trigger `handle_new_user` para no crearle un `Merchant` propio (§2).
@@ -390,7 +406,7 @@ Reglas, **todas dentro de una transacción de base de datos**:
 Flujo completo en una sola pantalla, sin scroll innecesario:
 1. El cliente escanea el QR físico de la mesa y aterriza aquí.
 2. Ve el nombre del local y la promoción vigente ("Junta 5 sellos, llévate un café").
-3. Ingresa RUT **o** teléfono → `POST /api/customers`.
+3. Ingresa RUT **y** teléfono (los dos obligatorios) y acepta los términos → `POST /api/customers`.
 4. Aparecen los botones oficiales **"Add to Apple Wallet"** / **"Add to Google Wallet"** (usar los badges oficiales; Apple y Google tienen guías de marca estrictas).
 5. Detectar plataforma: mostrar primero el botón de la billetera del dispositivo.
 6. Pantalla de confirmación con instrucción explícita de qué hacer en la próxima visita.
@@ -427,6 +443,8 @@ El panel admin consulta Supabase **directamente con la `anon key`** y filtra por
 Lo que queda abierto es más fino y más caro: **las políticas originales eran `"merchantId" = auth.uid()`, y eso se rompe con más de un usuario por comercio** (decisión 4). La reescritura contra la membresía ya está en la rama (`20260921020000_merchant_users_and_roles`): funciones `SECURITY DEFINER STABLE` con `search_path` fijo (`current_merchant_ids()`, `is_merchant_owner()`), **SELECT para cualquier miembro, INSERT/UPDATE/DELETE solo para `OWNER`**. **Hay que aplicar esa migración** (`prisma migrate dev`) antes de probar cualquier cosa con dos usuarios: hasta entonces un `STAFF` no tiene acceso correcto a nada. La `service_role key` queda reservada **exclusivamente para el backend**. Responsable: **Dev 3**, pero afecta a los tres. Bloqueante antes del primer piloto con un local real.
 
 **Bug concreto que esto destapó y ya se corrigió:** el trigger `handle_new_user` creaba un `Merchant` por **cada** usuario nuevo de `auth.users`, así que **el primer mesero invitado se habría auto-creado su propio local**. Ahora distingue por el `merchant_id` que viene en `raw_user_meta_data`.
+
+**Escalada de privilegios corregida el 2026-09-24 (revisión del PR #11):** el trigger además **creaba la membresía** con el `role` que venía en esa metadata. Como la metadata la escribe el cliente en `supabase.auth.signUp({ options: { data } })` con la anon key, cualquiera podía registrarse como `OWNER` de cualquier local, y el `merchantId` se obtiene del endpoint público `by-slug`. Se comprobó en local. Desde `20260924190000` el trigger no crea membresías desde metadata y la membresía `STAFF` la inserta el backend. **Regla: `raw_user_meta_data` nunca decide permisos.**
 
 ### 7.2 🟠 Datos personales (Ley 19.628 / RUT)
 Estamos guardando RUT y teléfono de clientes finales. Hace falta, como mínimo: aviso de privacidad en el landing, propósito declarado y una vía para solicitar borrado.
@@ -553,7 +571,7 @@ node --env-file=.env prisma/seed.js
 ```
 
 **Variables de entorno** (los `.env` no se versionan; copiar el `.env.example` de cada app):
-- `apps/frontend/.env` → `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL` (por defecto `http://localhost:3000`).
+- `apps/frontend/.env` → `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL` (por defecto `http://localhost:3000`) y, antes de producción, `VITE_LEGAL_*` (datos de la empresa para `/terminos`).
 - `apps/backend/.env` → `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
 - Desarrollo sin certificados: **`ALLOW_MOCK_PASSES=true`**. Sin esta variable, `POST /api/customers` responde 500.
 - Antifraude: `STAMP_COOLDOWN_MINUTES` (por defecto 30). Para probar localmente sin esperar, usar `1`.
@@ -567,7 +585,7 @@ node --env-file=.env prisma/seed.js
 | `OWNER` | `owner@example.com` | `/admin/*` (panel completo) |
 | `STAFF` | `cajero1@example.com` · `cajero2@example.com` · `mesero@example.com` · `staff@example.com` | `/scan` |
 
-El local del seed se llama "Mi Local (owner)"; su slug se genera al registrarse (`/join/mi-local-owner`) y **no cambia** si lo renombras en Configuración.
+El local del seed se llama **"Café Demo"**, su link es **`/join/cafe-demo`** y tiene 2 promociones activas: Café (5 sellos) y Almuerzo (10). Un local registrado a mano recibe un slug neutro `local-xxxxxxxx`, que el dueño puede personalizar en Configuración.
 
 **Probar el flujo del cliente de punta a punta:**
 1. Abrir `/join/<slug>` en una ventana de incógnito y registrarse con un RUT **y** un teléfono nuevos, aceptando los términos.

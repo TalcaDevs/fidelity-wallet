@@ -1,7 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect } from 'vitest';
-import { Terms, TERMS_VERSION } from './Terms';
+// ?raw (Vite): el archivo del backend como texto, sin depender de APIs de Node.
+import backendTermsSource from '../../../../backend/src/customers/terms.ts?raw';
+import { Terms } from './Terms';
+import { TERMS_VERSION, LEGAL_IS_DRAFT } from '../../lib/legal';
 
 function renderTerms() {
   render(
@@ -32,5 +35,21 @@ describe('Terms', () => {
   it('links back to the public home', () => {
     renderTerms();
     expect(screen.getByRole('link', { name: /fidelity wallet/i })).toHaveAttribute('href', '/');
+  });
+
+  it('uses the same TERMS_VERSION the backend stores in Customer.termsVersion', () => {
+    // Si alguien cambia el texto y sube solo una de las dos versiones, la página mostraría una
+    // fecha y la BD guardaría otra: el consentimiento quedaría asociado a un texto distinto.
+    const match = backendTermsSource.match(/TERMS_VERSION\s*=\s*'([^']+)'/);
+    expect(match?.[1]).toBe(TERMS_VERSION);
+  });
+
+  it('warns that it is a draft while the legal data is missing', () => {
+    renderTerms();
+    if (LEGAL_IS_DRAFT) {
+      expect(screen.getByRole('note')).toHaveTextContent(/borrador/i);
+    } else {
+      expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    }
   });
 });

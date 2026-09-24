@@ -76,10 +76,9 @@ export class StaffService {
         email: dto.email,
         password: dto.password,
         email_confirm: true,
-        user_metadata: {
-          merchant_id: dto.merchantId,
-          role: 'STAFF',
-        },
+        // Solo para que el trigger handle_new_user no le cree un local propio. La metadata la
+        // controla el cliente, así que NO otorga permisos: la membresía se crea abajo.
+        user_metadata: { merchant_id: dto.merchantId },
       });
 
       if (error) {
@@ -89,6 +88,8 @@ export class StaffService {
       if (!data?.user) {
         throw new BadRequestException('No se pudo crear el usuario de personal');
       }
+
+      await this.grantStaffMembership(data.user.id, dto.merchantId);
 
       return {
         id: data.user.id,
@@ -100,10 +101,8 @@ export class StaffService {
     }
 
     const { data, error } = await supabase.auth.admin.inviteUserByEmail(dto.email, {
-      data: {
-        merchant_id: dto.merchantId,
-        role: 'STAFF',
-      },
+      // Igual que arriba: evita que el trigger cree un local; no otorga permisos.
+      data: { merchant_id: dto.merchantId },
     });
 
     if (error) {
@@ -114,6 +113,8 @@ export class StaffService {
       throw new BadRequestException('No se pudo enviar la invitación al personal');
     }
 
+    await this.grantStaffMembership(data.user.id, dto.merchantId);
+
     return {
       id: data.user.id,
       email: data.user.email ?? dto.email,
@@ -121,5 +122,19 @@ export class StaffService {
       role: 'STAFF',
       message: 'Invitación enviada exitosamente por correo electrónico',
     };
+  }
+
+  /**
+   * La membresía la crea el backend, y solo después de verificar que quien invita es OWNER.
+   * Antes la creaba el trigger leyendo raw_user_meta_data, que el cliente puede escribir en
+   * signUp con la anon key: cualquiera podía darse de alta como OWNER de cualquier local.
+   * El rol es siempre STAFF, y si el usuario ya era miembro no se toca (no degrada a un OWNER).
+   */
+  private async grantStaffMembership(userId: string, merchantId: string): Promise<void> {
+    await this.prisma.merchantUser.upsert({
+      where: { userId_merchantId: { userId, merchantId } },
+      create: { userId, merchantId, role: 'STAFF' },
+      update: {},
+    });
   }
 }

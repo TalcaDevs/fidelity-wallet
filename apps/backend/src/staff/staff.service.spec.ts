@@ -19,6 +19,7 @@ describe('StaffService', () => {
       },
       merchantUser: {
         findUnique: vi.fn(),
+        upsert: vi.fn().mockResolvedValue({}),
       },
     } as unknown as PrismaService;
 
@@ -132,13 +133,14 @@ describe('StaffService', () => {
     expect(result.role).toBe('STAFF');
     expect(mockSupabaseAdmin.auth.admin.inviteUserByEmail).toHaveBeenCalledWith(
       'mesero@cafeteria.cl',
-      {
-        data: {
-          merchant_id: mockMerchantId,
-          role: 'STAFF',
-        },
-      },
+      { data: { merchant_id: mockMerchantId } },
     );
+    // La membresía la crea el backend (no el trigger), siempre como STAFF y sin degradar a nadie
+    expect(prisma.merchantUser.upsert).toHaveBeenCalledWith({
+      where: { userId_merchantId: { userId: 'u0000000-0000-0000-0000-000000000002', merchantId: mockMerchantId } },
+      create: { userId: 'u0000000-0000-0000-0000-000000000002', merchantId: mockMerchantId, role: 'STAFF' },
+      update: {},
+    });
   });
 
   it('should create staff with password using createUser', async () => {
@@ -178,11 +180,13 @@ describe('StaffService', () => {
       email: 'cajero@cafeteria.cl',
       password: 'ClaveSegura2026!',
       email_confirm: true,
-      user_metadata: {
-        merchant_id: mockMerchantId,
-        role: 'STAFF',
-      },
+      user_metadata: { merchant_id: mockMerchantId },
     });
+    expect(prisma.merchantUser.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: { userId: 'u0000000-0000-0000-0000-000000000003', merchantId: mockMerchantId, role: 'STAFF' },
+      }),
+    );
   });
 
   it('should throw BadRequestException if Supabase returns error', async () => {

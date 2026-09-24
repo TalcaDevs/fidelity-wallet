@@ -4,7 +4,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PassesService } from '../passes/passes.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ScanActionDto, ScanActionType } from './dto/scan-action.dto.js';
+import type { ConfigService } from '@nestjs/config';
+import { ManualLookupLimiter } from './manual-lookup-limiter.js';
 import { ScanService } from './scan.service.js';
+
+// Cooldown fijo en 30 min: el test no depende del .env de quien lo corre.
+const config = { get: () => '30' } as unknown as ConfigService;
+const makeService = (prisma: PrismaService, passes: PassesService) =>
+  new ScanService(prisma, passes, config, new ManualLookupLimiter());
 
 describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
   let service: ScanService;
@@ -73,13 +80,12 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
         findUnique: vi.fn().mockResolvedValue(mockPass as any),
       },
       promotion: {
-        findFirst: vi.fn().mockResolvedValue(mockPromotion as any),
         findMany: vi.fn().mockResolvedValue([mockPromotion as any]),
       },
       $transaction: vi.fn((cb) => cb(txMock)),
     } as unknown as PrismaService;
 
-    service = new ScanService(prisma, passesService);
+    service = makeService(prisma, passesService);
 
     const dto: ScanActionDto = {
       passToken: mockToken,
@@ -164,7 +170,6 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
         findUnique: vi.fn().mockResolvedValue(mockPass as any),
       },
       promotion: {
-        findFirst: vi.fn().mockResolvedValue(mockPromotion as any),
         findMany: vi.fn().mockResolvedValue([mockPromotion as any]),
       },
       $transaction: vi.fn(async (cb) => {
@@ -177,7 +182,7 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
       }),
     } as unknown as PrismaService;
 
-    service = new ScanService(prisma, passesService);
+    service = makeService(prisma, passesService);
 
     const dto1: ScanActionDto = {
       passToken: mockToken,
@@ -206,8 +211,9 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
     expect(unconsumedStamps.length).toBe(0); // All 5 stamps consumed exactly once
 
     // Exactly one transaction consumed stamps
-    const successfulRedeem = fulfilled.find((r) => r.value.alreadyScanned === false);
-    expect(successfulRedeem).toBeDefined();
+    const successfulRedeems = fulfilled.filter((r) => r.value.alreadyScanned === false);
+    expect(successfulRedeems).toHaveLength(1);
+    const successfulRedeem = successfulRedeems[0];
     expect(successfulRedeem?.value.consumedStampsCount).toBe(5);
 
     // The other was either prevented via anti-fraud or rejected with insufficient stamps
@@ -217,5 +223,71 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
       const duplicateRedeem = fulfilled.find((r) => r.value.alreadyScanned === true);
       expect(duplicateRedeem).toBeDefined();
     }
+  });
+
+  it('adds exactly one stamp when two cashiers scan the same pass at the same time', async () => {
+    // Estado compartido: el lock serializa y el segundo ve el Scan que creó el primero.
+    let isRowLocked = false;
+    const scansInDb: Array<{ id: string; type: ScanType; createdAt: Date }> = [];
+    const stampCreates: string[] = [];
+
+    const createTx = () => ({
+      $queryRaw: vi.fn(async () => {
+        while (isRowLocked) {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+        isRowLocked = true;
+        return [];
+      }),
+      scan: {
+        findFirst: vi.fn(async ({ where }) =>
+          [...scansInDb].reverse().find((sc) => sc.type === where.type) ?? null,
+        ),
+        create: vi.fn(async ({ data }) => {
+          const scan = { id: `scan-${scansInDb.length + 1}`, type: data.type, createdAt: new Date() };
+          scansInDb.push(scan);
+          return scan;
+        }),
+      },
+      stamp: {
+        create: vi.fn(async ({ data }) => {
+          stampCreates.push(data.sourceScanId);
+          return { id: `stamp-${stampCreates.length}` };
+        }),
+        count: vi.fn(async () => stampCreates.length),
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+    });
+
+    prisma = {
+      merchantUser: {
+        findUnique: vi.fn().mockResolvedValue({ id: 'mu-1', userId: mockUserId1, merchantId: mockMerchantId }),
+      },
+      pass: {
+        findUnique: vi.fn().mockResolvedValue(mockPass as any),
+      },
+      promotion: {
+        findMany: vi.fn().mockResolvedValue([mockPromotion as any]),
+      },
+      $transaction: vi.fn(async (cb) => {
+        const tx = createTx();
+        try {
+          return await cb(tx);
+        } finally {
+          isRowLocked = false;
+        }
+      }),
+    } as unknown as PrismaService;
+
+    service = makeService(prisma, passesService);
+    const dto: ScanActionDto = { passToken: mockToken, action: ScanActionType.STAMP, merchantId: mockMerchantId };
+
+    const [a, b] = await Promise.all([
+      service.processScan(dto, mockUserId1),
+      service.processScan(dto, mockUserId2),
+    ]);
+
+    expect(stampCreates).toHaveLength(1);
+    expect([a.alreadyScanned, b.alreadyScanned].sort()).toEqual([false, true]);
   });
 });

@@ -17,7 +17,7 @@ export enum ScanActionType {
 
 /**
  * Búsqueda manual del cliente en caja (cámara rota, poca luz, pantalla dañada).
- * Se exige exactamente uno de los dos identificadores.
+ * Se exige al menos uno de los dos identificadores; si llegan ambos, se busca por RUT.
  */
 export class ScanCustomerLookupDto {
   @ApiPropertyOptional({ description: 'RUT chileno del cliente', example: '12.345.678-5' })
@@ -64,7 +64,7 @@ export class ScanActionDto {
 
   @ApiProperty({
     description: 'ID del comercio que realiza el escaneo (UUID v4)',
-    example: 'a0000000-0000-0000-0000-000000000001',
+    example: 'd3b07384-d113-4011-8e8e-d9006fa70bc6',
   })
   @IsUUID('4', { message: 'El merchantId debe ser un UUID v4 válido' })
   @IsNotEmpty({ message: 'El merchantId no puede estar vacío' })
@@ -73,7 +73,7 @@ export class ScanActionDto {
   @ApiPropertyOptional({
     description:
       'Solo para REDEEM: la promoción que el cliente eligió canjear (UUID v4). Obligatorio si el comercio tiene más de una promoción activa. En STAMP se ignora: los sellos son un saldo único del pase',
-    example: 'p0000000-0000-0000-0000-000000000001',
+    example: '6bceb0a8-147c-487e-89b8-a5820250bc9e',
   })
   @IsOptional()
   @IsUUID('4', { message: 'El promotionId debe ser un UUID v4 válido' })
@@ -97,10 +97,8 @@ export class PromotionOptionDto {
   canRedeem: boolean;
 }
 
+/** Datos del cliente para la caja: solo enmascarados y sin el id interno. */
 export class MaskedCustomerDto {
-  @ApiProperty({ description: 'ID del cliente' })
-  id: string;
-
   @ApiPropertyOptional({ description: 'RUT enmascarado para privacidad en caja', example: '12.***.*78-5' })
   rut?: string | null;
 

@@ -34,10 +34,18 @@ export class ScanController {
     description: 'Escaneo procesado exitosamente (o sello ignorado por el bloqueo de 30 min, alreadyScanned=true)',
     type: ScanResultDto,
   })
-  @ApiResponse({ status: 400, description: 'Acción inválida o sellos insuficientes para canje' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Datos inválidos (RUT/teléfono mal formado), sellos insuficientes, o REDEEM sin promotionId cuando hay varias promociones activas',
+  })
   @ApiResponse({ status: 401, description: 'Usuario no autenticado' })
   @ApiResponse({ status: 403, description: 'El pase no pertenece al comercio o el usuario no es miembro' })
-  @ApiResponse({ status: 404, description: 'Token de pase no encontrado' })
+  @ApiResponse({
+    status: 404,
+    description: 'Token de pase no encontrado, o el cliente (ingreso manual) no tiene tarjeta en este comercio',
+  })
+  @ApiResponse({ status: 429, description: 'Demasiadas búsquedas manuales seguidas del mismo usuario' })
   @ApiResponse({ status: 409, description: 'Conflicto de concurrencia al canjear sellos' })
   async scanPass(
     @Body() dto: ScanActionDto,

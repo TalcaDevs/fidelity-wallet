@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { IdentifierInput, IdentifierValue } from '../../components/ui/IdentifierInput';
 
 interface ManualFallbackProps {
-  /** Recibe el RUT formateado ("12.345.678-5") o el teléfono completo ("+56912345678"). */
-  onSubmit: (identifier: string) => void;
+  /** Recibe el tipo y el valor: RUT formateado ("12.345.678-5") o teléfono completo ("+56912345678"). */
+  onSubmit: (identifier: IdentifierValue) => void;
   onCancel: () => void;
 }
 
@@ -15,7 +15,7 @@ export function ManualFallback({ onSubmit, onCancel }: ManualFallbackProps) {
     e.preventDefault();
     setSubmitted(true);
     if (!identifier.isValid) return;
-    onSubmit(identifier.value);
+    onSubmit(identifier);
   };
 
   return (
@@ -35,7 +35,8 @@ export function ManualFallback({ onSubmit, onCancel }: ManualFallbackProps) {
           <IdentifierInput variant="dark" autoFocus onChange={setIdentifier} showErrors={submitted} />
           <button
             type="submit"
-            disabled={!identifier.isValid}
+            // Habilitado siempre: al pulsarlo con un dato incompleto se muestra el error (si
+            // estuviera deshabilitado, el cajero no sabría por qué "no pasa nada").
             className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-xl py-5 rounded-2xl shadow-lg shadow-blue-600/30 transition-all active:scale-[0.98]"
           >
             Buscar Cliente

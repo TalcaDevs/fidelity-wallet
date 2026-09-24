@@ -18,6 +18,13 @@ const PASSWORD = 'password123';
 
 const OWNER = { email: 'owner@example.com', fullName: 'Dueño / Administrador' };
 
+const MERCHANT = { name: 'Café Demo', slug: 'cafe-demo', stampValidityDays: 30 };
+
+const PROMOTIONS = [
+  { name: 'Café', targetStamps: 5, rewardName: 'Café gratis' },
+  { name: 'Almuerzo', targetStamps: 10, rewardName: 'Almuerzo gratis' },
+];
+
 const STAFF = [
   { email: 'cajero1@example.com', fullName: 'Cajero Turno Mañana' },
   { email: 'cajero2@example.com', fullName: 'Cajero Turno Tarde' },
@@ -38,21 +45,39 @@ async function createUser(email, metadata) {
 
 async function main() {
   // Sin merchant_id en la metadata, el trigger handle_new_user crea el Merchant
-  // (id = auth.users.id) y la membresia OWNER.
+  // (id = auth.users.id, slug neutro "local-xxxxxxxx") y la membresia OWNER.
   console.log(`Creating owner ${OWNER.email}...`);
   const owner = await createUser(OWNER.email, { full_name: OWNER.fullName });
   const merchantId = owner.id;
   console.log("Owner created, Merchant ID:", merchantId);
 
-  // Con merchant_id + role en la metadata, el trigger solo inserta la membresia STAFF
-  // en ese local (no le crea un Merchant propio).
+  // Nombre y slug fijos para que la demo tenga una URL conocida: /join/cafe-demo
+  const { error: merchantError } = await supabase
+    .from('Merchant')
+    .update({ name: MERCHANT.name, slug: MERCHANT.slug, stampValidityDays: MERCHANT.stampValidityDays })
+    .eq('id', merchantId);
+  if (merchantError) throw merchantError;
+
+  // Dos promociones activas: los sellos son un saldo unico y el cliente elige cual canjear.
+  const { error: promoError } = await supabase
+    .from('Promotion')
+    .insert(PROMOTIONS.map((p) => ({ ...p, merchantId, isActive: true })));
+  if (promoError) throw promoError;
+  console.log(`Merchant "${MERCHANT.name}" -> /join/${MERCHANT.slug} with ${PROMOTIONS.length} active promotions`);
+
+  // merchant_id en la metadata solo evita que el trigger les cree un local propio. La
+  // metadata NO da permisos (la escribe el cliente): la membresia STAFF se inserta aca con
+  // la service_role key, igual que hace StaffService.
   for (const staff of STAFF) {
     console.log(`Creating staff ${staff.email}...`);
     const user = await createUser(staff.email, {
       full_name: staff.fullName,
-      merchant_id: merchantId,
-      role: 'STAFF'
+      merchant_id: merchantId
     });
+    const { error: memberError } = await supabase
+      .from('MerchantUser')
+      .insert({ userId: user.id, merchantId, role: 'STAFF' });
+    if (memberError) throw memberError;
     console.log("Staff created:", user.id);
   }
 
