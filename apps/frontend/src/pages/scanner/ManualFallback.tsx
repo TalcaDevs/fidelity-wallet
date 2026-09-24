@@ -1,28 +1,21 @@
 import { useState } from 'react';
-import { validateRUT, isPhone } from '../../utils/validators';
+import { IdentifierInput, IdentifierValue } from '../../components/ui/IdentifierInput';
 
 interface ManualFallbackProps {
-  onSubmit: (identifier: string) => void;
+  /** Recibe el tipo y el valor: RUT formateado ("12.345.678-5") o teléfono completo ("+56912345678"). */
+  onSubmit: (identifier: IdentifierValue) => void;
   onCancel: () => void;
 }
 
 export function ManualFallback({ onSubmit, onCancel }: ManualFallbackProps) {
-  const [identifier, setIdentifier] = useState('');
-  const [error, setError] = useState('');
+  const [identifier, setIdentifier] = useState<IdentifierValue>({ kind: 'rut', value: '', isValid: false });
+  const [submitted, setSubmitted] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    
-    const cleanId = identifier.trim();
-    if (!cleanId) return;
-
-    if (!validateRUT(cleanId) && !isPhone(cleanId)) {
-      setError('Ingresa un RUT (ej: 12.345.678-9) o un teléfono válido');
-      return;
-    }
-
-    onSubmit(cleanId);
+    setSubmitted(true);
+    if (!identifier.isValid) return;
+    onSubmit(identifier);
   };
 
   return (
@@ -39,20 +32,11 @@ export function ManualFallback({ onSubmit, onCancel }: ManualFallbackProps) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <input
-              type="text"
-              value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
-              placeholder="12.345.678-9 o +569..."
-              className="w-full bg-slate-800 border-2 border-slate-700 focus:border-blue-500 rounded-2xl px-6 py-5 text-xl font-medium outline-none transition-colors"
-              autoFocus
-            />
-            {error && <p className="text-red-400 text-sm font-bold mt-2 px-1">{error}</p>}
-          </div>
+          <IdentifierInput variant="dark" autoFocus onChange={setIdentifier} showErrors={submitted} />
           <button
             type="submit"
-            disabled={identifier.trim().length < 4}
+            // Habilitado siempre: al pulsarlo con un dato incompleto se muestra el error (si
+            // estuviera deshabilitado, el cajero no sabría por qué "no pasa nada").
             className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-xl py-5 rounded-2xl shadow-lg shadow-blue-600/30 transition-all active:scale-[0.98]"
           >
             Buscar Cliente

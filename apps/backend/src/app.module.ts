@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { CustomersModule } from './customers/customers.module.js';
+import { MerchantsModule } from './merchants/merchants.module.js';
 import { PassesModule } from './passes/passes.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { ScanModule } from './scan/scan.module.js';
@@ -24,6 +25,7 @@ import { StaffModule } from './staff/staff.module.js';
     ]),
     PrismaModule,
     CustomersModule,
+    MerchantsModule,
     StaffModule,
     ScanModule,
     PassesModule,

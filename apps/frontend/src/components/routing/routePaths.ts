@@ -8,6 +8,7 @@ export const ROUTES = {
   customers: '/admin/customers',
   settings: '/admin/settings',
   scan: '/scan',
+  terms: '/terminos',
 } as const;
 
 // El destino al que volver después del login llega desde fuera (query string o

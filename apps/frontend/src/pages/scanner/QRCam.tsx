@@ -1,73 +1,89 @@
 import { useEffect, useRef, useState } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 
 interface QRCamProps {
   onScanSuccess: (decodedText: string) => void;
   isActive: boolean;
 }
 
+// Zona de lectura: 80% del lado menor del video. El marco azul del overlay mide 250px de CSS,
+// pero el video se recorta con object-cover, así que un qrbox fijo en px del video no coincide
+// con lo que el cajero ve. Leyendo casi todo el cuadro, lo que está dentro del marco se decodifica.
+const qrbox = (viewfinderWidth: number, viewfinderHeight: number) => {
+  const size = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.8);
+  return { width: size, height: size };
+};
+
+// start()/stop() de html5-qrcode son asíncronos y fallan si se solapan. La cola es del MÓDULO,
+// no de cada instancia: al volver de "Manual" a la cámara se monta un QRCam nuevo, y su start()
+// debe esperar al stop() del anterior (dos getUserMedia a la vez dan NotReadableError en
+// iOS/Android). También cubre el montaje doble de StrictMode.
+let cameraLifecycle: Promise<void> = Promise.resolve();
+
 export function QRCam({ onScanSuccess, isActive }: QRCamProps) {
-  const scannerRef = useRef<Html5Qrcode | null>(null);
-  const isScanningRef = useRef(false);
   const lastScanRef = useRef<{ text: string; time: number } | null>(null);
+  // El callback cambia en cada render del padre; guardarlo en un ref evita reiniciar la cámara.
+  const onScanRef = useRef(onScanSuccess);
   const [cameraError, setCameraError] = useState(false);
+  // Cambiarlo reintenta abrir la cámara (botón "Reintentar" de la vista de error).
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    if (!isActive) {
-      if (scannerRef.current && isScanningRef.current) {
-        scannerRef.current.stop().then(() => {
-          isScanningRef.current = false;
-        }).catch(() => {});
-      }
-      return;
-    }
+    onScanRef.current = onScanSuccess;
+  }, [onScanSuccess]);
 
-    const startScanner = async () => {
-      if (!scannerRef.current) {
-        scannerRef.current = new Html5Qrcode("reader");
-      }
+  useEffect(() => {
+    if (!isActive) return;
 
-      if (!isScanningRef.current) {
-        try {
-          await scannerRef.current.start(
-            { facingMode: "environment" },
-            {
-              fps: 10,
-              qrbox: { width: 250, height: 250 },
-            },
-            (decodedText: string) => {
-              const now = Date.now();
-              const lastScan = lastScanRef.current;
-              // Cooldown: 2 seconds for the exact same QR code, 1 second for a different one
-              const cooldown = lastScan && lastScan.text === decodedText ? 2000 : 1000;
-              
-              if (!lastScan || (now - lastScan.time > cooldown)) {
-                lastScanRef.current = { text: decodedText, time: now };
-                onScanSuccess(decodedText);
-              }
-            },
-            () => {
-              // ignore background scan errors
+    let cancelled = false;
+    let scanner: Html5Qrcode | null = null;
+
+    cameraLifecycle = cameraLifecycle.then(async () => {
+      if (cancelled) return;
+      scanner = new Html5Qrcode('reader', {
+        verbose: false,
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        // Usa el BarcodeDetector nativo (Chrome/Android) cuando existe: detecta mucho mejor.
+        useBarCodeDetectorIfSupported: true,
+      });
+      try {
+        await scanner.start(
+          { facingMode: 'environment' },
+          { fps: 15, qrbox },
+          (decodedText: string) => {
+            const now = Date.now();
+            const lastScan = lastScanRef.current;
+            // Cooldown: 2 seconds for the exact same QR code, 1 second for a different one
+            const cooldown = lastScan && lastScan.text === decodedText ? 2000 : 1000;
+
+            if (!lastScan || (now - lastScan.time > cooldown)) {
+              lastScanRef.current = { text: decodedText, time: now };
+              onScanRef.current(decodedText.trim());
             }
-          );
-          isScanningRef.current = true;
-          setCameraError(false);
-        } catch (err) {
-          setCameraError(true);
-        }
+          },
+          () => {
+            // ignore background scan errors
+          }
+        );
+        if (!cancelled) setCameraError(false);
+      } catch {
+        if (!cancelled) setCameraError(true);
       }
-    };
-
-    startScanner();
+    });
 
     return () => {
-      if (scannerRef.current && isScanningRef.current) {
-        scannerRef.current.stop().then(() => {
-          isScanningRef.current = false;
-        }).catch(() => {});
-      }
+      cancelled = true;
+      cameraLifecycle = cameraLifecycle.then(async () => {
+        if (!scanner) return;
+        try {
+          if (scanner.isScanning) await scanner.stop();
+          scanner.clear();
+        } catch {
+          // el elemento pudo haberse desmontado ya
+        }
+      });
     };
-  }, [isActive, onScanSuccess]);
+  }, [isActive, attempt]);
 
   if (cameraError) {
     return (
@@ -79,7 +95,17 @@ export function QRCam({ onScanSuccess, isActive }: QRCamProps) {
           </svg>
         </div>
         <h3 className="text-xl font-bold text-white mb-2">Error de cámara</h3>
-        <p className="text-slate-400 font-medium">No pudimos acceder a la cámara. Revisa los permisos de tu navegador o usa el ingreso manual arriba.</p>
+        <p className="text-slate-400 font-medium mb-6">No pudimos acceder a la cámara. Revisa los permisos de tu navegador o usa el ingreso manual arriba.</p>
+        <button
+          type="button"
+          onClick={() => {
+            setCameraError(false);
+            setAttempt((n) => n + 1);
+          }}
+          className="px-6 py-3 bg-slate-800 hover:bg-slate-700 rounded-2xl font-bold transition-colors"
+        >
+          Reintentar
+        </button>
       </div>
     );
   }

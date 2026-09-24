@@ -11,6 +11,8 @@ model Merchant {
   id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name              String
   email             String         @unique
+  /// Identificador público de la landing /join/:slug. Estable: no cambia al renombrar el local.
+  slug              String         @unique
   /// Vigencia de los sellos en dias. NULL = los sellos de este local no vencen.
   stampValidityDays Int?
   promotions        Promotion[]
@@ -41,15 +43,22 @@ model Promotion {
   rewardName   String
   isActive     Boolean  @default(true)
   stamps       Stamp[]
+  /// Canjes de esta promoción (Scan REWARD_REDEEMED).
+  scans        Scan[]
   createdAt    DateTime @default(now())
 }
 
 model Customer {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  rut       String?  @unique
-  phone     String?  @unique
-  passes    Pass[]
-  createdAt DateTime @default(now())
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rut             String?   @unique
+  phone           String?   @unique
+  /// Última aceptación de los términos y condiciones (prueba del consentimiento, Ley 19.628).
+  /// NULL en clientes registrados antes del 2026-09-24.
+  termsAcceptedAt DateTime?
+  /// Versión de los términos aceptada (ver TERMS_VERSION en customers/terms.ts).
+  termsVersion    String?
+  passes          Pass[]
+  createdAt       DateTime  @default(now())
 
   @@index([rut])
   @@index([phone])
@@ -93,15 +102,21 @@ model Stamp {
 }
 
 model Scan {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  passId          String   @db.Uuid
-  pass            Pass     @relation(fields: [passId], references: [id], onDelete: Cascade)
-  merchantId      String   @db.Uuid
-  merchant        Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  passId          String     @db.Uuid
+  pass            Pass       @relation(fields: [passId], references: [id], onDelete: Cascade)
+  merchantId      String     @db.Uuid
+  merchant        Merchant   @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   type            ScanType
+  /// Solo en REWARD_REDEEMED: qué promoción eligió canjear el cliente. Los sellos son un saldo
+  /// único del pase, así que un sello (STAMP_ADDED) no pertenece a ninguna promoción.
+  promotionId     String?    @db.Uuid
+  promotion       Promotion? @relation(fields: [promotionId], references: [id], onDelete: SetNull)
   /// Auditoria: que usuario (dueno o mesero) ejecuto el scan.
-  createdByUserId String?  @db.Uuid
-  createdAt       DateTime @default(now())
+  createdByUserId String?    @db.Uuid
+  createdAt       DateTime   @default(now())
+
+  @@index([promotionId])
 }
 
 enum ScanType {

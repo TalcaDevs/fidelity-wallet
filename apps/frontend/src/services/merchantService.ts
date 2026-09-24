@@ -1,11 +1,14 @@
 import { supabase } from '../lib/supabase';
 import { isValidStampValidityDays } from '../lib/stampExpiry';
 import { apiUrl } from '../lib/api';
+import { extractApiError } from '../lib/apiError';
 
 export interface Merchant {
   id: string;
   name: string;
   email: string;
+  // Identificador público del link de registro: /join/<slug>.
+  slug: string;
   // Vigencia de los sellos en días. null = no vencen. Es una regla del local,
   // no de cada promoción: se configura una sola vez acá.
   stampValidityDays: number | null;
@@ -24,6 +27,18 @@ export interface MerchantWithPromo {
     targetStamps: number;
     rewardName: string;
   }[];
+}
+
+type ApiPromotion = { id: string; name?: string; targetStamps: number; rewardName: string };
+
+/** Contrato de GET /api/merchants/by-slug/:slug (PublicMerchantDto del backend). */
+interface PublicMerchantResponse {
+  id: string;
+  name: string;
+  slug: string;
+  stampValidityDays: number | null;
+  activePromotion: ApiPromotion | null;
+  activePromotions?: ApiPromotion[];
 }
 
 export async function getMerchantWithActivePromo(merchantName: string): Promise<MerchantWithPromo | null> {
@@ -54,28 +69,31 @@ export async function getMerchantWithActivePromo(merchantName: string): Promise<
     throw new Error('No se pudo cargar la información del local. Por favor, reintenta.');
   }
   
-  const data = await response.json();
-  
-  // Mapear la respuesta del backend al contrato esperado por el frontend
+  const data = (await response.json()) as PublicMerchantResponse;
+
+  // Mapear la respuesta del backend al contrato esperado por el frontend.
+  // Promotion[0] es la más reciente (la que se destaca); el resto también se puede canjear
+  // con los mismos sellos.
+  const promotions: ApiPromotion[] =
+    data.activePromotions ?? (data.activePromotion ? [data.activePromotion] : []);
+
   return {
     id: data.id,
     name: data.name,
     stampValidityDays: data.stampValidityDays,
-    Promotion: data.activePromotion ? [
-      {
-        id: data.activePromotion.id,
-        name: data.activePromotion.name || 'Promoción Activa',
-        targetStamps: data.activePromotion.targetStamps,
-        rewardName: data.activePromotion.rewardName
-      }
-    ] : []
+    Promotion: promotions.map((p) => ({
+      id: p.id,
+      name: p.name || 'Promoción Activa',
+      targetStamps: p.targetStamps,
+      rewardName: p.rewardName
+    }))
   };
 }
 
 export async function getMerchant(merchantId: string): Promise<Merchant | null> {
   const { data, error } = await supabase
     .from('Merchant')
-    .select('id, name, email, stampValidityDays, createdAt')
+    .select('id, name, email, slug, stampValidityDays, createdAt')
     .eq('id', merchantId)
     .maybeSingle();
 
@@ -107,4 +125,30 @@ export async function updateMerchantSettings(merchantId: string, settings: Merch
   if (!data || data.length === 0) {
     throw new Error('No se pudo guardar: tu cuenta no tiene permisos sobre este local.');
   }
+}
+
+/** URL pública que el dueño imprime en el QR de las mesas. */
+export function publicJoinUrl(slug: string): string {
+  return `${window.location.origin}/join/${slug}`;
+}
+
+// El slug no se escribe por Supabase: el panel no tiene permiso sobre esa columna (grant por
+// columna), así siempre pasa por la normalización y la unicidad del backend.
+export async function updateMerchantSlug(merchantId: string, slug: string): Promise<string> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Tu sesión venció. Vuelve a iniciar sesión.');
+
+  const response = await fetch(apiUrl(`/api/merchants/${merchantId}/slug`), {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ slug }),
+  });
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(extractApiError(body) ?? 'No pudimos cambiar el link. Intenta de nuevo.');
+  }
+  return (body as { slug: string }).slug;
 }
