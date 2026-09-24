@@ -37,7 +37,7 @@ export function Scan({ merchantId, session }: { merchantId: string, session: Ses
   // Monitor Supabase auth state for unexpected session invalidation
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
+      if (event === 'SIGNED_OUT') {
         setIsSessionExpired(true);
       }
     });
