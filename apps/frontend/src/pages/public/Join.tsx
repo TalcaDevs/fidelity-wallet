@@ -161,6 +161,9 @@ export function Join() {
         googleWalletUrl={walletUrls.google} 
         alreadyExists={alreadyExists}
         merchantName={merchant.name}
+        merchantId={merchant.id}
+        initialRut={rut.value}
+        initialPhone={phone.value}
       />
     );
   }
@@ -312,7 +315,20 @@ export function Join() {
           </button>
         </form>
 
-        <p className="text-[11px] text-slate-400 mt-10 text-center max-w-xs leading-relaxed font-medium">
+        <div className="mt-6 text-center">
+          <button
+            type="button"
+            onClick={() => {
+              setAlreadyExists(true);
+              setSuccess(true);
+            }}
+            className="text-sm font-semibold text-blue-600 hover:text-blue-700 underline"
+          >
+            ¿Ya tienes tarjeta en este local y la perdiste? Recupérala aquí
+          </button>
+        </div>
+
+        <p className="text-[11px] text-slate-400 mt-8 text-center max-w-xs leading-relaxed font-medium">
           Usamos tu RUT y teléfono únicamente para identificar tu tarjeta y gestionar tus sellos, conforme a la Ley 19.628 de Protección de la Vida Privada. Puedes pedir su eliminación cuando quieras.
         </p>
       </div>

@@ -198,6 +198,21 @@ describe('PassesService', () => {
       expect(res.isNew).toBe(true);
       expect(res.pass.id).toBe('new-pass');
     });
+
+    it('should use transaction client tx when provided', async () => {
+      const txMock: any = {
+        pass: {
+          findUnique: vi.fn().mockResolvedValue(null),
+          create: vi.fn().mockResolvedValue({ id: 'tx-pass-1' }),
+        },
+      };
+
+      const res = await service.findOrCreatePass(mockCustomerId, mockMerchantId, txMock);
+      expect(txMock.pass.findUnique).toHaveBeenCalled();
+      expect(txMock.pass.create).toHaveBeenCalled();
+      expect(res.pass.id).toBe('tx-pass-1');
+      expect(res.isNew).toBe(true);
+    });
   });
 
   describe('getWalletUrlsForPass', () => {
@@ -222,6 +237,36 @@ describe('PassesService', () => {
       expect(urls).not.toBeNull();
       expect(urls?.appleWalletUrl).toContain('/api/passes/token-123/apple');
       expect(urls?.googleWalletUrl).toBe('https://pay.google.com/gp/v/save/mock-jwt');
+    });
+
+    it('should use transaction client tx when provided', async () => {
+      const txMock: any = {
+        pass: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: mockPassId,
+            passToken: 'token-tx',
+            merchantId: mockMerchantId,
+            merchant: { id: mockMerchantId, name: 'Local' },
+            customer: { id: mockCustomerId, rut: '11111111-1' },
+          }),
+        },
+        promotion: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'promo-1',
+            targetStamps: 5,
+            rewardName: 'Café',
+          }),
+        },
+        stamp: {
+          count: vi.fn().mockResolvedValue(0),
+          findFirst: vi.fn().mockResolvedValue(null),
+        },
+      };
+
+      const urls = await service.getWalletUrlsForPass(mockPassId, txMock);
+      expect(txMock.pass.findUnique).toHaveBeenCalled();
+      expect(txMock.promotion.findFirst).toHaveBeenCalled();
+      expect(urls?.appleWalletUrl).toContain('/api/passes/token-tx/apple');
     });
 
     it('should return null if pass does not exist', async () => {

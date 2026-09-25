@@ -20,6 +20,7 @@ model Merchant {
   scans             Scan[]
   stamps            Stamp[]
   users             MerchantUser[]
+  verificationCodes CustomerVerificationCode[]
   createdAt         DateTime       @default(now())
 }
 
@@ -57,8 +58,9 @@ model Customer {
   termsAcceptedAt DateTime?
   /// Versión de los términos aceptada (ver TERMS_VERSION en customers/terms.ts).
   termsVersion    String?
-  passes          Pass[]
-  createdAt       DateTime  @default(now())
+  passes            Pass[]
+  verificationCodes CustomerVerificationCode[]
+  createdAt         DateTime  @default(now())
 
   @@index([rut])
   @@index([phone])
@@ -114,6 +116,7 @@ model Scan {
   promotion       Promotion? @relation(fields: [promotionId], references: [id], onDelete: SetNull)
   /// Auditoria: que usuario (dueno o mesero) ejecuto el scan.
   createdByUserId String?    @db.Uuid
+  method          ScanMethod @default(QR)
   createdAt       DateTime   @default(now())
 
   @@index([promotionId])
@@ -124,7 +127,28 @@ enum ScanType {
   REWARD_REDEEMED
 }
 
+enum ScanMethod {
+  QR
+  MANUAL
+}
+
 enum MerchantRole {
   OWNER
   STAFF
+}
+
+/// Códigos OTP de un solo uso para verificar clientes y recuperar pases perdidos (SMS/WhatsApp).
+model CustomerVerificationCode {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId String    @db.Uuid
+  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  merchantId String    @db.Uuid
+  merchant   Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  attempts   Int       @default(0)
+  createdAt  DateTime  @default(now())
+
+  @@index([customerId, merchantId, createdAt])
 }

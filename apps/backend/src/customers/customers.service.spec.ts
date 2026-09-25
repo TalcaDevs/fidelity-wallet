@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import type { PassesService } from '../passes/passes.service.js';
@@ -24,7 +29,11 @@ describe('CustomersService', () => {
 
   beforeEach(() => {
     prismaMock = {
+      $transaction: vi.fn((callback: (tx: any) => Promise<any>) => callback(prismaMock)),
       merchant: {
+        findUnique: vi.fn(),
+      },
+      merchantUser: {
         findUnique: vi.fn(),
       },
       promotion: {
@@ -35,6 +44,20 @@ describe('CustomersService', () => {
         findFirst: vi.fn(),
         create: vi.fn(),
         update: vi.fn(),
+        delete: vi.fn(),
+      },
+      pass: {
+        findUnique: vi.fn(),
+        delete: vi.fn(),
+        count: vi.fn(),
+      },
+      customerVerificationCode: {
+        findFirst: vi.fn(),
+        findMany: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
+        create: vi.fn(),
+        update: vi.fn(),
+        deleteMany: vi.fn(),
       },
     };
 
@@ -47,11 +70,18 @@ describe('CustomersService', () => {
         appleWalletUrl: '/api/passes/p-1/apple',
         googleWalletUrl: '/api/passes/p-1/google',
       }),
+      notifyPassUpdate: vi.fn(),
+    };
+
+    const smsServiceMock: any = {
+      sendRecoveryCode: vi.fn().mockResolvedValue(true),
+      sendDeletionCode: vi.fn().mockResolvedValue(true),
     };
 
     service = new CustomersService(
       prismaMock as unknown as PrismaService,
       passesServiceMock as unknown as PassesService,
+      smsServiceMock,
     );
   });
 
@@ -141,8 +171,41 @@ describe('CustomersService', () => {
     expect(result.appleWalletUrl).toBe('/api/passes/p-1/apple');
     expect(result.googleWalletUrl).toBe('/api/passes/p-1/google');
     expect((result as any).passToken).toBeUndefined();
-    expect(passesServiceMock.findOrCreatePass).toHaveBeenCalledWith('c-1', 'm-1');
-    expect(passesServiceMock.getWalletUrlsForPass).toHaveBeenCalledWith('p-1');
+    expect(passesServiceMock.findOrCreatePass).toHaveBeenCalledWith('c-1', 'm-1', prismaMock);
+    expect(passesServiceMock.getWalletUrlsForPass).toHaveBeenCalledWith('p-1', prismaMock);
+    expect(prismaMock.$transaction).toHaveBeenCalled();
+  });
+
+  it('should throw InternalServerErrorException and abort transaction if wallet URLs generation returns null for a new pass', async () => {
+    prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
+    prismaMock.customer.findUnique.mockResolvedValue(null);
+    prismaMock.customer.create.mockResolvedValue({ id: 'c-1', rut: '11111111-1', phone: '+56912345678' });
+    passesServiceMock.findOrCreatePass.mockResolvedValue({
+      pass: { id: 'p-1', customerId: 'c-1', merchantId: 'm-1' },
+      isNew: true,
+    });
+    passesServiceMock.getWalletUrlsForPass.mockResolvedValue(null);
+
+    await expect(service.createOrFindCustomer(validDto())).rejects.toThrow(
+      InternalServerErrorException,
+    );
+    expect(prismaMock.$transaction).toHaveBeenCalled();
+  });
+
+  it('should throw InternalServerErrorException and abort transaction if wallet URLs generation throws an error for a new pass', async () => {
+    prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
+    prismaMock.customer.findUnique.mockResolvedValue(null);
+    prismaMock.customer.create.mockResolvedValue({ id: 'c-1', rut: '11111111-1', phone: '+56912345678' });
+    passesServiceMock.findOrCreatePass.mockResolvedValue({
+      pass: { id: 'p-1', customerId: 'c-1', merchantId: 'm-1' },
+      isNew: true,
+    });
+    passesServiceMock.getWalletUrlsForPass.mockRejectedValue(new Error('Signing key failure'));
+
+    await expect(service.createOrFindCustomer(validDto())).rejects.toThrow(
+      InternalServerErrorException,
+    );
+    expect(prismaMock.$transaction).toHaveBeenCalled();
   });
 
   it('should return existing customer and pass without wallet URLs to prevent credential leakage/impersonation', async () => {
@@ -165,6 +228,7 @@ describe('CustomersService', () => {
     expect((result as any).passToken).toBeUndefined();
     expect(prismaMock.customer.create).not.toHaveBeenCalled();
     expect(passesServiceMock.getWalletUrlsForPass).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).toHaveBeenCalled();
   });
 
   describe('identity of an existing customer (anti-impersonation)', () => {
@@ -217,6 +281,329 @@ describe('CustomersService', () => {
         where: { id: 'c-1' },
         data: { termsAcceptedAt: expect.any(Date), termsVersion: TERMS_VERSION },
       });
+    });
+  });
+
+  describe('requestRecoveryCode', () => {
+    const recoveryDto = {
+      merchantId: 'm-1',
+      rut: '11.111.111-1',
+      phone: '+56912345678',
+    };
+
+    it('rejects if RUT is invalid', async () => {
+      await expect(service.requestRecoveryCode({ ...recoveryDto, rut: '11.111.111-2' })).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('rejects if merchant does not exist', async () => {
+      prismaMock.merchant.findUnique.mockResolvedValue(null);
+      await expect(service.requestRecoveryCode(recoveryDto)).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects if customer does not exist', async () => {
+      prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1', name: 'Local' });
+      prismaMock.customer.findUnique.mockResolvedValue(null);
+      await expect(service.requestRecoveryCode(recoveryDto)).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects if customer identity does not match', async () => {
+      prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1', name: 'Local' });
+      prismaMock.customer.findUnique.mockResolvedValue({ id: 'c-1', rut: '11111111-1', phone: '+56987654321' });
+      await expect(service.requestRecoveryCode(recoveryDto)).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects if customer has no pass for this merchant', async () => {
+      prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1', name: 'Local' });
+      prismaMock.customer.findUnique.mockResolvedValue({ id: 'c-1', rut: '11111111-1', phone: '+56912345678' });
+      prismaMock.pass.findUnique.mockResolvedValue(null);
+      await expect(service.requestRecoveryCode(recoveryDto)).rejects.toThrow('No tienes una tarjeta registrada en este comercio');
+    });
+
+    it('rejects if a code was already requested within the last 60 seconds (rate limiting)', async () => {
+      prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1', name: 'Local' });
+      prismaMock.customer.findUnique.mockResolvedValue({ id: 'c-1', rut: '11111111-1', phone: '+56912345678' });
+      prismaMock.pass.findUnique.mockResolvedValue({ id: 'p-1', customerId: 'c-1', merchantId: 'm-1' });
+      prismaMock.customerVerificationCode.findFirst.mockResolvedValue({ id: 'code-1' });
+      await expect(service.requestRecoveryCode(recoveryDto)).rejects.toThrow(
+        'Debes esperar al menos un minuto antes de solicitar otro código',
+      );
+    });
+
+    it('creates OTP code, dispatches SMS, and returns masked phone on success', async () => {
+      prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1', name: 'Local' });
+      prismaMock.customer.findUnique.mockResolvedValue({ id: 'c-1', rut: '11111111-1', phone: '+56912345678' });
+      prismaMock.pass.findUnique.mockResolvedValue({ id: 'p-1', customerId: 'c-1', merchantId: 'm-1' });
+      prismaMock.customerVerificationCode.findFirst.mockResolvedValue(null);
+      prismaMock.customerVerificationCode.count.mockResolvedValue(0);
+      prismaMock.customerVerificationCode.create.mockResolvedValue({ id: 'vc-1' });
+
+      const res = await service.requestRecoveryCode(recoveryDto);
+      expect(res.success).toBe(true);
+      expect(res.phoneMasked).toContain('+56 9');
+      expect(prismaMock.customerVerificationCode.create).toHaveBeenCalledWith({
+        data: {
+          customerId: 'c-1',
+          merchantId: 'm-1',
+          codeHash: expect.any(String),
+          expiresAt: expect.any(Date),
+        },
+      });
+    });
+  });
+
+  describe('verifyRecoveryCode', () => {
+    const verifyDto = {
+      merchantId: 'm-1',
+      rut: '11.111.111-1',
+      phone: '+56912345678',
+      code: '123456',
+    };
+
+    it('rejects if no active code exists', async () => {
+      prismaMock.customer.findUnique.mockResolvedValue({ id: 'c-1', rut: '11111111-1', phone: '+56912345678' });
+      prismaMock.pass.findUnique.mockResolvedValue({ id: 'p-1', customerId: 'c-1', merchantId: 'm-1' });
+      prismaMock.customerVerificationCode.findFirst.mockResolvedValue(null);
+
+      await expect(service.verifyRecoveryCode(verifyDto)).rejects.toThrow(
+        'No hay un código de verificación activo',
+      );
+    });
+
+    it('rejects and increments attempt counter if code hash does not match', async () => {
+      prismaMock.customer.findUnique.mockResolvedValue({ id: 'c-1', rut: '11111111-1', phone: '+56912345678' });
+      prismaMock.pass.findUnique.mockResolvedValue({ id: 'p-1', customerId: 'c-1', merchantId: 'm-1' });
+      prismaMock.customerVerificationCode.findFirst.mockResolvedValue({
+        id: 'vc-1',
+        codeHash: 'different-hash',
+        attempts: 0,
+      });
+
+      await expect(service.verifyRecoveryCode(verifyDto)).rejects.toThrow('Código de verificación incorrecto');
+      expect(prismaMock.customerVerificationCode.update).toHaveBeenCalledWith({
+        where: { id: 'vc-1' },
+        data: { attempts: 1 },
+      });
+    });
+
+    it('consumes code, generates wallet URLs, and returns recovery payload on success', async () => {
+      const crypto = await import('crypto');
+      const expectedHash = crypto.createHash('sha256').update('123456').digest('hex');
+
+      prismaMock.customer.findUnique.mockResolvedValue({ id: 'c-1', rut: '11111111-1', phone: '+56912345678' });
+      prismaMock.pass.findUnique.mockResolvedValue({ id: 'p-1', customerId: 'c-1', merchantId: 'm-1' });
+      prismaMock.customerVerificationCode.findFirst.mockResolvedValue({
+        id: 'vc-1',
+        codeHash: expectedHash,
+        attempts: 0,
+      });
+
+      const res = await service.verifyRecoveryCode(verifyDto);
+      expect(res.success).toBe(true);
+      expect(res.customerId).toBe('c-1');
+      expect(res.passId).toBe('p-1');
+      expect(res.appleWalletUrl).toBe('/api/passes/p-1/apple');
+      expect(res.googleWalletUrl).toBe('/api/passes/p-1/google');
+      expect(prismaMock.customerVerificationCode.update).toHaveBeenCalledWith({
+        where: { id: 'vc-1' },
+        data: { consumedAt: expect.any(Date) },
+      });
+    });
+
+    it('completes missing phone on legacy customer once OTP verifies ownership', async () => {
+      const crypto = await import('crypto');
+      const expectedHash = crypto.createHash('sha256').update('123456').digest('hex');
+
+      // Legacy customer missing phone
+      prismaMock.customer.findUnique.mockImplementation(({ where }: any) =>
+        Promise.resolve(where.rut ? { id: 'c-1', rut: '11111111-1', phone: null } : null),
+      );
+      prismaMock.pass.findUnique.mockResolvedValue({ id: 'p-1', customerId: 'c-1', merchantId: 'm-1' });
+      prismaMock.customerVerificationCode.findFirst.mockResolvedValue({
+        id: 'vc-1',
+        codeHash: expectedHash,
+        attempts: 0,
+      });
+
+      await service.verifyRecoveryCode(verifyDto);
+
+      expect(prismaMock.customer.update).toHaveBeenCalledWith({
+        where: { id: 'c-1' },
+        data: {
+          phone: '+56912345678',
+          rut: '11111111-1',
+        },
+      });
+    });
+  });
+
+  describe('deleteCustomerByMerchant (Ley 19.628)', () => {
+    it('throws ForbiddenException if caller is not authenticated', async () => {
+      await expect(
+        service.deleteCustomerByMerchant('m-1', 'c-1', ''),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('throws ForbiddenException if caller is not an OWNER', async () => {
+      prismaMock.merchantUser.findUnique.mockResolvedValue({ role: 'STAFF' });
+      await expect(
+        service.deleteCustomerByMerchant('m-1', 'c-1', 'user-staff'),
+      ).rejects.toThrow('Solo el dueño del comercio puede eliminar clientes');
+    });
+
+    it('throws NotFoundException if customer or pass does not exist in merchant', async () => {
+      prismaMock.merchantUser.findUnique.mockResolvedValue({ role: 'OWNER' });
+      prismaMock.pass.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.deleteCustomerByMerchant('m-1', 'c-1', 'user-owner'),
+      ).rejects.toThrow('Cliente o pase no encontrado en este comercio');
+    });
+
+    it('deletes pass and verification codes without deleting customer when customer has other passes', async () => {
+      prismaMock.merchantUser.findUnique.mockResolvedValue({ role: 'OWNER' });
+      prismaMock.pass.findUnique.mockResolvedValue({ id: 'p-1', customerId: 'c-1', merchantId: 'm-1' });
+      prismaMock.pass.count.mockResolvedValue(1); // 1 remaining pass in another merchant
+
+      const result = await service.deleteCustomerByMerchant('m-1', 'c-1', 'user-owner');
+
+      expect(prismaMock.customerVerificationCode.deleteMany).toHaveBeenCalledWith({
+        where: { customerId: 'c-1', merchantId: 'm-1' },
+      });
+      expect(prismaMock.pass.delete).toHaveBeenCalledWith({ where: { id: 'p-1' } });
+      expect(prismaMock.customer.delete).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      expect(result.customerCompletelyDeleted).toBe(false);
+      expect(passesServiceMock.notifyPassUpdate).toHaveBeenCalledWith('p-1');
+    });
+
+    it('deletes pass and customer completely when customer has no other passes', async () => {
+      prismaMock.merchantUser.findUnique.mockResolvedValue({ role: 'OWNER' });
+      prismaMock.pass.findUnique.mockResolvedValue({ id: 'p-1', customerId: 'c-1', merchantId: 'm-1' });
+      prismaMock.pass.count.mockResolvedValue(0); // 0 remaining passes
+
+      const result = await service.deleteCustomerByMerchant('m-1', 'c-1', 'user-owner');
+
+      expect(prismaMock.pass.delete).toHaveBeenCalledWith({ where: { id: 'p-1' } });
+      expect(prismaMock.customer.delete).toHaveBeenCalledWith({ where: { id: 'c-1' } });
+      expect(result.success).toBe(true);
+      expect(result.customerCompletelyDeleted).toBe(true);
+    });
+  });
+
+  describe('deleteCustomerGlobal (Ley 19.628)', () => {
+    it('throws NotFoundException if customer does not exist', async () => {
+      prismaMock.customer.findUnique.mockResolvedValue(null);
+      await expect(service.deleteCustomerGlobal('c-nonexistent')).rejects.toThrow('Cliente no encontrado');
+    });
+
+    it('deletes customer and notifies passes', async () => {
+      prismaMock.customer.findUnique.mockResolvedValue({
+        id: 'c-1',
+        passes: [{ id: 'p-1' }, { id: 'p-2' }],
+      });
+
+      const result = await service.deleteCustomerGlobal('c-1');
+
+      expect(prismaMock.customer.delete).toHaveBeenCalledWith({ where: { id: 'c-1' } });
+      expect(result.success).toBe(true);
+      expect(result.customerCompletelyDeleted).toBe(true);
+      expect(passesServiceMock.notifyPassUpdate).toHaveBeenCalledWith('p-1');
+      expect(passesServiceMock.notifyPassUpdate).toHaveBeenCalledWith('p-2');
+    });
+  });
+
+  describe('requestDeletionCode and verifyDeletionCode (Ley 19.628)', () => {
+    it('requestDeletionCode rejects if neither RUT nor phone is provided', async () => {
+      await expect(
+        service.requestDeletionCode({ merchantId: 'm-1' }),
+      ).rejects.toThrow('Debes proporcionar el RUT o el teléfono registrado');
+    });
+
+    it('requestDeletionCode rejects if customer or pass not found in merchant', async () => {
+      prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1', name: 'Café Test' });
+      prismaMock.customer.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.requestDeletionCode({ merchantId: 'm-1', phone: '+56912345678' }),
+      ).rejects.toThrow('No encontramos un pase asociado a los datos ingresados en este comercio.');
+    });
+
+    it('requestDeletionCode sends SMS and creates code', async () => {
+      prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1', name: 'Café Test' });
+      prismaMock.customer.findFirst.mockResolvedValue({
+        id: 'c-1',
+        phone: '+56912345678',
+        passes: [{ id: 'p-1', merchantId: 'm-1' }],
+      });
+
+      const result = await service.requestDeletionCode({
+        merchantId: 'm-1',
+        phone: '+56912345678',
+      });
+
+      expect(result.success).toBe(true);
+      expect(prismaMock.customerVerificationCode.create).toHaveBeenCalled();
+    });
+
+    it('verifyDeletionCode rejects if incorrect code', async () => {
+      const crypto = await import('crypto');
+      const expectedHash = crypto.createHash('sha256').update('123456').digest('hex');
+
+      prismaMock.customer.findFirst.mockResolvedValue({
+        id: 'c-1',
+        phone: '+56912345678',
+        passes: [{ id: 'p-1', merchantId: 'm-1' }],
+      });
+      prismaMock.customerVerificationCode.findFirst.mockResolvedValue({
+        id: 'code-1',
+        codeHash: expectedHash,
+        attempts: 0,
+        expiresAt: new Date(Date.now() + 600000),
+      });
+
+      await expect(
+        service.verifyDeletionCode({
+          merchantId: 'm-1',
+          phone: '+56912345678',
+          code: '999999',
+        }),
+      ).rejects.toThrow('El código de verificación ingresado es incorrecto.');
+
+      expect(prismaMock.customerVerificationCode.update).toHaveBeenCalledWith({
+        where: { id: 'code-1' },
+        data: { attempts: { increment: 1 } },
+      });
+    });
+
+    it('verifyDeletionCode executes deletion when code is valid', async () => {
+      const crypto = await import('crypto');
+      const expectedHash = crypto.createHash('sha256').update('123456').digest('hex');
+
+      prismaMock.customer.findFirst.mockResolvedValue({
+        id: 'c-1',
+        phone: '+56912345678',
+        passes: [{ id: 'p-1', merchantId: 'm-1' }],
+      });
+      prismaMock.customerVerificationCode.findFirst.mockResolvedValue({
+        id: 'code-1',
+        codeHash: expectedHash,
+        attempts: 0,
+        expiresAt: new Date(Date.now() + 600000),
+      });
+      prismaMock.pass.count.mockResolvedValue(0);
+
+      const result = await service.verifyDeletionCode({
+        merchantId: 'm-1',
+        phone: '+56912345678',
+        code: '123456',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.customerCompletelyDeleted).toBe(true);
+      expect(prismaMock.pass.delete).toHaveBeenCalledWith({ where: { id: 'p-1' } });
+      expect(prismaMock.customer.delete).toHaveBeenCalledWith({ where: { id: 'c-1' } });
     });
   });
 });

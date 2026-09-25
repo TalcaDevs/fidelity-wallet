@@ -10,6 +10,7 @@ export interface ScanWithCustomer {
   type: 'STAMP_ADDED' | 'REWARD_REDEEMED' | string;
   createdAt: string;
   customer: ScanCustomer | null;
+  method?: 'QR' | 'MANUAL';
 }
 
 export interface DashboardStats {
@@ -37,15 +38,17 @@ interface RawScanRow {
   id: string;
   type: string;
   createdAt: string;
+  method?: 'QR' | 'MANUAL';
   pass?: { customer?: ScanCustomer | ScanCustomer[] | null } | { customer?: ScanCustomer | ScanCustomer[] | null }[] | null;
 }
 
-function toScan(row: RawScanRow): ScanWithCustomer {
+export function toScan(row: RawScanRow): ScanWithCustomer {
   const pass = firstOrSelf(row.pass);
   return {
     id: row.id,
     type: row.type,
     createdAt: row.createdAt,
+    method: row.method,
     customer: firstOrSelf(pass?.customer),
   };
 }
@@ -55,7 +58,7 @@ export async function fetchDashboardStats(merchantId: string): Promise<Dashboard
     supabase.from('Pass').select('id', { count: 'exact', head: true }).eq('merchantId', merchantId),
     supabase.from('Scan').select('*', { count: 'exact', head: true }).eq('merchantId', merchantId).eq('type', 'STAMP_ADDED'),
     supabase.from('Scan').select('*', { count: 'exact', head: true }).eq('merchantId', merchantId).eq('type', 'REWARD_REDEEMED'),
-    supabase.from('Scan').select('id, type, createdAt, pass:Pass(customer:Customer(rut, phone))').eq('merchantId', merchantId).order('createdAt', { ascending: false }).limit(5),
+    supabase.from('Scan').select('id, type, createdAt, method, pass:Pass(customer:Customer(rut, phone))').eq('merchantId', merchantId).order('createdAt', { ascending: false }).limit(5),
   ]);
 
   // supabase-js no lanza: devuelve { data, count, error }. Sin esta comprobación

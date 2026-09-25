@@ -7,7 +7,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import type { Customer, Merchant, Pass, Prisma, Promotion } from '@prisma/client';
-import { ScanType } from '@prisma/client';
+import { ScanMethod, ScanType } from '@prisma/client';
 import { maskPhone, maskRut } from '../common/utils/mask.util.js';
 import { normalizePhone } from '../common/utils/phone.util.js';
 import { cleanRut, validateRut } from '../common/utils/rut.util.js';
@@ -131,6 +131,8 @@ export class ScanService {
         }
       : undefined;
 
+    const method: ScanMethod = dto.passToken ? ScanMethod.QR : ScanMethod.MANUAL;
+
     if (dto.action === ScanActionType.STAMP) {
       const result = await this.executeStampAction(
         pass,
@@ -138,6 +140,7 @@ export class ScanService {
         dto,
         callerUserId,
         maskedCustomer,
+        method,
       );
       if (!result.alreadyScanned) {
         void this.passesService.notifyPassUpdate(pass.id);
@@ -154,6 +157,7 @@ export class ScanService {
         dto,
         callerUserId,
         maskedCustomer,
+        method,
       );
       if (!result.alreadyScanned) {
         void this.passesService.notifyPassUpdate(pass.id);
@@ -267,7 +271,8 @@ export class ScanService {
     activePromotions: Promotion[],
     dto: ScanActionDto,
     callerUserId: string,
-    maskedCustomer?: MaskedCustomerDto,
+    maskedCustomer: MaskedCustomerDto | undefined,
+    method: ScanMethod,
   ): Promise<ScanResultDto> {
     const featured = activePromotions[0];
 
@@ -312,6 +317,7 @@ export class ScanService {
           success: true,
           alreadyScanned: true,
           action: ScanActionType.STAMP,
+          method: latestScan.method ?? method,
           passId: pass.id,
           activeStamps,
           targetStamps: featured.targetStamps,
@@ -332,6 +338,7 @@ export class ScanService {
           merchantId: dto.merchantId,
           type: ScanType.STAMP_ADDED,
           createdByUserId: callerUserId,
+          method,
         },
       });
 
@@ -355,6 +362,7 @@ export class ScanService {
         success: true,
         alreadyScanned: false,
         action: ScanActionType.STAMP,
+        method,
         passId: pass.id,
         activeStamps,
         targetStamps: featured.targetStamps,
@@ -377,7 +385,8 @@ export class ScanService {
     activePromotions: Promotion[],
     dto: ScanActionDto,
     callerUserId: string,
-    maskedCustomer?: MaskedCustomerDto,
+    maskedCustomer: MaskedCustomerDto | undefined,
+    method: ScanMethod,
   ): Promise<ScanResultDto> {
     return this.prisma.$transaction(async (tx) => {
       // Bloqueo pesimista de fila en Pass para serializar operaciones sobre el mismo pase
@@ -405,6 +414,7 @@ export class ScanService {
           success: true,
           alreadyScanned: true,
           action: ScanActionType.REDEEM,
+          method: latestRedeem.method ?? method,
           passId: pass.id,
           activeStamps,
           targetStamps: promotion.targetStamps,
@@ -438,6 +448,7 @@ export class ScanService {
           type: ScanType.REWARD_REDEEMED,
           promotionId: promotion.id,
           createdByUserId: callerUserId,
+          method,
         },
       });
 
@@ -466,6 +477,7 @@ export class ScanService {
         success: true,
         alreadyScanned: false,
         action: ScanActionType.REDEEM,
+        method,
         passId: pass.id,
         activeStamps: remainingActiveStamps,
         targetStamps: promotion.targetStamps,

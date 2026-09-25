@@ -76,6 +76,7 @@ export function Dashboard({ session, merchantId }: { session: Session | null; me
               const customer = scan.customer;
               const identifier = maskIdentifier(customer?.rut) ?? maskIdentifier(customer?.phone) ?? 'Anónimo';
               const isReward = scan.type === 'REWARD_REDEEMED';
+              const isManual = scan.method === 'MANUAL';
               return (
                 <div key={scan.id} className="flex items-center justify-between p-5 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border border-transparent hover:border-slate-100 dark:hover:border-slate-700">
                   <div className="flex items-center gap-5">
@@ -83,7 +84,16 @@ export function Dashboard({ session, merchantId }: { session: Session | null; me
                       {isReward ? '🎁' : 'S'}
                     </div>
                     <div>
-                      <p className="font-semibold text-lg">{isReward ? 'Premio Canjeado' : 'Cliente escaneado'}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-lg">{isReward ? 'Premio Canjeado' : 'Cliente escaneado'}</p>
+                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                          isManual
+                            ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                            : 'bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300'
+                        }`}>
+                          {isManual ? 'Manual' : 'QR'}
+                        </span>
+                      </div>
                       <p className="text-sm text-slate-500 dark:text-slate-400">{identifier}</p>
                     </div>
                   </div>
