@@ -17,18 +17,7 @@ import { CurrentUser, type AuthenticatedUser } from '../common/decorators/curren
 import { SupabaseAuthGuard } from '../common/guards/supabase-auth.guard.js';
 import { CustomersService } from './customers.service.js';
 import { CreateCustomerDto, CustomerResponseDto } from './dto/create-customer.dto.js';
-import {
-  DeleteCustomerResponseDto,
-  RequestDeletionDto,
-  RequestDeletionResponseDto,
-  VerifyDeletionDto,
-} from './dto/deletion.dto.js';
-import {
-  RequestRecoveryDto,
-  RequestRecoveryResponseDto,
-  VerifyRecoveryDto,
-  VerifyRecoveryResponseDto,
-} from './dto/recovery.dto.js';
+import { DeleteCustomerResponseDto } from './dto/deletion.dto.js';
 
 @ApiTags('Customers')
 @Controller('customers')
@@ -58,60 +47,6 @@ export class CustomersController {
   })
   async createCustomer(@Body() dto: CreateCustomerDto): Promise<CustomerResponseDto> {
     return this.customersService.createOrFindCustomer(dto);
-  }
-
-  @Post('recovery/request')
-  @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
-  @ApiOperation({
-    summary: 'Solicita un código OTP para recuperar un pase perdido',
-    description:
-      'Envía un código de verificación de 6 dígitos por SMS al teléfono registrado del cliente.',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Código de verificación generado y enviado',
-    type: RequestRecoveryResponseDto,
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Datos inválidos o rate-limit excedido',
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Cliente o comercio no encontrado',
-  })
-  async requestRecovery(
-    @Body() dto: RequestRecoveryDto,
-  ): Promise<RequestRecoveryResponseDto> {
-    return this.customersService.requestRecoveryCode(dto);
-  }
-
-  @Post('recovery/verify')
-  @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
-  @ApiOperation({
-    summary: 'Verifica el código OTP y devuelve las credenciales del pase',
-    description:
-      'Verifica el código de 6 dígitos recibido por SMS y devuelve las URLs de Apple y Google Wallet.',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Código verificado con éxito y credenciales re-emitidas',
-    type: VerifyRecoveryResponseDto,
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Código incorrecto o expirado',
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Pase o cliente no encontrado',
-  })
-  async verifyRecovery(
-    @Body() dto: VerifyRecoveryDto,
-  ): Promise<VerifyRecoveryResponseDto> {
-    return this.customersService.verifyRecoveryCode(dto);
   }
 
   @Delete(':customerId')
@@ -160,59 +95,5 @@ export class CustomersController {
     }
 
     return this.customersService.deleteCustomerGlobal(customerId);
-  }
-
-  @Post('deletion/request')
-  @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
-  @ApiOperation({
-    summary: 'Solicita un código OTP para confirmar la eliminación de datos (Ley 19.628)',
-    description:
-      'Envía un código de 6 dígitos por SMS al teléfono registrado del cliente para validar su identidad antes de eliminar sus datos.',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Código de confirmación de eliminación enviado',
-    type: RequestDeletionResponseDto,
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Datos inválidos o cliente sin teléfono',
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Cliente o comercio no encontrado',
-  })
-  async requestDeletion(
-    @Body() dto: RequestDeletionDto,
-  ): Promise<RequestDeletionResponseDto> {
-    return this.customersService.requestDeletionCode(dto);
-  }
-
-  @Post('deletion/verify')
-  @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
-  @ApiOperation({
-    summary: 'Verifica el código OTP y ejecuta la eliminación definitiva de datos (Ley 19.628)',
-    description:
-      'Valida el código de 6 dígitos enviado por SMS y elimina inmediatamente la tarjeta y datos personales del cliente.',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Datos y tarjeta eliminados exitosamente conforme a la ley',
-    type: DeleteCustomerResponseDto,
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Código incorrecto o expirado',
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Cliente o código no encontrado',
-  })
-  async verifyDeletion(
-    @Body() dto: VerifyDeletionDto,
-  ): Promise<DeleteCustomerResponseDto> {
-    return this.customersService.verifyDeletionCode(dto);
   }
 }

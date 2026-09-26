@@ -1,93 +1,19 @@
-import { useState } from 'react';
 import { useDeviceOS } from '../../hooks/useDeviceOS';
-import { requestPassRecovery, verifyPassRecovery } from '../../services/customersService';
 
 interface JoinSuccessProps {
   appleWalletUrl?: string;
   googleWalletUrl?: string;
   alreadyExists?: boolean;
   merchantName?: string;
-  merchantId?: string;
-  initialRut?: string;
-  initialPhone?: string;
 }
 
 export function JoinSuccess({
   appleWalletUrl,
   googleWalletUrl,
-  alreadyExists: initialAlreadyExists = false,
+  alreadyExists = false,
   merchantName,
-  merchantId,
-  initialRut = '',
-  initialPhone = '',
 }: JoinSuccessProps) {
   const { isIOS, isAndroid } = useDeviceOS();
-
-  const [alreadyExists, setAlreadyExists] = useState(initialAlreadyExists);
-  const [walletUrls, setWalletUrls] = useState({
-    apple: appleWalletUrl,
-    google: googleWalletUrl,
-  });
-
-  // Estado del flujo de recuperación OTP
-  const [recoveryStep, setRecoveryStep] = useState<'idle' | 'requesting' | 'code_sent' | 'verifying'>('idle');
-  const [rut, setRut] = useState(initialRut);
-  const [phone, setPhone] = useState(initialPhone);
-  const [code, setCode] = useState('');
-  const [phoneMasked, setPhoneMasked] = useState('');
-  const [devCode, setDevCode] = useState<string | undefined>();
-  const [error, setError] = useState<string | null>(null);
-
-  const handleRequestCode = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!merchantId) return;
-
-    setError(null);
-    setRecoveryStep('requesting');
-
-    const res = await requestPassRecovery({
-      merchantId,
-      rut,
-      phone,
-    });
-
-    if (!res.success) {
-      setError(res.error ?? 'No se pudo enviar el código');
-      setRecoveryStep('idle');
-      return;
-    }
-
-    setPhoneMasked(res.phoneMasked);
-    setDevCode(res.devCode);
-    setRecoveryStep('code_sent');
-  };
-
-  const handleVerifyCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!merchantId || code.length !== 6) return;
-
-    setError(null);
-    setRecoveryStep('verifying');
-
-    const res = await verifyPassRecovery({
-      merchantId,
-      rut,
-      phone,
-      code,
-    });
-
-    if (!res.success) {
-      setError(res.error ?? 'Código incorrecto o expirado');
-      setRecoveryStep('code_sent');
-      return;
-    }
-
-    setWalletUrls({
-      apple: res.appleWalletUrl,
-      google: res.googleWalletUrl,
-    });
-    setAlreadyExists(false);
-  };
 
   return (
     <div className="min-h-[100dvh] bg-slate-50 flex flex-col items-center justify-center p-6 text-center font-sans">
@@ -103,103 +29,16 @@ export function JoinSuccess({
 
       <p className="text-slate-600 mb-8 max-w-sm text-lg font-medium">
         {alreadyExists
-          ? `Ya estás registrado en ${merchantName || 'este local'}. Si la borraste de tu billetera o cambiaste de celular, puedes recuperarla recibiendo un código por SMS.`
+          ? `Ya estás registrado en ${merchantName || 'este local'}. Tu tarjeta fue emitida previamente. Si perdiste tu tarjeta o cambiaste de celular, acércate al mesón del local para recibir asistencia.`
           : 'Agrega tu tarjeta a tu billetera digital. En tu próxima visita, sólo muestra el código QR desde tu teléfono.'}
       </p>
 
-      {/* Flujo de recuperación OTP cuando ya existe la tarjeta */}
-      {alreadyExists && (
-        <div className="w-full max-w-sm space-y-4">
-          {recoveryStep === 'idle' || recoveryStep === 'requesting' ? (
-            <div className="space-y-4">
-              {(!initialRut || !initialPhone) && (
-                <div className="space-y-3 text-left">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">RUT</label>
-                    <input
-                      type="text"
-                      value={rut}
-                      onChange={(e) => setRut(e.target.value)}
-                      placeholder="12.345.678-5"
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-600 bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Teléfono</label>
-                    <input
-                      type="tel"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="+56 9 1234 5678"
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-600 bg-white"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {error && <p className="text-rose-600 text-sm font-medium text-center">{error}</p>}
-
-              <button
-                type="button"
-                onClick={() => handleRequestCode()}
-                disabled={recoveryStep === 'requesting' || !rut || !phone}
-                className="w-full bg-blue-600 text-white rounded-2xl h-14 font-semibold text-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {recoveryStep === 'requesting' ? 'Enviando código SMS...' : 'Recuperar mi tarjeta'}
-              </button>
-            </div>
-          ) : (
-            <form onSubmit={handleVerifyCode} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <p className="text-slate-700 font-semibold text-sm">
-                Te enviamos un código de 6 dígitos por SMS a <span className="font-bold text-slate-900">{phoneMasked}</span>
-              </p>
-
-              {devCode && (
-                <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs p-2 rounded-lg font-mono">
-                  Código de prueba: <strong>{devCode}</strong>
-                </div>
-              )}
-
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={6}
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="123456"
-                className="w-full text-center text-3xl font-mono tracking-widest h-14 border-2 border-slate-200 rounded-xl focus:border-blue-600 focus:outline-none"
-                autoFocus
-              />
-
-              {error && <p className="text-rose-600 text-sm font-medium">{error}</p>}
-
-              <button
-                type="submit"
-                disabled={code.length !== 6 || recoveryStep === 'verifying'}
-                className="w-full bg-slate-900 text-white rounded-xl h-12 font-semibold text-base hover:bg-slate-800 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {recoveryStep === 'verifying' ? 'Verificando...' : 'Confirmar y Obtener Tarjeta'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleRequestCode()}
-                className="text-xs text-slate-500 hover:text-slate-800 underline block mx-auto pt-2"
-              >
-                Reenviar código
-              </button>
-            </form>
-          )}
-        </div>
-      )}
-
-      {/* Botones oficiales de Apple y Google Wallet una vez emitida o recuperada */}
+      {/* Botones oficiales de Apple y Google Wallet una vez emitida */}
       {!alreadyExists && (
         <div className="space-y-4 w-full max-w-sm">
-          {(!isAndroid || isIOS) && walletUrls.apple && (
+          {(!isAndroid || isIOS) && appleWalletUrl && (
             <a
-              href={walletUrls.apple}
+              href={appleWalletUrl}
               className="w-full bg-black text-white rounded-2xl h-14 font-semibold text-lg flex items-center justify-center gap-3 hover:bg-slate-900 transition-colors active:scale-95 shadow-lg shadow-black/20"
             >
               <svg viewBox="0 0 384 512" className="h-6 w-6 fill-current">
@@ -209,9 +48,9 @@ export function JoinSuccess({
             </a>
           )}
 
-          {(!isIOS || isAndroid) && walletUrls.google && (
+          {(!isIOS || isAndroid) && googleWalletUrl && (
             <a
-              href={walletUrls.google}
+              href={googleWalletUrl}
               className="w-full bg-slate-900 text-white rounded-2xl h-14 font-semibold text-lg flex items-center justify-center gap-3 hover:bg-slate-800 transition-colors active:scale-95 shadow-lg shadow-slate-900/20"
             >
               <svg viewBox="0 0 512 512" className="h-6 w-6 fill-current">
