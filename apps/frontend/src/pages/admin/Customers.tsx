@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { listCustomers, type CustomerRow } from '../../services/customersService';
+import { listCustomers, deleteCustomer, type CustomerRow } from '../../services/customersService';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
 import { maskIdentifier } from '../../lib/maskIdentifier';
 import { formatStampExpiry } from '../../lib/stampExpiry';
@@ -26,6 +27,8 @@ export function Customers({ merchantId }: { merchantId: string | null }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [customerToDelete, setCustomerToDelete] = useState<CustomerRow | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchCustomers = useCallback(async (id: string) => {
     setLoading(true);
@@ -38,6 +41,22 @@ export function Customers({ merchantId }: { merchantId: string | null }) {
       setLoading(false);
     }
   }, []);
+
+  const handleConfirmDelete = async () => {
+    if (!merchantId || !customerToDelete) return;
+    setIsDeleting(true);
+    try {
+      await deleteCustomer(merchantId, customerToDelete.customerId);
+      notifySuccess('Datos del cliente eliminados exitosamente (Ley 19.628).');
+      setCustomerToDelete(null);
+      fetchCustomers(merchantId);
+    } catch (err: unknown) {
+      console.error('Error al eliminar cliente:', err);
+      notifyError(err instanceof Error ? err.message : 'No se pudo eliminar al cliente.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   useEffect(() => {
     if (merchantId) fetchCustomers(merchantId);
@@ -102,20 +121,21 @@ export function Customers({ merchantId }: { merchantId: string | null }) {
                 <th className="p-6 text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Sellos vigentes</th>
                 <th className="p-6 text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Cliente desde</th>
                 <th className="p-6 text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Última actividad</th>
+                <th className="p-6 text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
               {loading ? (
                 Array.from({ length: 3 }).map((_, i) => (
                   <tr key={i}>
-                    <td colSpan={4} className="p-5">
+                    <td colSpan={5} className="p-5">
                       <div className="h-12 rounded-2xl bg-slate-50 dark:bg-slate-800/50 animate-pulse" />
                     </td>
                   </tr>
                 ))
               ) : visible.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="p-16 text-center">
+                  <td colSpan={5} className="p-16 text-center">
                     <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-400 mb-4">
                       <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                     </div>
@@ -154,6 +174,19 @@ export function Customers({ merchantId }: { merchantId: string | null }) {
                       <td className="p-5 text-slate-600 dark:text-slate-300 font-medium">
                         {new Date(row.lastActivityAt).toLocaleDateString([], DATE_FORMAT)}
                       </td>
+                      <td className="p-5 text-right">
+                        <button
+                          type="button"
+                          onClick={() => setCustomerToDelete(row)}
+                          title="Eliminar datos personales (Ley 19.628)"
+                          className="px-3 py-1.5 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 bg-red-50 hover:bg-red-100/80 dark:bg-red-950/40 dark:hover:bg-red-900/40 border border-red-200/60 dark:border-red-900/60 rounded-xl transition-all inline-flex items-center gap-1.5 text-xs font-semibold shadow-xs"
+                        >
+                          <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                          <span>Eliminar</span>
+                        </button>
+                      </td>
                     </tr>
                   );
                 })
@@ -162,6 +195,21 @@ export function Customers({ merchantId }: { merchantId: string | null }) {
           </table>
         </div>
       </div>
+
+      {customerToDelete && (
+        <ConfirmDialog
+          title="¿Eliminar datos de este cliente?"
+          message={`¿Estás seguro de que deseas eliminar permanentemente a este cliente (${
+            maskIdentifier(customerToDelete.rut) ?? maskIdentifier(customerToDelete.phone) ?? 'Anónimo'
+          }, con ${customerToDelete.activeStamps} sello(s) vigente(s))? En cumplimiento de la Ley 19.628 (cancelación de datos personales), se eliminarán de forma definitiva su pase, sus sellos acumulados y su historial en este local. Si no tiene tarjetas en otros comercios, sus datos personales serán borrados por completo. Esta acción no se puede deshacer.`}
+          confirmLabel="Eliminar definitivamente"
+          cancelLabel="Cancelar"
+          tone="danger"
+          isBusy={isDeleting}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => !isDeleting && setCustomerToDelete(null)}
+        />
+      )}
     </>
   );
 }

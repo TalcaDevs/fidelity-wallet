@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import type { PassesService } from '../passes/passes.service.js';
@@ -24,7 +29,11 @@ describe('CustomersService', () => {
 
   beforeEach(() => {
     prismaMock = {
+      $transaction: vi.fn((callback: (tx: any) => Promise<any>) => callback(prismaMock)),
       merchant: {
+        findUnique: vi.fn(),
+      },
+      merchantUser: {
         findUnique: vi.fn(),
       },
       promotion: {
@@ -35,6 +44,20 @@ describe('CustomersService', () => {
         findFirst: vi.fn(),
         create: vi.fn(),
         update: vi.fn(),
+        delete: vi.fn(),
+      },
+      pass: {
+        findUnique: vi.fn(),
+        delete: vi.fn(),
+        count: vi.fn(),
+      },
+      customerVerificationCode: {
+        findFirst: vi.fn(),
+        findMany: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
+        create: vi.fn(),
+        update: vi.fn(),
+        deleteMany: vi.fn(),
       },
     };
 
@@ -47,6 +70,7 @@ describe('CustomersService', () => {
         appleWalletUrl: '/api/passes/p-1/apple',
         googleWalletUrl: '/api/passes/p-1/google',
       }),
+      notifyPassUpdate: vi.fn(),
     };
 
     service = new CustomersService(
@@ -141,8 +165,41 @@ describe('CustomersService', () => {
     expect(result.appleWalletUrl).toBe('/api/passes/p-1/apple');
     expect(result.googleWalletUrl).toBe('/api/passes/p-1/google');
     expect((result as any).passToken).toBeUndefined();
-    expect(passesServiceMock.findOrCreatePass).toHaveBeenCalledWith('c-1', 'm-1');
-    expect(passesServiceMock.getWalletUrlsForPass).toHaveBeenCalledWith('p-1');
+    expect(passesServiceMock.findOrCreatePass).toHaveBeenCalledWith('c-1', 'm-1', prismaMock);
+    expect(passesServiceMock.getWalletUrlsForPass).toHaveBeenCalledWith('p-1', prismaMock);
+    expect(prismaMock.$transaction).toHaveBeenCalled();
+  });
+
+  it('should throw InternalServerErrorException and abort transaction if wallet URLs generation returns null for a new pass', async () => {
+    prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
+    prismaMock.customer.findUnique.mockResolvedValue(null);
+    prismaMock.customer.create.mockResolvedValue({ id: 'c-1', rut: '11111111-1', phone: '+56912345678' });
+    passesServiceMock.findOrCreatePass.mockResolvedValue({
+      pass: { id: 'p-1', customerId: 'c-1', merchantId: 'm-1' },
+      isNew: true,
+    });
+    passesServiceMock.getWalletUrlsForPass.mockResolvedValue(null);
+
+    await expect(service.createOrFindCustomer(validDto())).rejects.toThrow(
+      InternalServerErrorException,
+    );
+    expect(prismaMock.$transaction).toHaveBeenCalled();
+  });
+
+  it('should throw InternalServerErrorException and abort transaction if wallet URLs generation throws an error for a new pass', async () => {
+    prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
+    prismaMock.customer.findUnique.mockResolvedValue(null);
+    prismaMock.customer.create.mockResolvedValue({ id: 'c-1', rut: '11111111-1', phone: '+56912345678' });
+    passesServiceMock.findOrCreatePass.mockResolvedValue({
+      pass: { id: 'p-1', customerId: 'c-1', merchantId: 'm-1' },
+      isNew: true,
+    });
+    passesServiceMock.getWalletUrlsForPass.mockRejectedValue(new Error('Signing key failure'));
+
+    await expect(service.createOrFindCustomer(validDto())).rejects.toThrow(
+      InternalServerErrorException,
+    );
+    expect(prismaMock.$transaction).toHaveBeenCalled();
   });
 
   it('should return existing customer and pass without wallet URLs to prevent credential leakage/impersonation', async () => {
@@ -165,6 +222,7 @@ describe('CustomersService', () => {
     expect((result as any).passToken).toBeUndefined();
     expect(prismaMock.customer.create).not.toHaveBeenCalled();
     expect(passesServiceMock.getWalletUrlsForPass).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).toHaveBeenCalled();
   });
 
   describe('identity of an existing customer (anti-impersonation)', () => {
@@ -217,6 +275,83 @@ describe('CustomersService', () => {
         where: { id: 'c-1' },
         data: { termsAcceptedAt: expect.any(Date), termsVersion: TERMS_VERSION },
       });
+    });
+  });
+
+
+
+  describe('deleteCustomerByMerchant (Ley 19.628)', () => {
+    it('throws ForbiddenException if caller is not authenticated', async () => {
+      await expect(
+        service.deleteCustomerByMerchant('m-1', 'c-1', ''),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('throws ForbiddenException if caller is not an OWNER', async () => {
+      prismaMock.merchantUser.findUnique.mockResolvedValue({ role: 'STAFF' });
+      await expect(
+        service.deleteCustomerByMerchant('m-1', 'c-1', 'user-staff'),
+      ).rejects.toThrow('Solo el dueño del comercio puede eliminar clientes');
+    });
+
+    it('throws NotFoundException if customer or pass does not exist in merchant', async () => {
+      prismaMock.merchantUser.findUnique.mockResolvedValue({ role: 'OWNER' });
+      prismaMock.pass.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.deleteCustomerByMerchant('m-1', 'c-1', 'user-owner'),
+      ).rejects.toThrow('Cliente o pase no encontrado en este comercio');
+    });
+
+    it('deletes pass and verification codes without deleting customer when customer has other passes', async () => {
+      prismaMock.merchantUser.findUnique.mockResolvedValue({ role: 'OWNER' });
+      prismaMock.pass.findUnique.mockResolvedValue({ id: 'p-1', customerId: 'c-1', merchantId: 'm-1' });
+      prismaMock.pass.count.mockResolvedValue(1); // 1 remaining pass in another merchant
+
+      const result = await service.deleteCustomerByMerchant('m-1', 'c-1', 'user-owner');
+
+      expect(prismaMock.customerVerificationCode.deleteMany).toHaveBeenCalledWith({
+        where: { customerId: 'c-1', merchantId: 'm-1' },
+      });
+      expect(prismaMock.pass.delete).toHaveBeenCalledWith({ where: { id: 'p-1' } });
+      expect(prismaMock.customer.delete).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      expect(result.customerCompletelyDeleted).toBe(false);
+      expect(passesServiceMock.notifyPassUpdate).toHaveBeenCalledWith('p-1');
+    });
+
+    it('deletes pass and customer completely when customer has no other passes', async () => {
+      prismaMock.merchantUser.findUnique.mockResolvedValue({ role: 'OWNER' });
+      prismaMock.pass.findUnique.mockResolvedValue({ id: 'p-1', customerId: 'c-1', merchantId: 'm-1' });
+      prismaMock.pass.count.mockResolvedValue(0); // 0 remaining passes
+
+      const result = await service.deleteCustomerByMerchant('m-1', 'c-1', 'user-owner');
+
+      expect(prismaMock.pass.delete).toHaveBeenCalledWith({ where: { id: 'p-1' } });
+      expect(prismaMock.customer.delete).toHaveBeenCalledWith({ where: { id: 'c-1' } });
+      expect(result.success).toBe(true);
+      expect(result.customerCompletelyDeleted).toBe(true);
+    });
+  });
+
+  describe('deleteCustomerGlobal (Ley 19.628)', () => {
+    it('throws NotFoundException if customer does not exist', async () => {
+      prismaMock.customer.findUnique.mockResolvedValue(null);
+      await expect(service.deleteCustomerGlobal('c-nonexistent')).rejects.toThrow('Cliente no encontrado');
+    });
+
+    it('deletes customer and notifies passes', async () => {
+      prismaMock.customer.findUnique.mockResolvedValue({
+        id: 'c-1',
+        passes: [{ id: 'p-1' }, { id: 'p-2' }],
+      });
+
+      const result = await service.deleteCustomerGlobal('c-1');
+
+      expect(prismaMock.customer.delete).toHaveBeenCalledWith({ where: { id: 'c-1' } });
+      expect(result.success).toBe(true);
+      expect(result.customerCompletelyDeleted).toBe(true);
+      expect(passesServiceMock.notifyPassUpdate).toHaveBeenCalledWith('p-1');
     });
   });
 });

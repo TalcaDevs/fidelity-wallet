@@ -36,8 +36,10 @@ export class PassesService {
   async findOrCreatePass(
     customerId: string,
     merchantId: string,
+    tx?: Prisma.TransactionClient,
   ): Promise<{ pass: Pass; isNew: boolean }> {
-    let pass = await this.prisma.pass.findUnique({
+    const prisma = tx ?? this.prisma;
+    let pass = await prisma.pass.findUnique({
       where: {
         customerId_merchantId: {
           customerId,
@@ -52,7 +54,7 @@ export class PassesService {
 
     const passToken = randomBytes(32).toString('hex');
     try {
-      pass = await this.prisma.pass.create({
+      pass = await prisma.pass.create({
         data: {
           customerId,
           merchantId,
@@ -62,7 +64,7 @@ export class PassesService {
       return { pass, isNew: true };
     } catch (err: unknown) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        pass = await this.prisma.pass.findUnique({
+        pass = await prisma.pass.findUnique({
           where: {
             customerId_merchantId: {
               customerId,
@@ -148,10 +150,12 @@ export class PassesService {
    */
   async getWalletUrlsForPass(
     passOrId: string | PassWithMerchantAndCustomer,
+    tx?: Prisma.TransactionClient,
   ): Promise<{ appleWalletUrl: string; googleWalletUrl: string } | null> {
+    const prisma = tx ?? this.prisma;
     const pass =
       typeof passOrId === 'string'
-        ? await this.prisma.pass.findUnique({
+        ? await prisma.pass.findUnique({
             where: { id: passOrId },
             include: { merchant: true, customer: true },
           })
@@ -159,7 +163,7 @@ export class PassesService {
 
     if (!pass) return null;
 
-    const passData = await this.buildPassData(pass);
+    const passData = await this.buildPassData(pass, undefined, tx);
     if (!passData) return null;
 
     return {
@@ -222,12 +226,14 @@ export class PassesService {
   private async buildPassData(
     pass: PassWithMerchantAndCustomer,
     explicitPromotionId?: string,
+    tx?: Prisma.TransactionClient,
   ): Promise<PassData | null> {
+    const prisma = tx ?? this.prisma;
     const promotion = explicitPromotionId
-      ? await this.prisma.promotion.findFirst({
+      ? await prisma.promotion.findFirst({
           where: { id: explicitPromotionId, merchantId: pass.merchantId, isActive: true },
         })
-      : await this.prisma.promotion.findFirst({
+      : await prisma.promotion.findFirst({
           where: { merchantId: pass.merchantId, isActive: true },
           orderBy: { createdAt: 'desc' },
         });
@@ -237,7 +243,7 @@ export class PassesService {
     // El saldo es único del pase (sirve para cualquier promoción activa); la promoción solo
     // define la meta que se muestra en la tarjeta: la más reciente, o la pedida explícitamente.
     const now = new Date();
-    const activeStamps = await this.prisma.stamp.count({
+    const activeStamps = await prisma.stamp.count({
       where: {
         passId: pass.id,
         consumedAt: null,
@@ -245,7 +251,7 @@ export class PassesService {
       },
     });
 
-    const nextExpiring = await this.prisma.stamp.findFirst({
+    const nextExpiring = await prisma.stamp.findFirst({
       where: {
         passId: pass.id,
         consumedAt: null,

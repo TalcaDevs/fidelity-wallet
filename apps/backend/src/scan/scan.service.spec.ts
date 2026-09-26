@@ -5,7 +5,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ScanType } from '@prisma/client';
+import { ScanMethod, ScanType } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PassesService } from '../passes/passes.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -312,6 +312,7 @@ describe('ScanService', () => {
     expect(result.activeStamps).toBe(5);
     expect(result.rewardUnlocked).toBe(true);
     expect(result.scanId).toBe('scan-new-1');
+    expect(result.method).toBe(ScanMethod.QR);
     expect(result.customer?.rut).toBe('12.***.*78-5');
     expect(passesService.notifyPassUpdate).toHaveBeenCalledWith(mockPassId);
 
@@ -321,6 +322,7 @@ describe('ScanService', () => {
         merchantId: mockMerchantId,
         type: ScanType.STAMP_ADDED,
         createdByUserId: mockUserId,
+        method: ScanMethod.QR,
       },
     });
 
@@ -889,6 +891,157 @@ describe('ScanService', () => {
       await expect(
         limited.processScan({ passToken: mockToken, action: ScanActionType.STAMP, merchantId: mockMerchantId }, mockUserId),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('audit scan method (QR vs MANUAL)', () => {
+    beforeEach(() => {
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
+      vi.spyOn(prisma.pass, 'findFirst').mockResolvedValue(mockPass as any);
+      vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
+      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-audit-1' } as any);
+      vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-audit-1' } as any);
+      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(1);
+      vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
+    });
+
+    it('records method QR when passToken is provided (STAMP)', async () => {
+      const scanCreateSpy = vi.spyOn(prisma.scan, 'create');
+
+      const result = await service.processScan(
+        {
+          passToken: mockToken,
+          action: ScanActionType.STAMP,
+          merchantId: mockMerchantId,
+        },
+        mockUserId,
+      );
+
+      expect(scanCreateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            method: ScanMethod.QR,
+          }),
+        }),
+      );
+      expect(result.method).toBe(ScanMethod.QR);
+    });
+
+    it('records method QR when passToken is provided (REDEEM)', async () => {
+      const stamps = Array.from({ length: 5 }, (_, i) => ({ id: `s${i}` }));
+      vi.spyOn(prisma.stamp, 'findMany').mockResolvedValue(stamps as any);
+      vi.spyOn(prisma.stamp, 'updateMany').mockResolvedValue({ count: 5 } as any);
+      const scanCreateSpy = vi.spyOn(prisma.scan, 'create');
+
+      const result = await service.processScan(
+        {
+          passToken: mockToken,
+          action: ScanActionType.REDEEM,
+          merchantId: mockMerchantId,
+        },
+        mockUserId,
+      );
+
+      expect(scanCreateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            method: ScanMethod.QR,
+          }),
+        }),
+      );
+      expect(result.method).toBe(ScanMethod.QR);
+    });
+
+    it('records method MANUAL when searching manually with RUT (STAMP)', async () => {
+      const scanCreateSpy = vi.spyOn(prisma.scan, 'create');
+
+      const result = await service.processScan(
+        {
+          customer: { rut: '12.345.678-5' },
+          action: ScanActionType.STAMP,
+          merchantId: mockMerchantId,
+        },
+        mockUserId,
+      );
+
+      expect(scanCreateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            method: ScanMethod.MANUAL,
+          }),
+        }),
+      );
+      expect(result.method).toBe(ScanMethod.MANUAL);
+    });
+
+    it('records method MANUAL when searching manually with phone (STAMP)', async () => {
+      const scanCreateSpy = vi.spyOn(prisma.scan, 'create');
+
+      const result = await service.processScan(
+        {
+          customer: { phone: '+56912345678' },
+          action: ScanActionType.STAMP,
+          merchantId: mockMerchantId,
+        },
+        mockUserId,
+      );
+
+      expect(scanCreateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            method: ScanMethod.MANUAL,
+          }),
+        }),
+      );
+      expect(result.method).toBe(ScanMethod.MANUAL);
+    });
+
+    it('records method MANUAL when searching manually with phone (REDEEM)', async () => {
+      const stamps = Array.from({ length: 5 }, (_, i) => ({ id: `s${i}` }));
+      vi.spyOn(prisma.stamp, 'findMany').mockResolvedValue(stamps as any);
+      vi.spyOn(prisma.stamp, 'updateMany').mockResolvedValue({ count: 5 } as any);
+      const scanCreateSpy = vi.spyOn(prisma.scan, 'create');
+
+      const result = await service.processScan(
+        {
+          customer: { phone: '+56912345678' },
+          action: ScanActionType.REDEEM,
+          merchantId: mockMerchantId,
+        },
+        mockUserId,
+      );
+
+      expect(scanCreateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            method: ScanMethod.MANUAL,
+          }),
+        }),
+      );
+      expect(result.method).toBe(ScanMethod.MANUAL);
+    });
+
+    it('returns method on alreadyScanned results', async () => {
+      vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue({
+        id: 'scan-prev-1',
+        passId: mockPassId,
+        merchantId: mockMerchantId,
+        type: ScanType.STAMP_ADDED,
+        method: ScanMethod.QR,
+        createdAt: new Date(),
+      } as any);
+
+      const result = await service.processScan(
+        {
+          passToken: mockToken,
+          action: ScanActionType.STAMP,
+          merchantId: mockMerchantId,
+        },
+        mockUserId,
+      );
+
+      expect(result.alreadyScanned).toBe(true);
+      expect(result.method).toBe(ScanMethod.QR);
     });
   });
 

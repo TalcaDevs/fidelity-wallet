@@ -1,7 +1,10 @@
 import { supabase } from '../lib/supabase';
+import { apiUrl } from '../lib/api';
+import { extractApiError } from '../lib/apiError';
 
 export interface CustomerRow {
   passId: string;
+  customerId: string;
   rut: string | null;
   phone: string | null;
   // Saldo vigente: sellos ni consumidos ni vencidos. Reemplaza al viejo
@@ -14,9 +17,10 @@ export interface CustomerRow {
 
 interface RawPassRow {
   id: string;
+  customerId?: string;
   createdAt: string;
   updatedAt: string;
-  customer?: { rut: string | null; phone: string | null } | { rut: string | null; phone: string | null }[] | null;
+  customer?: { id?: string; rut: string | null; phone: string | null } | { id?: string; rut: string | null; phone: string | null }[] | null;
 }
 
 interface RawBalanceRow {
@@ -38,7 +42,7 @@ export async function listCustomers(merchantId: string): Promise<CustomerRow[]> 
     // sin tener que traer la tabla Scan completa.
     supabase
       .from('Pass')
-      .select('id, createdAt, updatedAt, customer:Customer(rut, phone)')
+      .select('id, customerId, createdAt, updatedAt, customer:Customer(id, rut, phone)')
       .eq('merchantId', merchantId)
       .order('updatedAt', { ascending: false }),
     supabase
@@ -61,6 +65,7 @@ export async function listCustomers(merchantId: string): Promise<CustomerRow[]> 
     const balance = balances.get(row.id);
     return {
       passId: row.id,
+      customerId: row.customerId ?? customer?.id ?? '',
       rut: customer?.rut ?? null,
       phone: customer?.phone ?? null,
       // Un pase sin sellos vigentes puede no tener fila en la vista.
@@ -71,3 +76,36 @@ export async function listCustomers(merchantId: string): Promise<CustomerRow[]> 
     };
   });
 }
+
+
+
+/**
+ * Elimina los datos y pase de un cliente en cumplimiento de la Ley 19.628 (cancelación de datos).
+ * Requiere que el usuario autenticado sea el dueño (OWNER) del comercio.
+ */
+export async function deleteCustomer(merchantId: string, customerId: string): Promise<void> {
+  if (import.meta.env.VITE_USE_MOCKS === 'true') {
+    return;
+  }
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    throw new Error('No hay sesión activa para realizar esta acción.');
+  }
+
+  const url = apiUrl(
+    `/api/customers/${encodeURIComponent(customerId)}?merchantId=${encodeURIComponent(merchantId)}`,
+  );
+  const response = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: unknown = await response.json().catch(() => null);
+    throw new Error(extractApiError(errorData) ?? 'Error al eliminar los datos del cliente.');
+  }
+}
+
