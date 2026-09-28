@@ -51,14 +51,6 @@ describe('CustomersService', () => {
         delete: vi.fn(),
         count: vi.fn(),
       },
-      customerVerificationCode: {
-        findFirst: vi.fn(),
-        findMany: vi.fn().mockResolvedValue([]),
-        count: vi.fn().mockResolvedValue(0),
-        create: vi.fn(),
-        update: vi.fn(),
-        deleteMany: vi.fn(),
-      },
     };
 
     passesServiceMock = {
@@ -303,16 +295,13 @@ describe('CustomersService', () => {
       ).rejects.toThrow('Cliente o pase no encontrado en este comercio');
     });
 
-    it('deletes pass and verification codes without deleting customer when customer has other passes', async () => {
+    it('deletes pass without deleting customer when customer has other passes', async () => {
       prismaMock.merchantUser.findUnique.mockResolvedValue({ role: 'OWNER' });
       prismaMock.pass.findUnique.mockResolvedValue({ id: 'p-1', customerId: 'c-1', merchantId: 'm-1' });
       prismaMock.pass.count.mockResolvedValue(1); // 1 remaining pass in another merchant
 
       const result = await service.deleteCustomerByMerchant('m-1', 'c-1', 'user-owner');
 
-      expect(prismaMock.customerVerificationCode.deleteMany).toHaveBeenCalledWith({
-        where: { customerId: 'c-1', merchantId: 'm-1' },
-      });
       expect(prismaMock.pass.delete).toHaveBeenCalledWith({ where: { id: 'p-1' } });
       expect(prismaMock.customer.delete).not.toHaveBeenCalled();
       expect(result.success).toBe(true);

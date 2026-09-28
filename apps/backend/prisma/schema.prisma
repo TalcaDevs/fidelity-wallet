@@ -20,7 +20,6 @@ model Merchant {
   scans             Scan[]
   stamps            Stamp[]
   users             MerchantUser[]
-  verificationCodes CustomerVerificationCode[]
   createdAt         DateTime       @default(now())
 }
 
@@ -59,7 +58,6 @@ model Customer {
   /// Versión de los términos aceptada (ver TERMS_VERSION en customers/terms.ts).
   termsVersion    String?
   passes            Pass[]
-  verificationCodes CustomerVerificationCode[]
   createdAt         DateTime  @default(now())
 
   @@index([rut])
@@ -135,20 +133,4 @@ enum ScanMethod {
 enum MerchantRole {
   OWNER
   STAFF
-}
-
-/// Códigos OTP de un solo uso para verificar clientes y recuperar pases perdidos (SMS/WhatsApp).
-model CustomerVerificationCode {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  customerId String    @db.Uuid
-  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  merchantId String    @db.Uuid
-  merchant   Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  codeHash   String
-  expiresAt  DateTime
-  consumedAt DateTime?
-  attempts   Int       @default(0)
-  createdAt  DateTime  @default(now())
-
-  @@index([customerId, merchantId, createdAt])
 }

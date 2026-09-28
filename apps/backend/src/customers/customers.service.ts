@@ -242,14 +242,6 @@ export class CustomersService {
     let customerCompletelyDeleted = false;
 
     await this.prisma.$transaction(async (tx) => {
-      // Eliminar códigos OTP del cliente para este comercio
-      await tx.customerVerificationCode.deleteMany({
-        where: {
-          customerId,
-          merchantId,
-        },
-      });
-
       // Eliminar pase (la cascada en BD elimina Scans y Stamps)
       await tx.pass.delete({
         where: {
