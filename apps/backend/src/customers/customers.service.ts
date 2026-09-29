@@ -79,120 +79,67 @@ export class CustomersService {
     // Prueba del consentimiento: cuándo y qué versión de los términos aceptó (Ley 19.628).
     const termsAcceptance = { termsAcceptedAt: new Date(), termsVersion: TERMS_VERSION };
 
-    return this.prisma.$transaction(async (tx) => {
-      // 1. Validar que el comercio exista
-      const merchant = await tx.merchant.findUnique({
-        where: { id: dto.merchantId },
+    const executeTransaction = () =>
+      this.prisma.$transaction(async (tx) => {
+        // 1. Validar que el comercio exista
+        const merchant = await tx.merchant.findUnique({
+          where: { id: dto.merchantId },
+        });
+
+        if (!merchant) {
+          throw new NotFoundException('El comercio especificado no existe');
+        }
+
+        const activePromotion = await tx.promotion.findFirst({
+          where: { merchantId: dto.merchantId, isActive: true },
+        });
+
+        if (!activePromotion) {
+          throw new BadRequestException('El comercio no tiene una promoción activa configurada');
+        }
+
+        // 2. Buscar o crear cliente (resolución de identidad y términos)
+        const { customer, isNew: isNewCustomer } = await this.resolveCustomer(
+          tx,
+          normalizedRut,
+          normalizedPhone,
+          termsAcceptance,
+        );
+
+        // 3. Buscar o crear el Pase (tarjeta) para este comercio específico mediante PassesService
+        const { pass, isNew: isNewPass } = await this.passesService.findOrCreatePass(
+          customer.id,
+          dto.merchantId,
+          tx,
+        );
+
+        // 4. Emitir credenciales de billetera solo cuando el pase se crea por primera vez en esta llamada.
+        // Si el pase ya existía, no se devuelven credenciales para evitar suplantación de identidad por RUT.
+        let walletUrls: { appleWalletUrl: string; googleWalletUrl: string } | null = null;
+        if (isNewPass) {
+          walletUrls = await this.issueWalletUrls(tx, pass.id);
+        }
+
+        return {
+          customerId: customer.id,
+          passId: pass.id,
+          isNew: isNewCustomer || isNewPass,
+          ...(walletUrls ?? {}),
+        };
       });
 
-      if (!merchant) {
-        throw new NotFoundException('El comercio especificado no existe');
+    try {
+      return await executeTransaction();
+    } catch (err: unknown) {
+      // En caso de condición de carrera concurrente (P2002: unique constraint violation),
+      // en PostgreSQL la transacción interactiva queda abortada. Reintentamos la transacción
+      // completa una vez: en el reintento, findUnique encontrará el registro ya creado por la
+      // otra llamada concurrente.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        return await executeTransaction();
       }
-
-      const activePromotion = await tx.promotion.findFirst({
-        where: { merchantId: dto.merchantId, isActive: true },
-      });
-
-      if (!activePromotion) {
-        throw new BadRequestException('El comercio no tiene una promoción activa configurada');
-      }
-
-      // 2. Buscar si el cliente ya existe por RUT o teléfono evitando cruce de identidades
-      const customerByRut = normalizedRut
-        ? await tx.customer.findUnique({ where: { rut: normalizedRut } })
-        : null;
-      const customerByPhone = normalizedPhone
-        ? await tx.customer.findUnique({ where: { phone: normalizedPhone } })
-        : null;
-
-      if (customerByRut && customerByPhone && customerByRut.id !== customerByPhone.id) {
-        throw new BadRequestException(IDENTITY_MISMATCH_MESSAGE);
-      }
-
-      let customer = customerByRut ?? customerByPhone;
-      let isNewCustomer = false;
-
-      if (!customer) {
-        try {
-          customer = await tx.customer.create({
-            data: {
-              rut: normalizedRut,
-              phone: normalizedPhone,
-              ...termsAcceptance,
-            },
-          });
-          isNewCustomer = true;
-        } catch (err: unknown) {
-          // En caso de condición de carrera concurrente (P2002: unique constraint violation), reintentar búsqueda
-          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-            customer = await tx.customer.findFirst({
-              where: {
-                OR: [
-                  ...(normalizedRut ? [{ rut: normalizedRut }] : []),
-                  ...(normalizedPhone ? [{ phone: normalizedPhone }] : []),
-                ],
-              },
-            });
-            if (!customer) throw err;
-            assertSameIdentity(customer, normalizedRut, normalizedPhone);
-          } else {
-            throw err;
-          }
-        }
-      } else {
-        // Cliente existente: el RUT y el teléfono enviados deben coincidir con los guardados.
-        // Conocer solo el RUT de alguien no alcanza para emitirle una tarjeta a su nombre.
-        assertSameIdentity(customer, normalizedRut, normalizedPhone);
-
-        // La aceptación se registra una vez por versión: re-enviar el formulario no pisa la fecha
-        // en que el cliente aceptó por primera vez esta versión (es la prueba del consentimiento).
-        if (customer.termsVersion !== TERMS_VERSION) {
-          customer = await tx.customer.update({
-            where: { id: customer.id },
-            data: termsAcceptance,
-          });
-        }
-      }
-
-      // 3. Buscar o crear el Pase (tarjeta) para este comercio específico mediante PassesService
-      const { pass, isNew: isNewPass } = await this.passesService.findOrCreatePass(
-        customer.id,
-        dto.merchantId,
-        tx,
-      );
-
-      // Solo se entregan las URLs de billetera cuando el pase se crea por primera vez en esta llamada.
-      // Si el pase ya existía, no se devuelven credenciales para evitar suplantación de identidad por RUT.
-      // Si la generación de URLs falla o es nula, abortamos la transacción para evitar que el cliente
-      // quede registrado sin tarjeta y sin posibilidad de recuperarla.
-      let walletUrls: { appleWalletUrl: string; googleWalletUrl: string } | null = null;
-      if (isNewPass) {
-        try {
-          walletUrls = await this.passesService.getWalletUrlsForPass(pass.id, tx);
-        } catch (err: unknown) {
-          if (err instanceof HttpException) {
-            throw err;
-          }
-          throw new InternalServerErrorException(
-            'Error al generar las credenciales de la tarjeta digital',
-            { cause: err },
-          );
-        }
-
-        if (!walletUrls) {
-          throw new InternalServerErrorException(
-            'Error al generar las credenciales de la tarjeta digital',
-          );
-        }
-      }
-
-      return {
-        customerId: customer.id,
-        passId: pass.id,
-        isNew: isNewCustomer || isNewPass,
-        ...(walletUrls ?? {}),
-      };
-    });
+      throw err;
+    }
   }
 
 
@@ -262,12 +209,6 @@ export class CustomersService {
       }
     });
 
-    try {
-      await this.passesService.notifyPassUpdate(pass.id);
-    } catch {
-      // Ignorar fallo de notificación al eliminar
-    }
-
     return {
       success: true,
       message: 'Datos y pase del cliente eliminados exitosamente de este comercio',
@@ -278,35 +219,95 @@ export class CustomersService {
   /**
    * Elimina completamente a un cliente y todos sus pases, sellos e historial (Ley 19.628).
    * Uso administrativo / soporte legal ante solicitudes directas por correo (soporte@...).
+   * No está expuesto en la API pública: reservado para scripts o comandos internos con service_role.
    */
   async deleteCustomerGlobal(customerId: string): Promise<DeleteCustomerResponseDto> {
     const customer = await this.prisma.customer.findUnique({
       where: { id: customerId },
-      include: { passes: true },
     });
 
     if (!customer) {
       throw new NotFoundException('Cliente no encontrado');
     }
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.customer.delete({
-        where: { id: customerId },
-      });
+    await this.prisma.customer.delete({
+      where: { id: customerId },
     });
-
-    for (const pass of customer.passes) {
-      try {
-        await this.passesService.notifyPassUpdate(pass.id);
-      } catch {
-        // Ignorar fallo de notificación
-      }
-    }
 
     return {
       success: true,
       message: 'Cliente y todos sus pases eliminados exitosamente',
       customerCompletelyDeleted: true,
     };
+  }
+
+  /**
+   * Resuelve de forma segura y atómica la entidad Customer dentro de la transacción,
+   * validando que no existan cruces de identidad entre RUT y teléfono.
+   */
+  private async resolveCustomer(
+    tx: Prisma.TransactionClient,
+    normalizedRut: string,
+    normalizedPhone: string,
+    termsAcceptance: { termsAcceptedAt: Date; termsVersion: string },
+  ): Promise<{ customer: Customer; isNew: boolean }> {
+    const customerByRut = await tx.customer.findUnique({ where: { rut: normalizedRut } });
+    const customerByPhone = await tx.customer.findUnique({ where: { phone: normalizedPhone } });
+
+    if (customerByRut && customerByPhone && customerByRut.id !== customerByPhone.id) {
+      throw new BadRequestException(IDENTITY_MISMATCH_MESSAGE);
+    }
+
+    let customer = customerByRut ?? customerByPhone;
+    let isNew = false;
+
+    if (!customer) {
+      customer = await tx.customer.create({
+        data: {
+          rut: normalizedRut,
+          phone: normalizedPhone,
+          ...termsAcceptance,
+        },
+      });
+      isNew = true;
+    } else {
+      assertSameIdentity(customer, normalizedRut, normalizedPhone);
+
+      if (customer.termsVersion !== TERMS_VERSION) {
+        customer = await tx.customer.update({
+          where: { id: customer.id },
+          data: termsAcceptance,
+        });
+      }
+    }
+
+    return { customer, isNew };
+  }
+
+  /**
+   * Genera las URLs criptográficas para Apple Wallet y Google Wallet.
+   * Si la generación falla o resulta nula, aborta la transacción con una excepción controlada.
+   */
+  private async issueWalletUrls(
+    tx: Prisma.TransactionClient,
+    passId: string,
+  ): Promise<{ appleWalletUrl: string; googleWalletUrl: string }> {
+    try {
+      const walletUrls = await this.passesService.getWalletUrlsForPass(passId, tx);
+      if (!walletUrls) {
+        throw new InternalServerErrorException(
+          'Error al generar las credenciales de la tarjeta digital',
+        );
+      }
+      return walletUrls;
+    } catch (err: unknown) {
+      if (err instanceof HttpException) {
+        throw err;
+      }
+      throw new InternalServerErrorException(
+        'Error al generar las credenciales de la tarjeta digital',
+        { cause: err },
+      );
+    }
   }
 }

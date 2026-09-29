@@ -54,20 +54,24 @@ export class CustomersController {
   @ApiBearerAuth()
   @UseGuards(SupabaseAuthGuard)
   @ApiOperation({
-    summary: 'Eliminar datos personales de un cliente (Ley 19.628)',
+    summary: 'Eliminar datos y pase de un cliente en un comercio (Ley 19.628)',
     description:
-      'Permite al dueño del comercio o administrador eliminar de forma permanente el pase, sellos e historial de un cliente en cumplimiento del derecho de cancelación (Ley 19.628). Si el cliente no posee pases en otros comercios, sus datos personales son eliminados por completo.',
+      'Permite al dueño del comercio (OWNER) eliminar de forma permanente el pase, sellos e historial de un cliente en su comercio en cumplimiento del derecho de cancelación (Ley 19.628). Si el cliente no posee pases en otros comercios, sus datos personales son eliminados por completo.',
   })
   @ApiQuery({
     name: 'merchantId',
-    required: false,
+    required: true,
     description:
-      'ID del comercio. Si se especifica, verifica que el usuario autenticado sea OWNER del comercio y elimina al cliente en dicho comercio.',
+      'ID del comercio. Verifica que el usuario autenticado sea OWNER del comercio y elimina al cliente en dicho comercio.',
   })
   @ApiResponse({
     status: 200,
     description: 'Pase y datos del cliente eliminados exitosamente',
     type: DeleteCustomerResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'ID de comercio o cliente no es un UUID válido',
   })
   @ApiResponse({
     status: 401,
@@ -83,17 +87,13 @@ export class CustomersController {
   })
   async deleteCustomer(
     @Param('customerId', new ParseUUIDPipe({ version: '4' })) customerId: string,
-    @Query('merchantId') merchantId?: string,
+    @Query('merchantId', new ParseUUIDPipe({ version: '4' })) merchantId: string,
     @CurrentUser() user?: AuthenticatedUser,
   ): Promise<DeleteCustomerResponseDto> {
     if (!user?.id) {
       throw new UnauthorizedException('Usuario no autenticado');
     }
 
-    if (merchantId) {
-      return this.customersService.deleteCustomerByMerchant(merchantId, customerId, user.id);
-    }
-
-    return this.customersService.deleteCustomerGlobal(customerId);
+    return this.customersService.deleteCustomerByMerchant(merchantId, customerId, user.id);
   }
 }

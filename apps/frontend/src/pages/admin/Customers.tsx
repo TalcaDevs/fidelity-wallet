@@ -51,7 +51,6 @@ export function Customers({ merchantId }: { merchantId: string | null }) {
       setCustomerToDelete(null);
       fetchCustomers(merchantId);
     } catch (err: unknown) {
-      console.error('Error al eliminar cliente:', err);
       notifyError(err instanceof Error ? err.message : 'No se pudo eliminar al cliente.');
     } finally {
       setIsDeleting(false);

@@ -17,10 +17,10 @@ export interface CustomerRow {
 
 interface RawPassRow {
   id: string;
-  customerId?: string;
+  customerId: string;
   createdAt: string;
   updatedAt: string;
-  customer?: { id?: string; rut: string | null; phone: string | null } | { id?: string; rut: string | null; phone: string | null }[] | null;
+  customer?: { rut: string | null; phone: string | null } | { rut: string | null; phone: string | null }[] | null;
 }
 
 interface RawBalanceRow {
@@ -42,7 +42,7 @@ export async function listCustomers(merchantId: string): Promise<CustomerRow[]> 
     // sin tener que traer la tabla Scan completa.
     supabase
       .from('Pass')
-      .select('id, customerId, createdAt, updatedAt, customer:Customer(id, rut, phone)')
+      .select('id, customerId, createdAt, updatedAt, customer:Customer(rut, phone)')
       .eq('merchantId', merchantId)
       .order('updatedAt', { ascending: false }),
     supabase
@@ -65,7 +65,7 @@ export async function listCustomers(merchantId: string): Promise<CustomerRow[]> 
     const balance = balances.get(row.id);
     return {
       passId: row.id,
-      customerId: row.customerId ?? customer?.id ?? '',
+      customerId: row.customerId,
       rut: customer?.rut ?? null,
       phone: customer?.phone ?? null,
       // Un pase sin sellos vigentes puede no tener fila en la vista.
@@ -76,8 +76,6 @@ export async function listCustomers(merchantId: string): Promise<CustomerRow[]> 
     };
   });
 }
-
-
 
 /**
  * Elimina los datos y pase de un cliente en cumplimiento de la Ley 19.628 (cancelación de datos).

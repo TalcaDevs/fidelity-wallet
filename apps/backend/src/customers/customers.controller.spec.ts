@@ -102,25 +102,30 @@ describe('CustomersController (Security & Protection)', () => {
       );
     });
 
-    it('delegates to deleteCustomerGlobal when merchantId query param is omitted', async () => {
+    it('always delegates to deleteCustomerByMerchant with mandatory merchantId and does not call deleteCustomerGlobal', async () => {
       const mockResult = {
-        deletedPassId: null,
+        deletedPassId: 'pass-uuid',
         deletedCustomerId: customerId,
-        customerCompletelyDeleted: true,
+        customerCompletelyDeleted: false,
         deletedStampsCount: 0,
         deletedScansCount: 0,
       };
 
-      (customersService.deleteCustomerGlobal as any).mockResolvedValue(mockResult);
+      (customersService.deleteCustomerByMerchant as any).mockResolvedValue(mockResult);
 
       const result = await controller.deleteCustomer(
         customerId,
-        undefined,
-        { id: ownerUserId, email: 'admin@platform.cl' },
+        merchantId,
+        { id: ownerUserId, email: 'owner@local.cl' },
       );
 
       expect(result).toEqual(mockResult);
-      expect(customersService.deleteCustomerGlobal).toHaveBeenCalledWith(customerId);
+      expect(customersService.deleteCustomerByMerchant).toHaveBeenCalledWith(
+        merchantId,
+        customerId,
+        ownerUserId,
+      );
+      expect(customersService.deleteCustomerGlobal).not.toHaveBeenCalled();
     });
   });
 

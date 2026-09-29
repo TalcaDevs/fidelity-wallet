@@ -64,6 +64,12 @@ export class PassesService {
       return { pass, isNew: true };
     } catch (err: unknown) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        // En PostgreSQL, una violación de clave única (P2002) aborta la transacción interactiva.
+        // Si se provee `tx`, cualquier query posterior sobre `tx` fallará con 500 (transacción abortada).
+        // Por ello, re-lanzamos el error para que la transacción externa aborte y se reintente limpiamente.
+        if (tx) {
+          throw err;
+        }
         pass = await prisma.pass.findUnique({
           where: {
             customerId_merchantId: {

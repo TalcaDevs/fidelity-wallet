@@ -86,13 +86,15 @@ export function Dashboard({ session, merchantId }: { session: Session | null; me
                     <div>
                       <div className="flex items-center gap-2">
                         <p className="font-semibold text-lg">{isReward ? 'Premio Canjeado' : 'Cliente escaneado'}</p>
-                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
-                          isManual
-                            ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-                            : 'bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300'
-                        }`}>
-                          {isManual ? 'Manual' : 'QR'}
-                        </span>
+                        {scan.method && (
+                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                            isManual
+                              ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                              : 'bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300'
+                          }`}>
+                            {isManual ? 'Manual' : 'QR'}
+                          </span>
+                        )}
                       </div>
                       <p className="text-sm text-slate-500 dark:text-slate-400">{identifier}</p>
                     </div>

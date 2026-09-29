@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { PassesService } from './passes.service.js';
 import { ApplePassService } from './services/apple-pass.service.js';
@@ -212,6 +213,45 @@ describe('PassesService', () => {
       expect(txMock.pass.create).toHaveBeenCalled();
       expect(res.pass.id).toBe('tx-pass-1');
       expect(res.isNew).toBe(true);
+    });
+
+    it('rethrows P2002 error when tx is provided so outer transaction can abort and retry', async () => {
+      const p2002Error = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      });
+      const txMock: any = {
+        pass: {
+          findUnique: vi.fn().mockResolvedValue(null),
+          create: vi.fn().mockRejectedValue(p2002Error),
+        },
+      };
+
+      await expect(
+        service.findOrCreatePass(mockCustomerId, mockMerchantId, txMock),
+      ).rejects.toThrow(p2002Error);
+
+      expect(txMock.pass.findUnique).toHaveBeenCalledTimes(1);
+      expect(txMock.pass.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('catches P2002 and fetches existing pass when tx is not provided', async () => {
+      const p2002Error = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      });
+      const existing = { id: 'pass-concurrent', customerId: mockCustomerId, merchantId: mockMerchantId };
+
+      vi.spyOn(prisma.pass, 'findUnique')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(existing as any);
+      vi.spyOn(prisma.pass, 'create').mockRejectedValueOnce(p2002Error);
+
+      const res = await service.findOrCreatePass(mockCustomerId, mockMerchantId);
+
+      expect(res.isNew).toBe(false);
+      expect(res.pass.id).toBe('pass-concurrent');
+      expect(prisma.pass.findUnique).toHaveBeenCalledTimes(2);
     });
   });
 

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
+import { Prisma } from '@prisma/client';
 import type { PassesService } from '../passes/passes.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import { CustomersService } from './customers.service.js';
@@ -270,7 +271,67 @@ describe('CustomersService', () => {
     });
   });
 
+  describe('concurrency and P2002 retry handling', () => {
+    const p2002Error = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+      clientVersion: 'test',
+    });
 
+    it('retries the entire transaction when P2002 collision occurs on customer creation and resolves concurrently created customer', async () => {
+      prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
+      prismaMock.promotion.findFirst.mockResolvedValue({ id: 'promo-1', isActive: true });
+
+      let transactionCount = 0;
+      prismaMock.$transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => {
+        transactionCount++;
+        return callback(prismaMock);
+      });
+
+      // On attempt 1, customer does not exist yet. On attempt 2, customer was created by concurrent request.
+      prismaMock.customer.findUnique.mockImplementation(({ where }: any) => {
+        if (transactionCount === 1) {
+          return Promise.resolve(null);
+        }
+        return Promise.resolve({
+          id: 'c-concurrent',
+          rut: '11111111-1',
+          phone: '+56912345678',
+          termsVersion: TERMS_VERSION,
+        });
+      });
+
+      prismaMock.customer.create.mockRejectedValueOnce(p2002Error);
+
+      passesServiceMock.findOrCreatePass.mockResolvedValue({
+        pass: { id: 'p-1', customerId: 'c-concurrent', merchantId: 'm-1' },
+        isNew: false,
+      });
+
+      const result = await service.createOrFindCustomer(validDto());
+
+      expect(transactionCount).toBe(2);
+      expect(result.customerId).toBe('c-concurrent');
+      expect(result.passId).toBe('p-1');
+      expect(result.isNew).toBe(false);
+    });
+
+    it('rethrows P2002 when the error persists on the retried transaction', async () => {
+      prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
+      prismaMock.promotion.findFirst.mockResolvedValue({ id: 'promo-1', isActive: true });
+
+      let transactionCount = 0;
+      prismaMock.$transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => {
+        transactionCount++;
+        return callback(prismaMock);
+      });
+
+      prismaMock.customer.findUnique.mockResolvedValue(null);
+      prismaMock.customer.create.mockRejectedValue(p2002Error);
+
+      await expect(service.createOrFindCustomer(validDto())).rejects.toThrow(p2002Error);
+      expect(transactionCount).toBe(2);
+    });
+  });
 
   describe('deleteCustomerByMerchant (Ley 19.628)', () => {
     it('throws ForbiddenException if caller is not authenticated', async () => {
@@ -306,7 +367,6 @@ describe('CustomersService', () => {
       expect(prismaMock.customer.delete).not.toHaveBeenCalled();
       expect(result.success).toBe(true);
       expect(result.customerCompletelyDeleted).toBe(false);
-      expect(passesServiceMock.notifyPassUpdate).toHaveBeenCalledWith('p-1');
     });
 
     it('deletes pass and customer completely when customer has no other passes', async () => {
@@ -329,10 +389,9 @@ describe('CustomersService', () => {
       await expect(service.deleteCustomerGlobal('c-nonexistent')).rejects.toThrow('Cliente no encontrado');
     });
 
-    it('deletes customer and notifies passes', async () => {
+    it('deletes customer completely', async () => {
       prismaMock.customer.findUnique.mockResolvedValue({
         id: 'c-1',
-        passes: [{ id: 'p-1' }, { id: 'p-2' }],
       });
 
       const result = await service.deleteCustomerGlobal('c-1');
@@ -340,7 +399,6 @@ describe('CustomersService', () => {
       expect(prismaMock.customer.delete).toHaveBeenCalledWith({ where: { id: 'c-1' } });
       expect(result.success).toBe(true);
       expect(result.customerCompletelyDeleted).toBe(true);
-      expect(passesServiceMock.notifyPassUpdate).toHaveBeenCalledWith('p-1');
     });
   });
 });

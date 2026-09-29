@@ -30,7 +30,11 @@ export class GoogleWalletService {
       '3388000000022314567';
 
     const objectId = `${issuerId}.${data.passId}`;
-    const classId = `${issuerId}.fidelity_loyalty_card`;
+    // Clase de fidelidad multi-comercio. Permite override con GOOGLE_WALLET_CLASS_ID para entornos de desarrollo/sandbox
+    const classId =
+      this.configService.get<string>('GOOGLE_WALLET_CLASS_ID') ||
+      process.env.GOOGLE_WALLET_CLASS_ID ||
+      `${issuerId}.fidelity_${data.merchantId.replace(/-/g, '_')}`;
 
     const claims = {
       iss:
@@ -38,6 +42,7 @@ export class GoogleWalletService {
         process.env.GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL ||
         'service-account@fidelity-wallet.iam.gserviceaccount.com',
       aud: 'google',
+      // origins: [] permite abrir el enlace de guardado desde cualquier origen o app móvil
       origins: [],
       typ: 'savetowallet',
       payload: {
@@ -46,13 +51,31 @@ export class GoogleWalletService {
             id: objectId,
             classId,
             state: 'ACTIVE',
-            accountId: data.passId,
+            accountId: data.customerLabel,
             accountName: data.merchantName,
             barcode: {
               type: 'QR_CODE',
               value: data.passToken,
               alternateText: data.customerLabel,
             },
+            loyaltyPoints: {
+              balance: {
+                int: data.activeStamps,
+              },
+              label: 'Sellos',
+            },
+            secondaryLoyaltyPoints: {
+              balance: {
+                int: data.targetStamps,
+              },
+              label: 'Meta',
+            },
+            textModulesData: [
+              {
+                header: 'Premio',
+                body: data.rewardName,
+              },
+            ],
           },
         ],
       },

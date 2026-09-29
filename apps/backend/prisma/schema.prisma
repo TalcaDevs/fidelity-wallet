@@ -57,8 +57,8 @@ model Customer {
   termsAcceptedAt DateTime?
   /// Versión de los términos aceptada (ver TERMS_VERSION en customers/terms.ts).
   termsVersion    String?
-  passes            Pass[]
-  createdAt         DateTime  @default(now())
+  passes          Pass[]
+  createdAt       DateTime  @default(now())
 
   @@index([rut])
   @@index([phone])
