@@ -4,12 +4,14 @@ import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
 
 import { VitePWA } from 'vite-plugin-pwa'
+import basicSsl from '@vitejs/plugin-basic-ssl'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(), 
     tailwindcss(),
+    basicSsl(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'icons.svg', 'apple-wallet-es.svg', 'google-wallet-es.svg'],
@@ -37,6 +39,28 @@ export default defineConfig({
       }
     })
   ],
+  server: {
+    host: true,
+    allowedHosts: true,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:3000',
+        changeOrigin: true,
+      },
+      '/auth/v1': {
+        target: 'http://127.0.0.1:54321',
+        changeOrigin: true,
+      },
+      '/rest/v1': {
+        target: 'http://127.0.0.1:54321',
+        changeOrigin: true,
+      },
+      '/storage/v1': {
+        target: 'http://127.0.0.1:54321',
+        changeOrigin: true,
+      }
+    }
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
