@@ -30,7 +30,7 @@ export class GoogleWalletService {
       '3388000000022314567';
 
     const objectId = `${issuerId}.${data.passId}`;
-    const classId = `${issuerId}.fidelity_${data.merchantId.replace(/-/g, '_')}`;
+    const classId = `${issuerId}.fidelity_loyalty_card`;
 
     const claims = {
       iss:
@@ -38,7 +38,7 @@ export class GoogleWalletService {
         process.env.GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL ||
         'service-account@fidelity-wallet.iam.gserviceaccount.com',
       aud: 'google',
-      origins: ['https://fidelitywallet.cl'],
+      origins: [],
       typ: 'savetowallet',
       payload: {
         loyaltyObjects: [
@@ -46,31 +46,13 @@ export class GoogleWalletService {
             id: objectId,
             classId,
             state: 'ACTIVE',
-            accountId: data.customerLabel,
+            accountId: data.passId,
             accountName: data.merchantName,
             barcode: {
               type: 'QR_CODE',
               value: data.passToken,
               alternateText: data.customerLabel,
             },
-            loyaltyPoints: {
-              balance: {
-                int: data.activeStamps,
-              },
-              label: 'Sellos',
-            },
-            secondaryLoyaltyPoints: {
-              balance: {
-                int: data.targetStamps,
-              },
-              label: 'Meta',
-            },
-            textModulesData: [
-              {
-                header: 'Premio',
-                body: data.rewardName,
-              },
-            ],
           },
         ],
       },
