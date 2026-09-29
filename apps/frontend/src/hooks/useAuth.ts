@@ -17,9 +17,21 @@ export function useAuth() {
       setLoading(false);
     });
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        supabase.auth.refreshSession();
+    let refreshTimeout: number | null = null;
+
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        if (refreshTimeout) return;
+        refreshTimeout = window.setTimeout(() => { refreshTimeout = null; }, 5000);
+        
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            await supabase.auth.refreshSession();
+          }
+        } catch (error) {
+          console.error('Error refreshing session:', error);
+        }
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);

@@ -31,14 +31,16 @@ export function JoinSuccess({ appleWalletUrl, googleWalletUrl, alreadyExists, me
       {!alreadyExists && (
         <div className="space-y-4 w-full max-w-sm">
           {(!isAndroid || isIOS) && appleWalletUrl && (
-            <a href={appleWalletUrl} className="block w-full active:scale-95 transition-transform">
-              <img src="/apple-wallet-es.svg" alt="Añadir a Apple Wallet" className="h-[50px] w-auto mx-auto" />
+            <a href={appleWalletUrl} aria-label="Add to Apple Wallet (Añadir a Apple Wallet)" className="block w-full active:scale-95 transition-transform">
+              <span className="sr-only">Add to Apple Wallet (Añadir a Apple Wallet)</span>
+              <img src="/apple-wallet-es.svg" alt="" className="h-[50px] w-auto mx-auto" />
             </a>
           )}
           
           {(!isIOS || isAndroid) && googleWalletUrl && (
-            <a href={googleWalletUrl} className="block w-full active:scale-95 transition-transform">
-              <img src="/google-wallet-es.svg" alt="Añadir a Google Wallet" className="h-[50px] w-auto mx-auto" />
+            <a href={googleWalletUrl} aria-label="Add to Google Wallet (Añadir a Google Wallet)" className="block w-full active:scale-95 transition-transform">
+              <span className="sr-only">Add to Google Wallet (Añadir a Google Wallet)</span>
+              <img src="/google-wallet-es.svg" alt="" className="h-[50px] w-auto mx-auto" />
             </a>
           )}
         </div>

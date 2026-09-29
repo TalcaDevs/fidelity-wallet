@@ -56,7 +56,7 @@ export function Scan({ merchantId, session }: { merchantId: string, session: Ses
       setState('reward');
     } else if (!res.ok) {
       triggerFeedback('error');
-      if (res.error === 'No tienes permisos para realizar esta acción' || res.error?.includes('sesión')) {
+      if (res.errorCode === 'UNAUTHORIZED') {
         setIsSessionExpired(true);
       } else {
         setState('error');
@@ -78,7 +78,7 @@ export function Scan({ merchantId, session }: { merchantId: string, session: Ses
 
     if (!res.ok) {
       triggerFeedback('error');
-      if (res.error === 'No tienes permisos para realizar esta acción' || res.error?.includes('sesión')) {
+      if (res.errorCode === 'UNAUTHORIZED') {
         setIsSessionExpired(true);
       } else {
         setState('error');
@@ -172,8 +172,11 @@ export function Scan({ merchantId, session }: { merchantId: string, session: Ses
         {state === 'error' && <ScanError result={result} onReset={resetScanner} />}
       </main>
 
-      {!isOnline && <ScanOffline />}
-      {isSessionExpired && <ScanSessionExpired onRelogin={() => supabase.auth.signOut()} />}
+      {!isOnline ? (
+        <ScanOffline />
+      ) : isSessionExpired ? (
+        <ScanSessionExpired onRelogin={() => supabase.auth.signOut()} />
+      ) : null}
     </div>
   );
 }

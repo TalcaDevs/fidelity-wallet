@@ -56,12 +56,14 @@ describe('QRCam', () => {
     const originalStart = MockHtml5Qrcode.prototype.start;
     MockHtml5Qrcode.prototype.start = async function() { throw new Error('Fail'); };
     
-    render(<QRCam isActive={true} onScanSuccess={() => {}} />);
-    
-    await waitFor(() => {
-      expect(screen.getByText('Error de cámara')).toBeInTheDocument();
-    });
-
-    MockHtml5Qrcode.prototype.start = originalStart;
+    try {
+      render(<QRCam isActive={true} onScanSuccess={() => {}} />);
+      
+      await waitFor(() => {
+        expect(screen.getByText('Error de cámara')).toBeInTheDocument();
+      });
+    } finally {
+      MockHtml5Qrcode.prototype.start = originalStart;
+    }
   });
 });

@@ -1,16 +1,25 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeAll, afterAll } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { Join } from './Join';
 
 // Simulación de fetch sin usar vi.fn()
-let currentFetchHandler: ((url: string, init?: any) => Promise<Response>) | null = null;
+let currentFetchHandler: ((url: string, init?: RequestInit) => Promise<Response>) | null = null;
+let originalFetch: typeof globalThis.fetch;
 
-globalThis.fetch = async (input, init) => {
-  if (currentFetchHandler) return currentFetchHandler(input.toString(), init);
-  return new Response('Not found', { status: 404 });
-};
+beforeAll(() => {
+  originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    if (currentFetchHandler) return currentFetchHandler(input.toString(), init);
+    return new Response('Not found', { status: 404 });
+  };
+});
+
+afterAll(() => {
+  globalThis.fetch = originalFetch;
+});
+
 
 function renderJoin(merchantName = 'test-merchant') {
   return render(
@@ -24,7 +33,7 @@ function renderJoin(merchantName = 'test-merchant') {
 
 describe('Join', () => {
   afterEach(() => {
-    currentFetchHandler = null as any;
+    currentFetchHandler = null;
   });
 
   it('muestra mensaje de error si hay fallo de red al cargar el local', async () => {
