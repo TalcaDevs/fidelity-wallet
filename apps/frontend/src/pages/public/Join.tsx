@@ -312,7 +312,7 @@ export function Join() {
           </button>
         </form>
 
-        <p className="text-[11px] text-slate-400 mt-10 text-center max-w-xs leading-relaxed font-medium">
+        <p className="text-[11px] text-slate-400 mt-8 text-center max-w-xs leading-relaxed font-medium">
           Usamos tu RUT y teléfono únicamente para identificar tu tarjeta y gestionar tus sellos, conforme a la Ley 19.628 de Protección de la Vida Privada. Puedes pedir su eliminación cuando quieras.
         </p>
       </div>

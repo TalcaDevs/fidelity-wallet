@@ -26,7 +26,13 @@ async function bootstrap() {
       ];
 
   app.enableCors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      // Permitir peticiones sin origen (curl, mobile web direct) o si está en la lista permitida
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
     credentials: true,
   });
 

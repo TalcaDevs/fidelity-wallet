@@ -7,7 +7,12 @@ interface JoinSuccessProps {
   merchantName?: string;
 }
 
-export function JoinSuccess({ appleWalletUrl, googleWalletUrl, alreadyExists, merchantName }: JoinSuccessProps) {
+export function JoinSuccess({
+  appleWalletUrl,
+  googleWalletUrl,
+  alreadyExists = false,
+  merchantName,
+}: JoinSuccessProps) {
   const { isIOS, isAndroid } = useDeviceOS();
 
   return (
@@ -17,17 +22,18 @@ export function JoinSuccess({ appleWalletUrl, googleWalletUrl, alreadyExists, me
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
         </svg>
       </div>
-      
+
       <h1 className="text-3xl font-black text-slate-900 mb-4">
         {alreadyExists ? '¡Ya tienes tu tarjeta!' : '¡Tarjeta Lista!'}
       </h1>
-      
+
       <p className="text-slate-600 mb-8 max-w-sm text-lg font-medium">
-        {alreadyExists 
-          ? `Ya estás registrado en ${merchantName}. Si borraste tu pase, pronto podrás recuperarlo.`
+        {alreadyExists
+          ? `Ya estás registrado en ${merchantName || 'este local'}. Tu tarjeta fue emitida previamente. Si perdiste tu tarjeta o cambiaste de celular, acércate al mesón del local para recibir asistencia.`
           : 'Agrega tu tarjeta a tu billetera digital. En tu próxima visita, sólo muestra el código QR desde tu teléfono.'}
       </p>
 
+      {/* Botones oficiales de Apple y Google Wallet una vez emitida */}
       {!alreadyExists && (
         <div className="space-y-4 w-full max-w-sm">
           {(!isAndroid || isIOS) && appleWalletUrl && (
@@ -36,7 +42,7 @@ export function JoinSuccess({ appleWalletUrl, googleWalletUrl, alreadyExists, me
               <img src="/apple-wallet-es.svg" alt="" className="h-[50px] w-auto mx-auto" />
             </a>
           )}
-          
+
           {(!isIOS || isAndroid) && googleWalletUrl && (
             <a href={googleWalletUrl} aria-label="Add to Google Wallet (Añadir a Google Wallet)" className="block w-full active:scale-95 transition-transform">
               <span className="sr-only">Add to Google Wallet (Añadir a Google Wallet)</span>

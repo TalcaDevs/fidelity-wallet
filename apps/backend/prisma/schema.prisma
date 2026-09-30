@@ -114,6 +114,7 @@ model Scan {
   promotion       Promotion? @relation(fields: [promotionId], references: [id], onDelete: SetNull)
   /// Auditoria: que usuario (dueno o mesero) ejecuto el scan.
   createdByUserId String?    @db.Uuid
+  method          ScanMethod @default(QR)
   createdAt       DateTime   @default(now())
 
   @@index([promotionId])
@@ -122,6 +123,11 @@ model Scan {
 enum ScanType {
   STAMP_ADDED
   REWARD_REDEEMED
+}
+
+enum ScanMethod {
+  QR
+  MANUAL
 }
 
 enum MerchantRole {
