@@ -2,7 +2,7 @@ export interface PassData {
   passId: string;
   serialNumber: string;
   passToken: string;
-  merchantId: string;
+  programId: string;
   merchantName: string;
   customerLabel: string;
   activeStamps: number;

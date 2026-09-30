@@ -5,7 +5,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, ProgramType } from '@prisma/client';
+import { isLocationOperational, resolveLocationAccess } from '../common/access/brand-access.js';
 import { isValidSlug, slugify, SLUG_MAX_LENGTH, SLUG_MIN_LENGTH } from '../common/utils/slug.util.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { PublicMerchantDto, UpdateSlugResponseDto } from './dto/public-merchant.dto.js';
@@ -15,7 +16,7 @@ export class MerchantsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Resuelve el slug público de la landing al comercio y su promoción vigente.
+   * Resuelve el slug público de la landing al local y su promoción vigente.
    * Solo expone datos de vitrina: nunca el email del dueño ni datos de clientes.
    */
   async findPublicBySlug(rawSlug: string): Promise<PublicMerchantDto> {
@@ -27,23 +28,45 @@ export class MerchantsService {
             id: true,
             name: true,
             slug: true,
-            stampValidityDays: true,
-            promotions: {
-              where: { isActive: true },
-              orderBy: { createdAt: 'desc' },
-              select: { id: true, name: true, targetStamps: true, rewardName: true },
+            isActive: true,
+            brandId: true,
+            brand: {
+              select: {
+                name: true,
+                status: true,
+                programs: {
+                  where: { type: ProgramType.STAMPS },
+                  orderBy: { createdAt: 'asc' },
+                  take: 1,
+                  select: {
+                    stampValidityDays: true,
+                    isActive: true,
+                    promotions: {
+                      where: { isActive: true },
+                      orderBy: { createdAt: 'desc' },
+                      select: { id: true, name: true, targetStamps: true, rewardName: true },
+                    },
+                  },
+                },
+              },
             },
           },
         })
       : null;
 
-    if (!merchant) {
+    if (!merchant || !isLocationOperational(merchant)) {
       throw new NotFoundException('El comercio no existe');
     }
 
-    const { promotions, ...publicMerchant } = merchant;
+    const program = merchant.brand.programs[0];
+    const promotions = program?.isActive ? program.promotions : [];
     return {
-      ...publicMerchant,
+      id: merchant.id,
+      name: merchant.name,
+      slug: merchant.slug,
+      brandId: merchant.brandId,
+      brandName: merchant.brand.name,
+      stampValidityDays: program?.stampValidityDays ?? null,
       // La landing destaca la más reciente, pero los sellos sirven para cualquiera de las activas.
       activePromotion: promotions[0] ?? null,
       activePromotions: promotions,
@@ -60,12 +83,12 @@ export class MerchantsService {
     rawSlug: string,
     callerUserId: string,
   ): Promise<UpdateSlugResponseDto> {
-    const membership = await this.prisma.merchantUser.findUnique({
-      where: { userId_merchantId: { userId: callerUserId, merchantId } },
+    const ownerOnlyMessage = 'Solo el dueño del comercio puede cambiar su link público';
+    await resolveLocationAccess(this.prisma, callerUserId, merchantId, {
+      ownerOnly: true,
+      forbiddenMessage: ownerOnlyMessage,
+      ownerMessage: ownerOnlyMessage,
     });
-    if (membership?.role !== 'OWNER') {
-      throw new ForbiddenException('Solo el dueño del comercio puede cambiar su link público');
-    }
 
     const slug = slugify(rawSlug);
     if (!isValidSlug(slug)) {

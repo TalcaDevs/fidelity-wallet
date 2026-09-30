@@ -36,19 +36,19 @@ function firstOrSelf<T>(value: T | T[] | null | undefined): T | null {
 
 // Dos consultas en vez de un embed: PassStampBalance es una vista y PostgREST no
 // garantiza detectarle la relación con Pass, así que cruzamos por passId acá.
-export async function listCustomers(merchantId: string): Promise<CustomerRow[]> {
+export async function listCustomers(brandId: string): Promise<CustomerRow[]> {
   const [passesRes, balancesRes] = await Promise.all([
     // Pass.updatedAt cambia con cada sello, así que sirve como última actividad
     // sin tener que traer la tabla Scan completa.
     supabase
       .from('Pass')
       .select('id, customerId, createdAt, updatedAt, customer:Customer(rut, phone)')
-      .eq('merchantId', merchantId)
+      .eq('brandId', brandId)
       .order('updatedAt', { ascending: false }),
     supabase
       .from('PassStampBalance')
       .select('passId, activeStamps, nextExpiryAt')
-      .eq('merchantId', merchantId),
+      .eq('brandId', brandId),
   ]);
 
   // supabase-js no lanza: devuelve { data, error }. Sin esto, un fallo del saldo
