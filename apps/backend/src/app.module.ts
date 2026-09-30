@@ -10,6 +10,7 @@ import { PassesModule } from './passes/passes.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { ScanModule } from './scan/scan.module.js';
 import { StaffModule } from './staff/staff.module.js';
+import { SupportModule } from './support/support.module.js';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { StaffModule } from './staff/staff.module.js';
     StaffModule,
     ScanModule,
     PassesModule,
+    SupportModule,
   ],
   controllers: [AppController],
   providers: [

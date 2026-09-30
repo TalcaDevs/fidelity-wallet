@@ -320,7 +320,7 @@ Prioridad: 🔴 bloquea el piloto · 🟠 necesario para el piloto · 🟡 deuda
 **Nuevo: mockup de Soporte (§6.6)**
 - [ ] 🟠 `/admin/support`: formulario (categoría, descripción, local opcional, teléfono opcional, captura opcional PNG/JPG ≤ 10 MB) y tarjeta "Otras formas de contacto" (correo y WhatsApp desde `VITE_SUPPORT_EMAIL` / `VITE_SUPPORT_WHATSAPP`).
 - [ ] 🟠 "Mis solicitudes": lista con número, categoría, estado y fecha, y detalle con el hilo de mensajes y respuesta.
-- [ ] 🟠 Programar contra **los tipos de §11.4** (`packages/shared`) con un adaptador en memoria (`supportService` con la misma firma que tendrá la API). Cuando Dev 3 publique los endpoints, solo se cambia el adaptador.
+- [ ] 🟠 Programar contra **los tipos de §11.4** (`packages/shared`) con un adaptador en memoria (`supportService` con la misma firma que tendrá la API). Cuando Dev 3 publique los endpoints, solo se cambia el adaptador. *(2026-10-01: **la API ya existe** (PR2 de Dev 3), así que se puede ir directo contra ella. Para importar los tipos, agregar `"@fidelity/shared": "workspace:*"` a `apps/frontend`.)*
 
 **Escáner y landing (lo que quedaba)**
 - [ ] 🔴 **Probar la cámara en iOS Safari y Android Chrome reales** y medir el objetivo de < 2 s. Fuera de `localhost` la cámara exige **HTTPS**.
@@ -343,17 +343,19 @@ Prioridad: 🔴 bloquea el piloto · 🟠 necesario para el piloto · 🟡 deuda
 - [x] 🔴 Backend adaptado (scan, customers, passes, merchants, staff) con el helper `common/access/brand-access.ts`; panel adaptado (membresía, dashboard, clientes, promociones, configuración); seed con 2 locales y un `SUPERADMIN`. Flujo real verificado: alta en un local, sellos alternando locales, canje en el otro, y 403 al mesero en un local ajeno.
 - [x] 🟠 Tests del SQL contra BD real: `pnpm --filter backend run test:db` (15 tests de RLS, triggers y `handle_new_user`) y job `db-tests` en la CI con Supabase local. *Cierra el pendiente 🟡 de tests del SQL de Dev 1 para `handle_new_user`.*
 - [ ] 🟡 Dev 1 revisa el PR1 (impacto en `/api/scan`, alta y emisión).
-- [ ] 🟠 Crear `packages/shared` con los scripts de CI (§10) y publicar ahí los tipos de tickets (§11.4).
+- [x] 🟠 `packages/shared` (`@fidelity/shared`) con los scripts de CI y el contrato de tickets (§11.4). *(PR2)*
 
 **Fase 2 — sucursales del dueño**
 - [ ] 🟠 `/admin/locations`: CRUD de locales con dirección, comuna, región, contacto y mapa **Leaflet + OpenStreetMap** con pin arrastrable. Geocoding por `GET /api/geocode?q=` (proxy a Nominatim, con rate limit y `User-Agent` propio).
 
 **Fase 3 — panel interno `/internal/*`**
-- [ ] 🟠 Guard `PlatformAdminGuard` en `/api/internal/*` y `GET /api/internal/me`. En el frontend, rutas con `React.lazy` y redirección si no es admin interno.
+- [x] 🟠 Guard `PlatformAdminGuard` en `/api/internal/*` y `GET /api/internal/me` *(PR2)*.
+- [ ] 🟠 En el frontend: rutas `/internal/*` con `React.lazy` y redirección si no es admin interno *(PR4)*.
 - [ ] 🟠 Marcas: listado con búsqueda (plan, estado, número de locales y clientes) y detalle (locales, programas, promociones, contacto del `OWNER`, actividad).
 - [ ] 🟠 Mapa con todas las sucursales.
 - [ ] 🟠 Editar la configuración de marcas y locales y suspender o reactivar una marca, con cada cambio en `AuditLog` (solo `SUPERADMIN`).
-- [ ] 🟠 **Tickets** (§11.4): bandeja con filtros, asignación, estados, prioridad, respuestas y notas internas que el dueño no ve. **Publicar el contrato temprano**, porque Dev 2 lo consume.
+- [x] 🟠 **API de tickets** (§11.4): endpoints del dueño e internos, adjuntos en Storage, `AuditLog` y cierre automático *(PR2)*.
+- [ ] 🟠 **Bandeja de tickets en `/internal`** (UI): filtros, asignación, estados, prioridad, respuestas y notas internas *(PR4)*.
 - [ ] 🟡 Búsqueda de clientes finales con RUT y teléfono **enmascarados**; ver el dato completo exige un motivo y queda en `AuditLog` (solo `SUPERADMIN`, Ley 19.628).
 - [ ] 🟡 Visor de `AuditLog`.
 
@@ -915,6 +917,9 @@ node --env-file=.env prisma/seed.js
 - `apps/backend/.env` → `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `ALLOWED_ORIGINS` (PR #13: orígenes permitidos por CORS, separados por comas).
 - Desarrollo sin certificados: **`ALLOW_MOCK_PASSES=true`**. Sin esta variable, `POST /api/customers` responde 500.
 - Antifraude: `STAMP_COOLDOWN_MINUTES` (por defecto 30). Para probar localmente sin esperar, usar `1`.
+- Soporte: `SUPPORT_AUTOCLOSE_INTERVAL_MINUTES` (por defecto 60; `0` apaga el cierre automático de tickets `RESOLVED`).
+- **`packages/shared` se compila:** tras un pull que lo toque, corre `pnpm --filter @fidelity/shared build`. `pnpm run dev` lo recompila en modo watch.
+- **Storage local (adjuntos de tickets):** si subir una captura falla con `database error, code: 42P10`, la imagen de `storage-api` es más vieja que el esquema `storage`. Se arregla con `printf v1.77.0 > supabase/.temp/storage-version`, seguido de `npx supabase stop` y `npx supabase start`.
 - Billeteras reales (Dev 1): `APPLE_PASS_TYPE_IDENTIFIER`, `APPLE_TEAM_IDENTIFIER`, `APPLE_PASS_CERT`, `APPLE_PASS_KEY`, `APPLE_PASS_PASSWORD`, `APPLE_WWDR_CERT`, `GOOGLE_WALLET_ISSUER_ID`, `GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_WALLET_PRIVATE_KEY` y, opcional para sandbox, `GOOGLE_WALLET_CLASS_ID`.
 - Tras editar el `.env` del backend hay que **reiniciar `pnpm run dev`**: el modo watch no lo vuelve a leer.
 
@@ -1007,7 +1012,26 @@ Pasos del plan original, con lo que cambió:
 - **Geocoding:** `GET /api/geocode?q=` en el backend, como proxy a Nominatim, con rate limit (la política de Nominatim es de 1 req/s y exige `User-Agent` identificable) y caché. El navegador nunca llama a Nominatim directamente.
 - Desactivar un local no borra nada: deja de aceptar escaneos y `/join/:slug` muestra "local no disponible".
 
-### 11.4 Contrato de tickets de soporte (fuente de verdad para Dev 2 y Dev 3)
+### 11.4 ✅ Contrato de tickets de soporte (fuente de verdad para Dev 2 y Dev 3) — implementado en el PR2
+
+> **Implementado (2026-10-01):**
+> - Tipos y constantes en `packages/shared/src/support.ts`: `TICKET_CATEGORIES`, `TICKET_STATUS_LABELS`, `TICKET_TRANSITIONS`, `canTransition`…
+> - Backend en `apps/backend/src/support`.
+> - Migración `20261001120000_support_tickets`. Los números de ticket parten en **#1000**.
+> - Decisiones del grill: **solo el OWNER crea tickets**; las 9 categorías y los estados, tal como están abajo; aviso **solo en el panel** (`unreadForMerchant`), sin correo.
+>
+> Diferencias con lo escrito abajo:
+> - `GET /api/internal/me` → `{ userId, email, role }`.
+> - La respuesta interna acepta `status` opcional para responder y cambiar el estado en un solo paso.
+> - `OPEN → CLOSED` está permitido, para descartar spam.
+> - Una captura de más de 10 MB responde **413**.
+> - Crear un ticket **no exige que la marca esté activa**: una marca suspendida tiene que poder escribir a soporte.
+> - Las transiciones válidas son las de `TICKET_TRANSITIONS` en `packages/shared`.
+>
+> Tras la revisión del PR #18:
+> - **`@PlatformRoles(...)`** es obligatorio en todo controller o handler interno: sin él, `PlatformAdminGuard` deniega. Los tickets admiten `SUPERADMIN` y `SUPPORT`.
+> - Las escrituras sobre un ticket exigen el estado leído (`failOnStaleStatus`) y responden 409 si otra operación lo cambió entremedio.
+> - Pendiente 🟡: quitar metadatos EXIF (GPS) de las capturas, y pasar los adjuntos de memoria a disco o streaming si el volumen crece.
 
 **Tipos** — `packages/shared/src/support.ts`:
 ```ts
