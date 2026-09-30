@@ -1,16 +1,39 @@
 # Handoff — Fidelity Wallet
 
-> Documento de traspaso para **Dev 1 (Backend / Motor de Pases)** y **Dev 2 (Frontend PWA & Cliente Final)**.
-> Escrito por Dev 3 (infraestructura, base de datos y panel de administración).
-> Última actualización: **2026-09-24** · Rama de referencia: `dev`.
+> Documento de traspaso del equipo. Desde el **2026-09-30** el trabajo se reparte así:
+> - **Dev 1 — Backend, motor de pases y reportería/analítica del dueño** (§5, §5.8).
+> - **Dev 2 — PWA del cajero, landing del cliente, Equipo y mockups de Facturación y Soporte** (§6, §6.4–§6.6).
+> - **Dev 3 — Infra, base de datos, migración Brand > Location y panel interno `/internal/*`** (§11).
+>
+> Última actualización: **2026-09-30** · Rama de referencia: `dev` (incluye los PR #12 y #13).
 
-> **¿Llegas nuevo o vuelves después de unos días?** Empieza por el **§3: checklist de lo hecho y lo que falta por dev**. Las secciones 0–2 explican el porqué; el §3 dice en qué estamos.
+> **¿Llegas nuevo o vuelves después de unos días?** Empieza por el **§0.1** (qué cambió el 2026-09-30) y luego por el **§3: checklist de lo hecho y lo que falta por dev**. Las secciones 1–2 explican el porqué; el §3 dice en qué estamos. La sección de Dev 3 quedó al final (§11) para no renumerar las referencias que ya existen.
 
 ---
 
-## 0. Cambios del 2026-09-20 — leer esto primero
+## 0. Cambios de arquitectura — leer esto primero
 
-Si ya leíste este documento antes de hoy, estas cuatro decisiones de equipo cambian cosas que el texto anterior **afirmaba al revés**. Ya están aplicadas en el resto del documento; esta tabla es el resumen de un vistazo.
+### 0.1 Cambios del 2026-09-30
+
+Cinco decisiones nuevas. **La 5 es la más cara desde la decisión 4:** reabre el multi-local, que el §8.4 dejaba fuera del MVP.
+
+| # | Decisión | Qué queda **sin efecto** | Dónde impacta |
+|---|---|---|---|
+| 5 | **Multi-local: `Brand > Location`**. Una marca tiene N locales. El **saldo de sellos es de la marca**: se sella en el local A y se canjea en el B. Promociones y vigencia viven en la marca. El `Merchant` de hoy pasa a ser una `Location` | §8.4 ("multi-local sigue fuera") y §1.6 | §1.6, §4, §5.4, §8.4, §11 — **los tres** |
+| 6 | **`LoyaltyProgram` desde ya.** Cada marca tiene programas de lealtad. Hoy solo existe el tipo `STAMPS`, con `scope = BRAND`. **`Pass` pasa a ser único por `(customerId, programId)`**, no por comercio: cada programa es una tarjeta distinta en la billetera. Puntos, cashback, cupones, giftcard y membresía quedan **diseñados pero no construidos** (§8.10) | `Pass @@unique([customerId, merchantId])` y `Merchant.stampValidityDays` | §4, §5, §8.10, §11.2 |
+| 7 | **Roles: `OWNER` a nivel de marca, `STAFF` a nivel de local.** El dueño administra todos sus locales; el mesero escanea solo en el local al que está asignado | El `MerchantUser` actual (un comercio, sin local) | §1.5, §6.4, §11.2 |
+| 8 | **Panel interno de la plataforma en `/internal/*`, dentro de `apps/frontend`.** Los admins internos se identifican por la tabla `PlatformAdmin` (`SUPERADMIN` \| `SUPPORT`), nunca por metadata. **Todos los datos entre comercios salen de `/api/internal/*` en el backend**, no de supabase-js | — | §2, §7.10, §11 |
+| 9 | **La reportería del dueño se sirve desde el backend** (`/api/brands/:brandId/reports/*`), no con consultas directas a Supabase. El dashboard actual queda como está hasta que se migre | — | §5.8 |
+
+Reparto de tareas del 2026-09-30:
+- **Dev 1** pasa a reportería y analítica del `OWNER` (§5.8). La base de emisión de Google Wallet ya entró (PR #13). Apple, el push y la personalización del pase quedan en su lista, **detrás** de la reportería (§3.2).
+- **Dev 2** toma Equipo (UI **y** backend del módulo `staff`), el mockup de Facturación y el mockup de Soporte (§6.4–§6.6), además de lo que le quedaba del escáner.
+- **Dev 3** hace **primero** la migración `Brand > Location` + `LoyaltyProgram` (bloquea a los otros dos) y después el panel interno, con el contrato de tickets que consume Dev 2 (§11).
+- Lo que el Dev 3 anterior tenía abierto en el panel del dueño se reasigna: **métricas por promoción → Dev 1** (entra en la reportería); **QR imprimible y texto de promociones → Dev 2**; **llaves de producción y despliegue → Dev 3**.
+
+### 0.2 Cambios del 2026-09-20
+
+Si ya leíste este documento antes de esa fecha, estas cuatro decisiones de equipo cambian cosas que el texto anterior **afirmaba al revés**. Ya están aplicadas en el resto del documento; esta tabla es el resumen de un vistazo.
 
 | # | Decisión | Qué queda **sin efecto** | Dónde impacta |
 |---|---|---|---|
@@ -47,7 +70,7 @@ Ese es el diferenciador que hay que proteger en cada decisión técnica. **Si un
 > Ojo con el matiz que trajo la decisión 4: *cero contraseñas* sigue siendo intocable **para el cliente final**. El cajero sí tiene cuenta desde hoy — es personal del local, no un cliente.
 
 ### 1.3 Modelo de negocio
-SaaS **B2B2C**: le cobramos (suscripción mensual por local) al **comercio**, no al cliente final. De ahí se desprende:
+SaaS **B2B2C**: le cobramos al **comercio**, no al cliente final. *(Actualizado 2026-09-30: ya no se cobra "por local" sino **por plan y por marca**, con límites de programas, sucursales y usuarios. Hay 4 planes: prueba gratis de 30 días, Inicial, Pro y Negocio; ver §6.5. Es un mockup: los precios no están cerrados, §8.11.)* De ahí se desprende:
 
 - El cliente que paga y al que hay que enamorar es el **dueño del local**. Lo que compra son: clientes que vuelven, base de datos propia y métricas.
 - El **cliente final** es el usuario cuyo costo de adopción debe ser cero.
@@ -60,16 +83,17 @@ SaaS **B2B2C**: le cobramos (suscripción mensual por local) al **comercio**, no
 | Tiempo de escaneo en caja (cámara → confirmación en pantalla) | < 2 s | Dev 2 |
 | Conversión del landing `/join/:merchantName` | > 60% | Dev 2 |
 | Entrega del push "premio desbloqueado" | < 10 s tras el sello | Dev 1 |
-| Uso semanal del panel por el dueño | ≥ 1 sesión/semana | Dev 3 |
+| Uso semanal del panel por el dueño | ≥ 1 sesión/semana | Dev 1 (reportería, §5.8) + Dev 2 |
 
 ### 1.5 Los actores y lo que ve cada uno
 *(Actualizado 2026-09-20 — decisión 4. Antes decía que el cajero no tenía cuenta y que el dueño era el único con login. Ya no es así.)*
 
 1. **Cliente final** — solo ve el landing de emisión y su tarjeta en la billetera. Nunca ve nuestra marca como app. **Sigue sin cuenta, sin contraseña y sin descarga.**
 2. **Cajero / mesero (`STAFF`)** — **tiene cuenta propia de Supabase Auth desde hoy.** Ve la PWA de escaneo en `/scan`: cámara, confirmación y fallback por RUT/teléfono. Interfaz de un botón, usable con una mano y sin capacitación. Permisos: **solo lectura** del saldo de sellos de los clientes + el scanner. Si entra a `/admin/*` se lo redirige a `/scan`.
-3. **Dueño del local (`OWNER`)** — ve el panel admin web bajo `/admin/*`: configura promociones (incluida la vigencia de los sellos), invita meseros y revisa métricas. Acceso completo de lectura y escritura.
+3. **Dueño del local (`OWNER`)** — ve el panel admin web bajo `/admin/*`: configura promociones (incluida la vigencia de los sellos), invita meseros y revisa métricas. Acceso completo de lectura y escritura. **Desde el 2026-09-30 (decisión 7) es dueño de la marca: ve y configura todos sus locales.**
+4. **Admin interno de la plataforma (`PlatformAdmin`)** — *(nuevo 2026-09-30, decisión 8)*. Somos nosotros. Ve `/internal/*`: todas las marcas y locales, su ubicación y contacto, y los tickets de soporte. `SUPPORT` lee y gestiona tickets; `SUPERADMIN` además edita la configuración de marcas y locales y puede ver datos de clientes sin enmascarar, dejando registro (§11). **No tiene membresía en ningún comercio**: su acceso pasa por el backend, no por el RLS.
 
-La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comercio tiene **un `OWNER` y N `STAFF`**.
+La relación usuario↔comercio↔rol vive hoy en la tabla `MerchantUser`. Un comercio tiene **un `OWNER` y N `STAFF`**. Con la decisión 7 la membresía pasa a ser por marca, con un `locationId` para el `STAFF` (§11.2).
 
 ### 1.6 Alcance del MVP (y lo que queda fuera, a propósito)
 **Dentro:**
@@ -79,10 +103,17 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
 - Emisión de pase Apple + Google, sellado y canje, con push de actualización.
 - Panel con métricas básicas y CRUD de promociones.
 - **Landing pública en `/`** separada del panel (actualizado 2026-09-20).
+- **Multi-local `Brand > Location`** con saldo de sellos compartido por la marca (decisión 5, 2026-09-30).
+- **`LoyaltyProgram` como capa del modelo**, pero solo con el tipo `STAMPS` (decisión 6).
+- **Panel interno `/internal/*`** con tickets de soporte (decisión 8).
+- **Reportería del dueño** servida por el backend (decisión 9).
+- **Mockups** de Facturación y Soporte en el panel del dueño (§6.5, §6.6): pantallas con datos simulados, sin cobro real.
 
 **Fuera del MVP (no construirlo aunque sea tentador):**
-- Multi-local / franquicias con jerarquía `Brand > Location`. **Ojo:** los roles *dentro de un mismo comercio* (`OWNER`/`STAFF`) sí entran al MVP desde hoy — lo que sigue afuera es el multi-local. Ver §8.4.
-- Puntos por monto gastado, niveles/tiers, cupones de descuento.
+- ~~Multi-local / franquicias con jerarquía `Brand > Location`~~ — **entró el 2026-09-30** (decisión 5). Lo que sigue afuera es que cada marca elija saldo por local (`LoyaltyProgram.scope = LOCATION`): el campo existe, pero no se implementa.
+- Programas que no sean sellos: puntos, cashback, cupones, giftcard y membresía (§8.10). Tampoco niveles/tiers.
+- Cobro real: proveedor de pago, boletas y aplicación de los límites del plan (§8.11).
+- Impersonar a un `OWNER` desde el panel interno.
 - Integración con POS o boleta electrónica.
 - App nativa de cualquier tipo.
 - Campañas de marketing salientes (email/SMS/push promocional).
@@ -113,8 +144,15 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
 └──────────────▲───────────────────┘
                │ supabase-js (anon key, acceso directo hoy)
 ┌──────────────┴───────────────────┐
-│  Panel Admin React/Vite (Dev 3)  │  apps/frontend → rutas /admin/*
-└──────────────────────────────────┘
+│  Panel del dueño React/Vite      │  apps/frontend → rutas /admin/*
+└──────────────────────────────────┘   reportería (Dev 1) · equipo, facturación, soporte (Dev 2)
+
+┌──────────────────────────────────┐
+│  Panel interno (Dev 3)           │  apps/frontend → rutas /internal/* · solo PlatformAdmin
+└──────────────┬───────────────────┘   carga diferida (React.lazy): no va en el bundle principal
+               │ /api/internal/*  (nunca supabase-js directo: el RLS no cubre acceso entre marcas)
+               ▼
+          API NestJS
 ```
 
 **Decisiones vigentes:**
@@ -125,6 +163,9 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
 - **Autenticación:** Supabase Auth, tanto para el `OWNER` como para el `STAFF`. El trigger `handle_new_user` crea la fila `Merchant` y la membresía `OWNER` **solo cuando el usuario nuevo no trae `merchant_id` en `raw_user_meta_data`**. Si lo trae, es un mesero invitado y el trigger **no crea nada**: la membresía `STAFF` la inserta `StaffService` con la `service_role key`. **La metadata nunca otorga permisos**, porque la escribe el propio cliente en `signUp` con la anon key (ver §7.1, corrección del 2026-09-24).
 - **`merchant.id === session.user.id` sigue siendo cierto para el `OWNER`** (el trigger reutiliza el UUID del usuario de auth), **pero ya no es la base de los permisos**: con dos roles eso se rompe. Los permisos salen de `MerchantUser`. Ver §7.8 por la deuda que esto deja en el panel.
 - **El panel admin hoy consulta Supabase directamente** con la `anon key` (ver `apps/frontend/src/services/*`); no pasa por el backend NestJS. Por eso el permiso de solo-lectura del `STAFF` **se aplica en RLS, no escondiendo items del menú**: si el control viviera solo en la UI, el mesero entra igual escribiendo la URL.
+- **Lo nuevo (desde el 2026-09-30) va por el backend:** reportería (§5.8), equipo (§6.4), tickets (§11.4) y todo `/internal/*`. El acceso directo del panel a Supabase no se extiende a módulos nuevos.
+- **CORS (PR #13):** el backend solo acepta los orígenes de `ALLOWED_ORIGINS` (separados por comas, ver `apps/backend/.env.example`).
+- **Tipos compartidos:** los contratos que usan el frontend y el backend (tickets, planes) se publican en **`packages/shared`**, que se crea en §11.4. Hoy `packages/` no existe; quien lo cree debe exponer los scripts de la CI (§10).
 
 **Mapa de rutas del frontend** *(decisión 2, 2026-09-20 — reemplaza el `path="*"` → login)*
 
@@ -133,17 +174,23 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
 | `/` | Landing estática explicativa | **Público** | ✅ existe (`pages/public/Home.tsx`) — ver §8.6 |
 | `/admin/login` | Login del dueño | Público | Dev 3 |
 | `/admin/reset` | Recuperación de contraseña | Público | Dev 3 |
-| `/admin/dashboard` · `/admin/promotions` · `/admin/customers` · `/admin/settings` | Panel | **Protegido, solo `OWNER`** (un `STAFF` cae a `/scan`) | Dev 3 |
-| `/join/:merchantName` | Landing de emisión del cliente final. El parámetro es `Merchant.slug` (ej. `/join/localcito`) | Público, sin login | Dev 2 |
+| `/admin/dashboard` · `/admin/promotions` · `/admin/customers` · `/admin/settings` | Panel | **Protegido, solo `OWNER`** (un `STAFF` cae a `/scan`) | ✅ existe |
+| `/admin/analytics` · `/admin/reports` | Analítica (gráficos) y reportes exportables | Solo `OWNER` | Dev 1 · ⏳ nuevo (§5.8) |
+| `/admin/team` | Equipo: invitar, listar, reasignar y dar de baja meseros | Solo `OWNER` | Dev 2 · ⏳ nuevo (§6.4) |
+| `/admin/billing` | Mockup de facturación | Solo `OWNER`, tras `VITE_FEATURE_BILLING` | Dev 2 · ⏳ nuevo (§6.5) |
+| `/admin/support` | Soporte: crear y seguir tickets | Solo `OWNER` | Dev 2 · ⏳ nuevo (§6.6) |
+| `/admin/locations` | Sucursales de la marca, con mapa | Solo `OWNER` | Dev 3 · ⏳ nuevo (§11.3) |
+| `/internal/*` | Panel interno de la plataforma | **Solo `PlatformAdmin`**. Cualquier otro cae a `/admin` o `/scan` según su rol | Dev 3 · ⏳ nuevo (§11) |
+| `/join/:merchantName` | Landing de emisión del cliente final. El parámetro es `Merchant.slug` (ej. `/join/localcito`); con la decisión 5, el slug es del **local** | Público, sin login | Dev 2 |
 | `/scan` | PWA del cajero | **Protegido: requiere sesión (`STAFF` u `OWNER`)** | Dev 2 |
 
 **Por qué el panel queda namespaceado bajo `/admin/*`:** si mañana la landing se mueve a un sitio estático prerenderizado (por SEO y velocidad), **las URLs del panel no cambian**. Es la razón del prefijo; no es cosmética.
 
 ---
 
-## 3. Estado del proyecto — qué está hecho y qué falta (verificado 2026-09-24)
+## 3. Estado del proyecto — qué está hecho y qué falta (verificado 2026-09-30)
 
-> Verificado contra el código de `dev`, corriendo los tests y probando el flujo completo en local. Lo marcado **(2026-09-24)** está hecho pero **todavía no tiene PR mergeado**: si no lo ves en tu rama, está en camino.
+> Verificado contra el código de `dev` (= `origin/dev`, con los PR #12 y #13 mergeados) y corriendo los tests: **backend 151 ✅ · frontend 138 ✅**. Lo marcado **(2026-09-24)** entró con el PR #11; lo marcado **(PR #12)** o **(PR #13)**, con esos PR.
 
 ### 3.1 ✅ Lo que ya está hecho
 
@@ -181,7 +228,13 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
   - la respuesta trae `availablePromotions` con `canRedeem` por promoción;
   - migración `20260924150000_scan_redeemed_promotion`: `Scan.promotionId` registra qué promoción se canjeó.
 - [x] **(2026-09-24)** `GET /api/merchants/by-slug/:slug` devuelve también `activePromotions` (todas las activas, de la más reciente a la más antigua).
-- [x] 114 tests de Vitest (incluye validación de los DTO de alta y de escaneo, concurrencia de sellos y de canjes, límite manual, slug y la ventana de canje por promoción): sellado, anti-duplicado, bloqueo de 30 min, FIFO, varias promociones con saldo compartido, concurrencia de canje, ingreso manual, alta de clientes, emisión, invitación de staff, slug y utilidades de RUT/teléfono.
+- [x] **(PR #13)** **Alta atómica** en `POST /api/customers`: transacción interactiva de Prisma; si choca con una clave única (P2002) reintenta la transacción completa, y si falla la generación de URLs de billetera se aborta todo, para no dejar clientes sin tarjeta.
+- [x] **(PR #13)** **Auditoría del método de escaneo:** `Scan.method` (`QR` \| `MANUAL`, por defecto `QR`; migración `20260925130000_scan_method_audit`). El dashboard lo muestra en la actividad reciente.
+- [x] **(PR #13)** **Borrado de datos personales (Ley 19.628):** `DELETE /api/customers/:customerId?merchantId=…`, solo `OWNER` (`ParseUUIDPipe` en ambos IDs). Borra el pase, los sellos y el historial del cliente en ese comercio; si no tiene pases en otros comercios, borra también el `Customer`.
+- [x] **(PR #13)** **Base de Google Wallet:** con `GOOGLE_WALLET_ISSUER_ID`, `GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL` y `GOOGLE_WALLET_PRIVATE_KEY`, el backend firma el JWT `savetowallet` con un `loyaltyObject` (QR = `passToken`, puntos de fidelidad) sobre una clase por comercio (`GOOGLE_WALLET_CLASS_ID` la sobrescribe en sandbox). **La personalización visual del pase queda para el próximo sprint.**
+- [x] **(PR #13)** CORS restringido a `ALLOWED_ORIGINS`. Se agregaron tests del `SupabaseAuthGuard` (sin token, header mal formado) y de los guards y la propiedad en `CustomersController`.
+- [ ] ⚠️ **(PR #13) Aclaración: la recuperación de tarjeta por OTP NO entró**, aunque el título del PR la nombra. Se quitó en los commits de revisión (`SmsService`, endpoints OTP, `CustomerVerificationCode`). Sigue abierta en §3.2.
+- [x] 151 tests de Vitest (incluye validación de los DTO de alta y de escaneo, concurrencia de sellos y de canjes, límite manual, slug, la ventana de canje por promoción, borrado de clientes y guards): sellado, anti-duplicado, bloqueo de 30 min, FIFO, varias promociones con saldo compartido, concurrencia de canje, ingreso manual, alta atómica, emisión, invitación de staff, slug y utilidades de RUT/teléfono.
 
 **Frontend — Dev 2 y Dev 3** (PR #7, PR #10 + cambios del 2026-09-24)
 - [x] Landing pública `/` (`pages/public/Home.tsx`).
@@ -208,7 +261,13 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
   - el cursor no salta al editar el RUT o el teléfono, y el backspace sobre separadores funciona;
   - la cámara usa una cola de start/stop a nivel de módulo y tiene botón "Reintentar";
   - `/join` distingue un local inexistente de un error de red y no muestra el formulario si el local no tiene promociones.
-- [x] 117 tests de Vitest + Testing Library (incluye un test que falla si `TERMS_VERSION` difiere entre frontend y backend).
+- [x] **(PR #12)** **PWA instalable:** `vite-plugin-pwa` con `registerType: 'autoUpdate'`, manifiesto "Fidelity Wallet" (tema oscuro) e íconos `pwa-192x192.png` y `pwa-512x512.png`.
+- [x] **(PR #12)** **Sesión resiliente en la caja:** `useAuth` refresca la sesión en `visibilitychange` cuando faltan menos de 5 min para que venza, y `scanService` reintenta una vez tras un 401 después de refrescar el token. `useOnlineStatus` distingue la caída de red.
+- [x] **(PR #12)** **Badges oficiales** de Apple Wallet y Google Wallet (versión en español de LatAm, `.svg` en `public/`) en `JoinSuccess`.
+- [x] **(PR #12)** **Tests de `Join.tsx`** (checkbox obligatorio, error de red, local sin promociones, con un `fetch` en memoria y sin `vi.fn`) y **de `QRCam.tsx`** (cola de start/stop con `StrictMode`).
+- [x] **(PR #13)** Tabla de clientes con botón de borrado y `ConfirmDialog`. El dashboard muestra QR vs. MANUAL por escaneo.
+- [x] 138 tests de Vitest + Testing Library (incluye un test que falla si `TERMS_VERSION` difiere entre frontend y backend).
+- [ ] ⚠️ En la copia local de `dev` hay cambios **sin commitear** en `hooks/useAuth.ts` y `lib/api.ts`, que protegen `getSession()` cuando devuelve error o `data` vacío. Si son tuyos, súbelos en un PR.
 
 **Flujo completo verificado en local (2026-09-24), con pases mock:** `/join/localcito` → alta del cliente → sello por QR y por RUT/teléfono → bloqueo de 30 min → premio desbloqueado → canje FIFO. También se verificó con **dos promociones activas**: se puede sellar, el canje exige elegir, rechaza si el saldo no alcanza y descuenta solo lo de la promoción elegida.
 
@@ -216,42 +275,100 @@ La relación usuario↔comercio↔rol vive en la tabla `MerchantUser`. Un comerc
 
 Prioridad: 🔴 bloquea el piloto · 🟠 necesario para el piloto · 🟡 deuda · ⚪ opcional.
 
-#### Dev 1 — Backend y motor de pases
-- [ ] 🔴 **Credenciales reales de Apple y Google Wallet** (§7.3) y probar la emisión en teléfonos reales. **Es el bloqueante para salir a producción:** sin ellas solo funciona el modo mock, y el cliente no tiene cómo ver su QR (el `.pkpass` mock es un JSON y el link de Google no abre).
-- [ ] 🔴 **Push de actualización real** (§5.5). `notifyPassUpdate` hoy solo escribe un log. Falta el web service de PassKit (`/v1/devices/...`) con APNs, y el PATCH del `loyaltyObject` en la Google Wallet API. Sin esto la tarjeta del cliente nunca cambia de `0 / 5`. Falta además invalidar el objeto de Google (`state: INACTIVE`) y el pase de Apple (`voided`) al eliminar pases.
-- [x] 🟠 **`POST /api/customers` debe ser atómico.** Resuelto (2026-09-25) con transacción interactiva de Prisma y reintento en caso de carrera por clave única (P2002). Si falla la generación de las URLs de billetera, la transacción se aborta completamente para no dejar clientes registrados sin tarjeta.
-- [ ] 🟠 **Recuperar un pase perdido.** `JoinSuccess` le promete al cliente "pronto podrás recuperarlo", pero no existe el flujo. Necesita verificación (por ejemplo OTP por SMS): devolver el pase solo con el RUT permitiría suplantar al cliente.
-- [ ] 🟡 Tests pendientes del DoD (§5.7): vencimiento contra una BD real (hoy la query está mockeada), no-retroactividad de `stampValidityDays` y e2e reales (`test/app.e2e-spec.ts` sigue siendo el del boilerplate).
-- [ ] 🟠 **Verificación del cliente (OTP por SMS).** Mientras no exista, un cliente antiguo (anterior al 2026-09-24) con un solo dato guardado se identifica solo por ese dato. Quien conozca su RUT puede sacarle una tarjeta en otro local. Con OTP también se puede completar el dato faltante y resolver "recuperar pase perdido".
-- [ ] 🟡 **Tests del SQL** (`slugify`, `generate_merchant_slug`, `handle_new_user`) contra una BD real, con pgTAP o un e2e en `test/`. Hoy se prueba el equivalente en TypeScript (`common/utils/slug.util.ts`) y la migración se verificó a mano.
-- [ ] 🟡 **`ManualLookupLimiter` es en memoria y por instancia.** Con más de una instancia del backend hay que moverlo a un store compartido (Redis). *Auditoría completada (2026-09-25): `Scan.method` (QR vs MANUAL) registrado en BD y panel admin.*
-- [x] 🟡 **Borrado de datos personales** (Ley 19.628, §7.2). Implementado en backend y frontend (2026-09-25). Endpoint `DELETE /api/customers/:customerId?merchantId=...` para el dueño del comercio (`OWNER`) desde la tabla de clientes (`Customers.tsx`) con modal de confirmación `ConfirmDialog`. Si el cliente no posee pases en otros comercios, sus datos se purgan en cascada.
-- [ ] ⚪ Opcional: pase web `/pase/:passToken` como respaldo para quien no usa billetera, que además facilita las pruebas sin credenciales.
+> **Orden de dependencia (2026-09-30):** la migración `Brand > Location` + `LoyaltyProgram` de Dev 3 (§11.2) **va primero**. Mientras no esté mergeada, Dev 1 y Dev 2 trabajan contra el esquema actual (`Merchant` = un local), con rutas nuevas ya pensadas para `brandId`. La migración conserva los IDs (§11.2), así que el cambio de rama es mecánico.
 
-#### Dev 2 — PWA del cajero y landing del cliente
-- [ ] 🔴 **Probar la cámara en iOS Safari y Android Chrome reales** tras los cambios del 2026-09-24 a `QRCam.tsx`, y medir el objetivo de < 2 s. Fuera de `localhost` la cámara exige **HTTPS**.
-- [ ] 🟠 **PWA instalable:** no hay `manifest` ni service worker.
-- [ ] 🟠 **Sesión vencida vs. caída de red** (§6.1, §7.9). *Parcial (2026-09-24):* un 401 ya muestra "Tu sesión venció". Falta refrescar la sesión automáticamente y probarlo con varias horas de pantalla abierta.
-- [ ] 🟡 Badges oficiales de Apple y Google Wallet en `JoinSuccess`. Hoy son botones propios, y ambas marcas tienen guías estrictas.
-- [ ] 🟡 **Tests de `Join.tsx` y `QRCam.tsx`**: checkbox obligatorio, contrato del alta, local sin promociones y error de red. Para la cámara, el ciclo de start/stop con la cola a nivel de módulo. Hay que respetar la convención de no usar `vi.fn` (por ejemplo, un `fetch` en memoria).
+#### Dev 1 — Backend, motor de pases y reportería
+
+**Nuevo foco: reportería y analítica del dueño (§5.8)**
+- [ ] 🟠 **Módulo `reports`** en NestJS con `GET /api/brands/:brandId/reports/{overview,retention,promotions,locations,staff}`. Solo `OWNER`, con filtros `from`/`to`/`locationId` y zona `America/Santiago` (contrato en §5.8).
+- [ ] 🟠 **Retención y recurrencia:** clientes nuevos vs. recurrentes, frecuencia de visita, clientes dormidos y cohortes por mes de alta.
+- [ ] 🟠 **Rendimiento por promoción:** canjes por promoción (`Scan.promotionId`), sellos vencidos sin usar (breakage) y días promedio hasta el canje. *Absorbe la tarea "métricas por promoción" que tenía el Dev 3 anterior.*
+- [ ] 🟠 **Comparativo por local y heatmap día × hora.** Depende de `locationId` en `Scan` (§11.2); mientras tanto, se agrupa por comercio.
+- [ ] 🟠 **Actividad por mesero y antifraude:** sellos por `createdByUserId`, porcentaje `MANUAL` por mesero y alertas de auto-sellado (heurísticas en §5.8).
+- [ ] 🟡 **Exportar a Excel (`.xlsx`)**: `GET …/reports/export`. El plan lo vende como "Reportes exportables a Excel" (§6.5).
+- [ ] 🟡 **Pantallas `/admin/analytics` y `/admin/reports`** en el frontend, también de Dev 1. Hay que elegir la librería de gráficos: hoy el frontend no tiene ninguna.
+- [ ] 🟡 Índices para las agregaciones (`Scan(merchantId, createdAt)`, `Stamp(expiresAt)`…), acordados con Dev 3 en la misma migración o en una siguiente.
+
+**Motor de pases (sigue en su lista, detrás de la reportería)**
+- [x] 🟠 **Base de emisión de Google Wallet** (PR #13): JWT `savetowallet` firmado con credenciales reales.
+- [ ] 🟠 **Personalización del pase de Google** (clase, colores, logo, textos): próximo sprint. Probar el guardado en un Android real con la cuenta de Issuer.
+- [ ] 🟠 **Credenciales y emisión real de Apple Wallet** (§7.3): Pass Type ID, `.p12` y WWDR. Sin ellas, en iPhone solo funciona el `.pkpass` mock.
+- [ ] 🟠 **Push de actualización real** (§5.5). `notifyPassUpdate` y `GoogleWalletService.updateLoyaltyObject` hoy solo escriben un log. Falta el web service de PassKit (`/v1/devices/...`) con APNs y el PATCH del `loyaltyObject`. Falta además invalidar el objeto de Google (`state: INACTIVE`) y el pase de Apple (`voided`) cuando se borra un pase, incluido el borrado de la Ley 19.628.
+- [ ] 🟠 **Adaptar el motor a la decisión 5 junto con Dev 3:** `/api/scan`, alta y emisión pasan a resolver el `Pass` por `(customerId, programId)` y a registrar `locationId`. Dev 1 revisa el PR de la migración.
+- [ ] 🟠 **Recuperar un pase perdido** y **verificación por OTP SMS.** Siguen abiertas: el PR #13 las quitó antes del merge. Un cliente antiguo con un solo dato guardado sigue identificándose solo por ese dato.
+- [ ] 🟡 Tests pendientes del DoD (§5.7): vencimiento contra una BD real (hoy la query está mockeada), no-retroactividad de `stampValidityDays` y e2e reales (`test/app.e2e-spec.ts` sigue siendo el del boilerplate).
+- [ ] 🟡 **Tests del SQL** (`slugify`, `generate_merchant_slug`, `handle_new_user`) contra una BD real, con pgTAP o un e2e en `test/`. *Se cruza con Dev 3: la migración reescribe `handle_new_user`.*
+- [ ] 🟡 **`ManualLookupLimiter` es en memoria y por instancia.** Con más de una instancia del backend hay que moverlo a un store compartido (Redis).
+- [x] 🟠 `POST /api/customers` atómico (PR #13).
+- [x] 🟡 Borrado de datos personales, Ley 19.628 (PR #13).
+- [x] 🟡 Auditoría QR vs. MANUAL en `Scan.method` (PR #13).
+- [ ] ⚪ Opcional: pase web `/pase/:passToken` como respaldo para quien no usa billetera.
+- [ ] ⚪ Opcional: `locations` en el `pass.json` de Apple a partir de `Location.lat/lng`, que es la base de las "notificaciones por ubicación" del plan (§6.5).
+
+#### Dev 2 — PWA del cajero, landing, Equipo, Facturación y Soporte
+
+**Nuevo: Equipo (§6.4) — full-stack en el módulo `staff`**
+- [ ] 🟠 Backend: listar, reenviar invitación, reasignar local y dar de baja (`GET`, `POST …/resend`, `PATCH`, `DELETE` en §6.4). El `invite` que ya existe pasa a recibir `locationId`. Dev 1 revisa el PR.
+- [ ] 🟠 UI `/admin/team`: tabla de meseros con estado (`INVITED` \| `ACTIVE`), local asignado, último ingreso y acciones con `ConfirmDialog`.
+- [ ] 🟡 Mostrar el uso contra el límite del plan ("3 de 3 usuarios"), leído del mockup de suscripción (§6.5). **No se bloquea en el backend todavía** (§8.11).
+
+**Nuevo: mockup de Facturación (§6.5)**
+- [ ] 🟠 `/admin/billing` tras `VITE_FEATURE_BILLING`: plan actual, uso vs. límites, los 4 planes con precio mensual/anual, historial de boletas simulado y "cambiar plan" deshabilitado.
+- [ ] 🟠 Banner de periodo de prueba ("te quedan N días") en el layout del panel, con el botón "Suscribirme" apuntando a `/admin/billing`.
+- [ ] 🟡 Catálogo de planes como constante tipada en `packages/shared` (§6.5), para que Dev 1 (gating de métricas y exportación) y Dev 3 (plan de cada marca en `/internal`) lean lo mismo.
+
+**Nuevo: mockup de Soporte (§6.6)**
+- [ ] 🟠 `/admin/support`: formulario (categoría, descripción, local opcional, teléfono opcional, captura opcional PNG/JPG ≤ 10 MB) y tarjeta "Otras formas de contacto" (correo y WhatsApp desde `VITE_SUPPORT_EMAIL` / `VITE_SUPPORT_WHATSAPP`).
+- [ ] 🟠 "Mis solicitudes": lista con número, categoría, estado y fecha, y detalle con el hilo de mensajes y respuesta.
+- [ ] 🟠 Programar contra **los tipos de §11.4** (`packages/shared`) con un adaptador en memoria (`supportService` con la misma firma que tendrá la API). Cuando Dev 3 publique los endpoints, solo se cambia el adaptador.
+
+**Escáner y landing (lo que quedaba)**
+- [ ] 🔴 **Probar la cámara en iOS Safari y Android Chrome reales** y medir el objetivo de < 2 s. Fuera de `localhost` la cámara exige **HTTPS**.
+- [ ] 🟠 **Probar la sesión con varias horas de pantalla abierta.** El refresh automático ya existe (PR #12); falta la prueba real en una tablet.
 - [ ] 🟡 **Probar en un teléfono real la pantalla de elección de premio** con 3 o más promociones: lista larga en pantallas chicas y uso con una mano.
+- [ ] 🟡 **`/scan` con locales (decisión 7):** el `STAFF` escanea en su `locationId`. Un `OWNER` con varios locales elige el local al abrir `/scan`.
+- [ ] 🟠 **QR imprimible del link de registro** *(reasignada desde el Dev 3 anterior).* Configuración ya muestra el link y permite copiarlo; falta generar el QR para imprimir, uno por local.
+- [ ] 🟡 **Texto del panel de promociones** *(reasignada):* explicarle al dueño que puede tener varias activas y que los sellos sirven para cualquiera.
+- [x] 🟠 PWA instalable (PR #12).
+- [x] 🟠 Refresh automático de sesión y reintento en 401 (PR #12).
+- [x] 🟡 Badges oficiales de Apple y Google Wallet (PR #12).
+- [x] 🟡 Tests de `Join.tsx` y `QRCam.tsx` sin `vi.fn` (PR #12).
 - [ ] ⚪ Opcional: mostrar al cajero `nextExpiryAt` ("te vence un sello el jueves"); el backend ya lo devuelve.
 
-#### Dev 3 — Panel admin y base de datos
-- [ ] 🟠 **QR imprimible del link de registro.** Configuración ya muestra el link y permite copiarlo y personalizarlo (2026-09-24). Falta generar el QR para imprimir.
-- [ ] 🟠 **UI para invitar, listar y dar de baja meseros** sobre el endpoint que ya existe (§5.6). Hoy solo se puede por API o con el seed.
-- [ ] 🟡 **Métricas por promoción en el dashboard:** `Scan.promotionId` ya dice qué premio se canjeó en cada `REWARD_REDEEMED` (qué promoción rinde más, cuánto se entrega de cada una). Hoy el dashboard solo cuenta canjes totales.
-- [ ] 🟡 **Texto del panel de promociones:** explicarle al dueño que puede tener varias activas y que los sellos de sus clientes sirven para cualquiera, así que activar una promoción cara no les quita sellos a los que juntan para otra.
+#### Dev 3 — Infra, base de datos y panel interno (§11)
+
+**Fase 1 — migración `Brand > Location` + `LoyaltyProgram` (primera tarea: bloquea a los otros dos)**
+- [ ] 🔴 Migración Prisma con `Brand`, `Location` (el `Merchant` de hoy, que conserva su `id` y su `slug`), `LoyaltyProgram`, `PlatformAdmin` y `AuditLog`, más el backfill de los datos existentes (§11.2).
+- [ ] 🔴 Reescribir el RLS y las funciones (`current_brand_ids()`, `is_brand_owner()`, `current_location_ids()`) y `handle_new_user`, que ahora crea `Brand` + `Location` + `LoyaltyProgram` + membresía `OWNER`. Se mantiene la regla: `raw_user_meta_data` no decide permisos.
+- [ ] 🔴 Ajustar los usos en el backend (scan, customers, passes, merchants, staff) en pareja con Dev 1, y actualizar el seed: "Café Demo" con 2 locales.
+- [ ] 🟠 Crear `packages/shared` con los scripts de CI (§10) y publicar ahí los tipos de tickets (§11.4).
+
+**Fase 2 — sucursales del dueño**
+- [ ] 🟠 `/admin/locations`: CRUD de locales con dirección, comuna, región, contacto y mapa **Leaflet + OpenStreetMap** con pin arrastrable. Geocoding por `GET /api/geocode?q=` (proxy a Nominatim, con rate limit y `User-Agent` propio).
+
+**Fase 3 — panel interno `/internal/*`**
+- [ ] 🟠 Guard `PlatformAdminGuard` en `/api/internal/*` y `GET /api/internal/me`. En el frontend, rutas con `React.lazy` y redirección si no es admin interno.
+- [ ] 🟠 Marcas: listado con búsqueda (plan, estado, número de locales y clientes) y detalle (locales, programas, promociones, contacto del `OWNER`, actividad).
+- [ ] 🟠 Mapa con todas las sucursales.
+- [ ] 🟠 Editar la configuración de marcas y locales y suspender o reactivar una marca, con cada cambio en `AuditLog` (solo `SUPERADMIN`).
+- [ ] 🟠 **Tickets** (§11.4): bandeja con filtros, asignación, estados, prioridad, respuestas y notas internas que el dueño no ve. **Publicar el contrato temprano**, porque Dev 2 lo consume.
+- [ ] 🟡 Búsqueda de clientes finales con RUT y teléfono **enmascarados**; ver el dato completo exige un motivo y queda en `AuditLog` (solo `SUPERADMIN`, Ley 19.628).
+- [ ] 🟡 Visor de `AuditLog`.
+
+**Heredado del Dev 3 anterior**
 - [ ] 🟡 Llaves de producción y despliegue (§7.5).
 
 #### Equipo — legal
 - [ ] 🔴 **Completar y validar los términos antes de producción.** Definir `VITE_LEGAL_COMPANY`, `VITE_LEGAL_COMPANY_RUT`, `VITE_LEGAL_ADDRESS` y `VITE_LEGAL_CONTACT_EMAIL` (ver `apps/frontend/.env.example`). Mientras falten, `/terminos` muestra los marcadores `[…]` y un aviso visible de borrador. El texto es una plantilla estándar y **necesita revisión de un abogado**, incluida la adecuación a la Ley 21.719 de protección de datos cuando entre en vigencia.
+- [ ] 🟠 **Los términos deben cubrir el saldo compartido entre locales de una marca** (decisión 5) y el acceso de nuestro equipo de soporte a los datos (§11.5).
 - [ ] 🟡 Si cambia el texto de los términos, subir `TERMS_VERSION` en `Terms.tsx` **y** en `apps/backend/src/customers/terms.ts` en el mismo PR.
 
 #### Equipo — decisiones abiertas (§8)
 - [ ] §8.5 — ¿Quién puede anular un sello mal dado o agregar uno manual sin cliente presente?
 - [ ] §8.8 — Aviso de vencimiento: con cuánta antelación, por qué canal y quién lo construye.
-- [ ] §8.1 — Confirmar token estático + bloqueo de 30 min como política antifraude del MVP.
+- [ ] §8.1 — Confirmar token estático + bloqueo de 30 min como política antifraude del MVP. *Con la decisión 5, ¿el bloqueo de 30 min es por marca o por local?* Recomendación: por marca, para que no se pueda sellar dos veces cruzando la calle.
+- [ ] §8.10 — Programas de lealtad no basados en sellos: orden de entrada y modelo.
+- [ ] §8.11 — Planes: moneda (USD vs. CLP), IVA y boleta, y cuándo se aplican los límites en el backend.
 
 ---
 
@@ -267,10 +384,27 @@ Prioridad: 🔴 bloquea el piloto · 🟠 necesario para el piloto · 🟡 deuda
 | `Customer` | `rut?` (único), `phone?` (único), `termsAcceptedAt?`, `termsVersion?` | **Desde 2026-09-24 el alta exige los dos datos** y la aceptación de los términos. Lo valida y normaliza el backend en `POST /api/customers` (RUT `12345678-5`, teléfono `+569XXXXXXXX`). En la BD siguen siendo nullables porque hay clientes antiguos con un solo dato y sin aceptación registrada |
 | `Pass` | `customerId`, `merchantId`, `passToken` (único), `@@unique([customerId, merchantId])` | **`stampsCount` FUE ELIMINADO (2026-09-20).** El saldo se lee de `PassStampBalance`. **Un solo pase por cliente por comercio.** El pase **no tiene `promotionId`, y no lo necesita**: su saldo sirve para todas las promociones activas (§8.2) |
 | `Stamp` | `passId`, `merchantId`, `promotionId?`, `earnedAt`, `expiresAt?`, `consumedAt?`, `consumedByScanId?`, `sourceScanId?`, `createdByUserId?` | **Nuevo 2026-09-20. Un sello = una fila.** `expiresAt` se **congela al sellar** (`earnedAt` + `Merchant.stampValidityDays`) y no se recalcula: cambiar la vigencia **no afecta retroactivamente** sellos ya entregados. `promotionId` es `ON DELETE SET NULL` a propósito: borrar una promoción no puede vaciarle la tarjeta a nadie. **Desde 2026-09-24 los sellos nuevos se crean con `promotionId` NULL**, porque un sello es saldo del pase y no de una promoción. La columna queda solo como historial y **no se usa para contar saldo** |
-| `Scan` | `passId`, `merchantId`, `type`, `promotionId?`, `createdByUserId?` | `ScanType = STAMP_ADDED \| REWARD_REDEEMED`. Es el libro contable: no se edita ni se borra. **`promotionId` (2026-09-24) solo se llena en `REWARD_REDEEMED`: qué premio eligió el cliente.** **`createdByUserId` (nuevo) dice qué mesero dio cada sello** — es lo que permite detectar al que se auto-sella |
+| `Scan` | `passId`, `merchantId`, `type`, `method`, `promotionId?`, `createdByUserId?` | **`method` (PR #13): `ScanMethod = QR \| MANUAL`, por defecto `QR`.** Es la base del antifraude por mesero (§5.8). `ScanType = STAMP_ADDED \| REWARD_REDEEMED`. Es el libro contable: no se edita ni se borra. **`promotionId` (2026-09-24) solo se llena en `REWARD_REDEEMED`: qué premio eligió el cliente.** **`createdByUserId` (nuevo) dice qué mesero dio cada sello** — es lo que permite detectar al que se auto-sella |
 | `PassStampBalance` *(vista)* | `passId`, `merchantId`, `customerId`, `activeStamps`, `nextExpiryAt` | **Nueva. El saldo se calcula al leer**: `activeStamps` cuenta los sellos no consumidos y no vencidos. Creada con `security_invoker = true` para que **el RLS siga aplicando** (una vista normal corre con los permisos de su dueño y saltearía el RLS). `nextExpiryAt` ignora a propósito los sellos sin fecha de vencimiento |
 
 **Convenciones:** tablas y columnas en **PascalCase/camelCase** entrecomilladas en SQL (`"Stamp"."expiresAt"`), no snake_case. Los IDs son UUID generados por Postgres (`gen_random_uuid()`).
+
+### 4.1 ⏳ Modelos planeados (decisiones 5 a 8, 2026-09-30) — los crea Dev 3
+
+**Todavía no existen en el código.** Este es el objetivo de la migración de §11.2. Hasta que se mergee, la tabla de arriba es la que vale.
+
+| Modelo | Campos clave | Notas |
+|---|---|---|
+| `Brand` | `id`, `name`, `legalName?`, `taxId?` (RUT empresa), `contactEmail`, `contactPhone?`, `status` (`ACTIVE` \| `SUSPENDED`), `planId` (mock, §6.5), `trialEndsAt?` | La marca: el cliente que nos paga. Una marca suspendida no emite ni sella |
+| `Location` | `id` (**= el `Merchant.id` actual**), `brandId`, `name`, `slug` (único, **se conserva**), `address`, `commune`, `region`, `lat?`, `lng?`, `phone?`, `contactName?`, `isActive` | Es el `Merchant` de hoy renombrado. Conservar `id` y `slug` evita romper los QR impresos y el historial de `Scan` |
+| `LoyaltyProgram` | `id`, `brandId`, `type` (`STAMPS`, único valor implementado), `scope` (`BRAND`; `LOCATION` reservado), `name`, `stampValidityDays?`, `isActive` | Cada programa es **una tarjeta distinta en la billetera** (§8.10). `stampValidityDays` se mueve acá desde `Merchant` |
+| `Promotion` | + `programId` | Cuelga del programa, no del local |
+| `Pass` | `customerId`, `programId`, `passToken` · **`@@unique([customerId, programId])`** | Reemplaza a `@@unique([customerId, merchantId])`. Hoy es equivalente, porque hay un programa por marca |
+| `Stamp` · `Scan` | + `programId`, + `locationId` | `locationId` = dónde se dio el sello o el canje; lo necesitan la reportería por local (§5.8) y el antifraude |
+| `MerchantUser` → `BrandMember` | `userId`, `brandId`, `role` (`OWNER` \| `STAFF`), `locationId?` | `OWNER` sin local (ve toda la marca); `STAFF` con `locationId` obligatorio |
+| `PlatformAdmin` | `userId` (PK), `role` (`SUPERADMIN` \| `SUPPORT`), `createdAt` | Se asigna solo por seed o SQL, **nunca desde la UI**. `authenticated` no tiene grants sobre esta tabla |
+| `AuditLog` | `id`, `actorUserId`, `actorType` (`PLATFORM` \| `OWNER`), `action`, `entity`, `entityId`, `before?` (jsonb), `after?` (jsonb), `reason?`, `createdAt` | Append-only. Registra toda edición desde `/internal` y toda vista de un dato personal completo |
+| `Ticket` · `TicketMessage` · `TicketAttachment` | ver §11.4 | Contrato compartido con Dev 2 |
 
 ---
 
@@ -378,6 +512,47 @@ Reglas, **todas dentro de una transacción de base de datos**:
 - [ ] **Emisión real** con certificados de Apple y Google, probada en teléfonos (§7.3).
 - [ ] **Push de actualización** real (§5.5).
 
+### 5.8 Reportería y analítica del dueño (tarea nueva, **asignada a Dev 1**)
+*(Nueva 2026-09-30 — decisión 9.)*
+
+**Por qué importa:** el §1.3 dice que lo que el dueño compra son "clientes que vuelven, base de datos propia y métricas", y el §1.4 mide el éxito con "≥ 1 sesión/semana en el panel". La reportería es lo que justifica los planes pagados: "Métricas avanzadas" y "Reportes exportables a Excel" son lo que separa la prueba gratis de los planes Inicial, Pro y Negocio (§6.5).
+
+**Dónde vive:** módulo `reports` en NestJS. Las agregaciones corren en el backend con Prisma (`$queryRaw` donde haga falta) y **no desde el navegador**. El panel las pide con `authenticatedFetch`.
+
+**Contrato** (todas son `GET`, solo `OWNER` de la marca; un `STAFF` recibe 403):
+
+| Endpoint | Devuelve |
+|---|---|
+| `/api/brands/:brandId/reports/overview` | KPIs del rango comparados con el periodo anterior: clientes nuevos, clientes activos, sellos dados, canjes, tasa de recurrencia y sellos vencidos |
+| `/api/brands/:brandId/reports/retention` | Nuevos vs. recurrentes por semana, distribución de frecuencia (1, 2–3, 4+ visitas), **clientes dormidos** (sin visita hace `dormantDays`, por defecto 30) y **cohortes** por mes de alta (% que vuelve el mes 1, 2 y 3) |
+| `/api/brands/:brandId/reports/promotions` | Por promoción: canjes (`Scan.promotionId`), días promedio desde el primer sello hasta el canje y **breakage**, que es la cantidad de sellos vencidos sin consumir (`expiresAt < now()` y `consumedAt IS NULL`) |
+| `/api/brands/:brandId/reports/locations` | Sellos, canjes y clientes únicos por local, y **heatmap día × hora** en hora local |
+| `/api/brands/:brandId/reports/staff` | Por mesero: sellos, canjes, % `MANUAL` y alertas |
+| `/api/brands/:brandId/reports/export?report=<nombre>&format=xlsx` | El mismo reporte en `.xlsx` |
+
+**Parámetros comunes:** `from` y `to` (ISO date, **máximo 366 días**), `locationId?` y `tz` (por defecto `America/Santiago`; todo agrupamiento por día u hora se hace en esa zona, **nunca en UTC**).
+
+**Alertas antifraude iniciales** (heurísticas, para ajustarlas con datos del piloto):
+1. Un mismo mesero le da **≥ 4 sellos al mismo cliente en 7 días**.
+2. Un mesero con **> 50% de sellos `MANUAL`** en el rango, con un mínimo de 20 sellos.
+3. Un mesero que sella **y** canjea el mismo pase en menos de 24 h con saldo que no existía al inicio del día.
+
+Cada alerta trae mesero, cliente enmascarado, conteo y el rango, pero **no acusa**: es una señal para que el dueño mire.
+
+**Reglas:**
+- El saldo y el vencimiento se calculan con la misma lógica de `PassStampBalance` (§5.4, regla 7); no se inventa un segundo cálculo.
+- **Antes de la migración de Dev 3**, `brandId` = `merchantId` y `locationId` se ignora. El backfill de §11.2 hace que ese supuesto siga siendo cierto para los datos antiguos.
+- **Gating por plan:** "Métricas básicas" (prueba gratis) = `overview`; "avanzadas" = el resto, y exportar solo desde el plan Inicial. Se diseña el chequeo (`plan.features.advancedMetrics`, `plan.features.excelExport`, §6.5), pero **no se bloquea hasta que exista una suscripción real** (§8.11).
+- Clientes enmascarados en todas las respuestas (`12.***.*78-5`), igual que en `/api/scan`.
+- El frontend separa **`/admin/analytics`** (gráficos) de **`/admin/reports`** (tablas con filtros y botón de exportar). El dashboard actual sigue con su consulta directa a Supabase hasta que se migre a `overview`.
+
+**DoD (Dev 1, reportería):**
+- [ ] Tests de cada agregación contra datos del seed con resultados conocidos, incluidos los bordes de zona horaria (un sello a las 23:30 de Santiago cae en el día correcto).
+- [ ] Un `STAFF`, un `OWNER` de otra marca y un usuario sin sesión reciben 403/401 en cada endpoint.
+- [ ] `overview` responde en < 500 ms con 50.000 escaneos en el seed de carga.
+- [ ] El `.xlsx` abre en Excel y en Google Sheets, con fechas en hora local.
+- [ ] Swagger actualizado.
+
 ---
 
 ## 6. Dev 2 — PWA del cajero y experiencia del cliente
@@ -421,15 +596,103 @@ Si el comercio tiene `stampValidityDays`, **decirlo acá** en lenguaje humano ("
 *(Revisado 2026-09-24.)*
 - [ ] Probado en **iOS Safari y Android Chrome reales**, no solo en el emulador de escritorio — los permisos de cámara se comportan distinto. *Hay que re-probar tras los cambios del 2026-09-24 a `QRCam.tsx`.*
 - [x] Tests de los componentes críticos, lint/typecheck en verde.
-- [ ] PWA instalable verificada. *No hay manifest ni service worker.*
+- [ ] PWA instalable verificada. *Configurada (PR #12: manifiesto, íconos y service worker con `vite-plugin-pwa`). Falta verificar la instalación en un iPhone y un Android reales.*
 - [x] **El scanner vive en `apps/frontend` bajo `/scan`** — no se agregó ninguna app nueva al monorepo.
-- [ ] **Login del cajero funcionando**, con sesión persistente y **refresh de token probado tras varias horas con la pantalla abierta**. *Login y sesión persistente funcionan (Supabase); falta la prueba de varias horas.*
-- [ ] **Sesión vencida y caída de red se muestran distinto**, y ninguna de las dos deja la pantalla en blanco.
+- [ ] **Login del cajero funcionando**, con sesión persistente y **refresh de token probado tras varias horas con la pantalla abierta**. *Login, sesión persistente y refresh automático en `visibilitychange` + reintento en 401 funcionan (PR #12); falta la prueba de varias horas en un dispositivo real.*
+- [x] **Sesión vencida y caída de red se muestran distinto** (PR #12: `useOnlineStatus` + "Tu sesión venció"), y ninguna de las dos deja la pantalla en blanco.
 - [x] Un `STAFF` que entra a `/admin/*` termina en `/scan` (y no en una pantalla rota).
 - [x] La pantalla del cajero lee el saldo de la respuesta de `/api/scan` (`activeStamps`), **nunca de `Pass.stampsCount`** (ya no existe).
 - [x] Fallback manual por RUT/teléfono funcionando contra el backend.
 - [x] Landing `/join/:merchantName` conectada al backend, con vigencia y aviso de datos personales.
-- [ ] Badges oficiales de Apple/Google Wallet en la confirmación.
+- [x] Badges oficiales de Apple/Google Wallet en la confirmación (PR #12).
+
+### 6.4 Equipo — `/admin/team` (tarea nueva, **asignada a Dev 2, full-stack**)
+*(Nueva 2026-09-30. Antes era la tarea "UI para invitar, listar y dar de baja meseros" del Dev 3 anterior.)*
+
+Dev 2 hace **el backend y la UI** dentro del módulo `staff` que ya existe (`apps/backend/src/staff`). Dev 1 revisa el PR. Todo es solo para el `OWNER`, y la `service_role key` sigue viviendo **solo en el backend** (§7.5).
+
+**Contrato** (rutas por marca; hasta la migración de Dev 3, `brandId` = `merchantId` y `locationId` es opcional):
+
+```jsonc
+// GET /api/brands/:brandId/staff
+[{ "userId": "uuid", "email": "cajero1@example.com", "role": "STAFF",
+   "locationId": "uuid", "locationName": "Café Demo — Providencia",
+   "status": "INVITED" | "ACTIVE",          // ACTIVE = ya entró alguna vez (last_sign_in_at)
+   "invitedAt": "…", "lastSignInAt": "…" | null }]
+
+// POST /api/brands/:brandId/staff/invite        (el endpoint actual, más locationId)
+{ "email": "…", "locationId": "uuid", "password": "…" /* opcional, igual que hoy */ }
+
+// POST /api/brands/:brandId/staff/:userId/resend-invite   → 204 (solo si status = INVITED)
+// PATCH /api/brands/:brandId/staff/:userId      { "locationId": "uuid" }   → reasignar de local
+// DELETE /api/brands/:brandId/staff/:userId     → 204
+```
+
+**Reglas:**
+- El `OWNER` aparece en la lista, pero **no se puede dar de baja ni reasignar**, y nadie puede darse de baja a sí mismo (400).
+- **Dar de baja borra la membresía.** Si el usuario no tiene otra membresía, además se **banea** en Supabase Auth (`ban_duration`) para invalidar sus refresh tokens. Como el access token vive hasta ~1 h, el corte inmediato lo dan el guard del backend (que ya valida la membresía en cada `/api/scan`) y el RLS. **Verificar con un test** que un mesero dado de baja recibe 403 en el siguiente escaneo.
+- La baja queda en `AuditLog` cuando exista (§4.1).
+- Límite del plan (§6.5): la UI muestra "N de M usuarios" y avisa al llegar al límite. **El backend no lo bloquea todavía** (§8.11).
+
+**UI:** tabla con correo, local, estado y último ingreso; modal de invitación (correo + local); acciones con `ConfirmDialog`. En móvil se ve como tarjetas.
+
+### 6.5 Mockup de Facturación — `/admin/billing` (tarea nueva, **Dev 2**)
+*(Nueva 2026-09-30.)*
+
+**Es un mockup:** datos simulados, sin proveedor de pago ni boletas reales. Vive detrás de **`VITE_FEATURE_BILLING=true`**: sin la variable la ruta y el ítem del menú no existen, para que nadie lo vea en producción como si fuera real.
+
+**Catálogo de planes** — constante tipada en `packages/shared` (`plans.ts`), única fuente para Dev 1 (gating), Dev 2 (UI) y Dev 3 (`/internal`). Precios de referencia, **no cerrados** (§8.11):
+
+| `PlanId` | Nombre | Precio (USD/mes) | Anual (USD/mes) | Programas | Sucursales | Usuarios de equipo | Clientes | Extras |
+|---|---|---|---|---|---|---|---|---|
+| `TRIAL` | Prueba gratis | 0 · 30 días, sin tarjeta | — | 1 | 1 | 1 | 100 | Apple/Google Wallet, métricas básicas |
+| `STARTER` | Inicial | 14 | 11 | 3 | 2 | 3 | Ilimitados | + push, notificaciones por ubicación, métricas avanzadas, exportar a Excel |
+| `PRO` | Pro · *Popular* | 24 | 19 | 8 | 8 | 15 | Ilimitados | ídem |
+| `BUSINESS` | Negocio | 39 | 29 | 15 | 15 | 25 | Ilimitados | ídem |
+
+```ts
+// packages/shared/src/plans.ts
+export type PlanId = 'TRIAL' | 'STARTER' | 'PRO' | 'BUSINESS';
+export interface Plan {
+  id: PlanId; name: string; tagline: string; highlighted?: boolean;
+  priceUsdMonthly: number; priceUsdMonthlyAnnual: number | null; trialDays?: number;
+  limits: { programs: number; locations: number; teamUsers: number; customers: number | null }; // null = ilimitado
+  features: { walletPasses: true; pushNotifications: boolean; geoNotifications: boolean;
+              advancedMetrics: boolean; excelExport: boolean };
+}
+export interface SubscriptionMock {
+  planId: PlanId; status: 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED';
+  billingCycle: 'MONTHLY' | 'ANNUAL'; trialEndsAt: string | null; currentPeriodEnd: string;
+  usage: { programs: number; locations: number; teamUsers: number; customers: number }; // uso real, leído del backend
+}
+```
+
+**Pantalla:**
+1. **Plan actual**: nombre, estado, renovación o días de prueba restantes y barras de uso contra límites (el uso sí es real: locales, meseros y clientes de la marca).
+2. **Los 4 planes** en tarjetas, con toggle mensual/anual. Texto aclaratorio: *"Cada programa de lealtad es una tarjeta distinta en tu panel. El límite es de programas activos; tus clientes son ilimitados desde el plan Inicial."*
+3. **Historial de boletas** simulado (fecha, monto, estado, "Descargar" deshabilitado).
+4. Botones "Cambiar plan" y "Suscribirme" **deshabilitados** con el tooltip "Próximamente".
+
+**Banner de prueba** en el layout de `/admin/*`: *"Estás en periodo de prueba — te quedan N días"* + botón "Suscribirme" → `/admin/billing`. Solo con el flag activo.
+
+> ⚠️ Las capturas de referencia que se usaron para definir planes y soporte son de otro producto. **Se toma la estructura, no la marca:** ni textos literales, ni ilustraciones, ni correos de contacto ajenos.
+
+### 6.6 Mockup de Soporte — `/admin/support` (tarea nueva, **Dev 2**)
+*(Nueva 2026-09-30. El contrato de datos es de Dev 3, §11.4.)*
+
+**Pantalla** (dos columnas en escritorio, una en móvil):
+- **Formulario "¿Necesitas ayuda?"**:
+  - **Categoría** (obligatoria, `TicketCategory`, §11.4) con el texto de ayuda "Elige la más cercana".
+  - **Describe tu problema** (obligatorio, 20–5000 caracteres), con el placeholder "Cuéntanos qué pasó, en qué pantalla y qué esperabas que sucediera".
+  - **Local** (opcional, selector de las sucursales de la marca).
+  - **Teléfono** (opcional): selector de país con **+56 por defecto** y validación E.164. Aquí no se reutiliza `PhoneField`, que tiene +56 fijo. Texto de ayuda: "Déjanos tu número si prefieres que te contactemos por teléfono o WhatsApp".
+  - **Adjuntar captura** (opcional): PNG o JPG, hasta 10 MB, con vista previa y opción de quitarla.
+  - Botón **"Enviar solicitud"**, deshabilitado hasta que el formulario sea válido. Al enviar muestra un toast con el número del ticket.
+- **Tarjeta "Estamos para ayudarte"**: "Tu mensaje llega directo a una persona de nuestro equipo".
+- **"Otras formas de contacto"**: correo (`VITE_SUPPORT_EMAIL`, `mailto:`) y WhatsApp (`VITE_SUPPORT_WHATSAPP`, `https://wa.me/<número>`).
+- **"Mis solicitudes"**: lista con `#número`, categoría, estado (badge de color), fecha y última respuesta. El detalle muestra el hilo, **sin las notas internas**, y una caja para responder. Responder un ticket `RESOLVED` lo reabre.
+
+**Cómo se conecta después:** Dev 2 escribe `services/supportService.ts` con **la misma firma que los endpoints de §11.4**, pero con un adaptador en memoria que simula latencia y la numeración de tickets. Cuando Dev 3 publique la API, se cambia solo el adaptador, sin tocar componentes. Se testea como el resto del frontend: sin `vi.fn`, con el adaptador en memoria.
 
 ---
 
@@ -448,11 +711,12 @@ Lo que queda abierto es más fino y más caro: **las políticas originales eran 
 
 ### 7.2 🟠 Datos personales (Ley 19.628 / RUT)
 Estamos guardando RUT y teléfono de clientes finales. Hace falta, como mínimo: aviso de privacidad en el landing, propósito declarado y una vía para solicitar borrado.
-*Estado 2026-09-24:* hay aviso en el landing, términos en `/terminos` con el propósito, los datos tratados y los derechos del titular, y **consentimiento expreso registrado** (checkbox obligatorio + `Customer.termsAcceptedAt` / `termsVersion`). Falta el proceso real de borrado (§3.2, Dev 1) y la revisión legal del texto (§3.2, Equipo). Evitar exponer el RUT completo en la pantalla del cajero (mostrar solo los últimos dígitos, como en §5.4).
+*Estado 2026-09-24:* hay aviso en el landing, términos en `/terminos` con el propósito, los datos tratados y los derechos del titular, y **consentimiento expreso registrado** (checkbox obligatorio + `Customer.termsAcceptedAt` / `termsVersion`). ~~Falta el proceso real de borrado~~ — *hecho en el PR #13* (`DELETE /api/customers/:customerId`, §3.1). Falta la revisión legal del texto (§3.2, Equipo). *2026-09-30:* con el panel interno (§11), **nuestro propio equipo accede a datos de clientes de todas las marcas**, así que el enmascarado y el `AuditLog` son obligatorios (§11.5). Evitar exponer el RUT completo en la pantalla del cajero (mostrar solo los últimos dígitos, como en §5.4).
 
 ### 7.3 🟠 Certificados Apple / Google (bloqueante para Dev 1)
 `passkit-generator` necesita certificados reales de una cuenta **Apple Developer (USD 99/año)**: Pass Type ID, `.p12` y certificado WWDR. Google Wallet requiere una Service Account de Google Cloud y el alta del Issuer. Sin esto no se puede probar la emisión real ni APNs.
 *Mitigación:* arrancar con pases estáticos de prueba y una interfaz `PassProvider` que permita cambiar la implementación después, para que el resto del flujo (`/api/scan`, PWA, landing) avance en paralelo. Los push quedan bloqueados igual.
+*Estado 2026-09-30:* **Google ya tiene la base** (PR #13): con las credenciales del Issuer, el backend firma el link de guardado. Faltan la personalización del pase (próximo sprint), probarlo en un Android real, las credenciales de **Apple** y el push de ambos.
 *Estado 2026-09-24:* **sigue abierto; es el bloqueante número uno para producción.** Mientras tanto, `ALLOW_MOCK_PASSES=true` en `apps/backend/.env` deja emitir pases de prueba y el resto del flujo funciona completo. En modo mock el cliente no tiene cómo ver su QR: para probar, el cajero usa el ingreso manual o un QR generado a mano (§9).
 
 ### 7.4 🟡 Latencia y permisos de cámara en navegador
@@ -483,6 +747,22 @@ No lo escondemos: es el costo consciente de que los sellos generen urgencia. El 
 
 ### 7.9 🟠 La sesión del cajero es un punto de falla nuevo
 *(Nuevo 2026-09-20.)* Agregar login a la PWA del cajero agrega una forma nueva de que la caja "se caiga": token vencido, refresh fallido, logout accidental en hora punta. Antes esa pantalla no podía fallar por auth porque no tenía auth. Dev 2 tiene que tratar la expiración de sesión como un caso de UX de primera clase (§6.1), no como un error genérico.
+*Estado 2026-09-30:* mitigado en el PR #12 (refresh en `visibilitychange`, reintento en 401 y `useOnlineStatus`). Falta la prueba de varias horas en un dispositivo real.
+
+### 7.10 🟠 El panel interno ve TODO — y vive en el mismo bundle que la landing
+*(Nuevo 2026-09-30 — decisión 8.)* `/internal/*` accede a datos de todas las marcas. Se decidió hacerlo dentro de `apps/frontend` y no en una app aparte, así que hay que cumplir tres cosas sin excepción:
+- **El RLS no protege acá:** un `PlatformAdmin` no tiene membresía. **Todo** dato de `/internal` sale de `/api/internal/*`, protegido por `PlatformAdminGuard`, que valida contra la tabla `PlatformAdmin` en cada request. **Nunca se agregan políticas RLS para "admins"**: una política mal escrita abriría todas las marcas a cualquier `authenticated`.
+- **Esconder la ruta no es seguridad.** Las páginas se cargan con `React.lazy`, lo que mantiene el código fuera del bundle principal y reduce superficie, pero la barrera real es el backend.
+- **Cada escritura y cada vista de un dato personal completo quedan en `AuditLog`**, con el motivo cuando corresponde. Sin auditoría no se hace el merge.
+
+### 7.11 🔴 La migración `Brand > Location` toca todo al mismo tiempo
+*(Nuevo 2026-09-30 — decisión 5.)* Cambia la llave del `Pass`, reescribe el RLS y el trigger, y mueve `stampValidityDays`. Si se hace en paralelo con los módulos nuevos de Dev 1 y Dev 2, los PR van a chocar.
+*Mitigación:*
+- La hace **un solo dev (Dev 3), en un solo PR**, que Dev 1 revisa.
+- **Conserva los IDs:** `Location.id` = `Merchant.id` y `slug` sin cambios, para que no se rompan los QR impresos, los `Scan` ni las rutas nuevas.
+- Por cada `Merchant` existente, el backfill crea una `Brand`, un `LoyaltyProgram` `STAMPS` con su `stampValidityDays` y mueve sus `Pass` al programa.
+- El PR incluye **pruebas del SQL contra una BD real** (RLS con `OWNER`, `STAFF` de otro local y otra marca) y el flujo completo del §9 repetido **sellando en un local y canjeando en otro**.
+- Una vez mergeado, avisar al equipo: `prisma generate` + `migrate dev` + seed nuevo (§9).
 
 ---
 
@@ -517,7 +797,10 @@ Hoy `Pass` **no tiene `promotionId`**, pero `Promotion` permite varias promocion
 **Decisión:** **ciclo infinito**, que es lo que maximiza retención — justamente lo que le vendemos al local. **Pero el reset ya no es `stampsCount = 0`**: esa columna no existe. El canje **marca como consumidos los `targetStamps` sellos activos más antiguos** (FIFO), con `consumedAt` + `consumedByScanId`. Los sellos sobrantes **siguen vivos y cuentan para el próximo premio**, con su `expiresAt` original. El historial completo queda en `Scan` y en `Stamp`, así que no se pierde información.
 **Implementación:** §5.4, regla 6.
 
-### 8.4 ✅ DECIDIDA PARCIALMENTE (2026-09-20) — Roles y multi-local
+### 8.4 ✅ DECIDIDA (2026-09-20 roles · 2026-09-30 multi-local) — Roles y multi-local
+**Actualización 2026-09-30 (decisiones 5 a 7): el multi-local ENTRA.** Modelo `Brand > Location`, con el saldo de sellos **por marca** (se sella en A y se canjea en B), `OWNER` a nivel de marca y `STAFF` a nivel de local. El `Merchant` de hoy se convierte en `Location` conservando `id` y `slug`. Detalle en §4.1 y §11.2. Queda abierta una sola cosa: que cada marca pueda elegir saldo por local (`LoyaltyProgram.scope = LOCATION`), que existe en el modelo pero no se implementa.
+
+*(Texto de la decisión del 2026-09-20:)*
 **La duda era:** la BD asume **1 Merchant = 1 panel = 1 caja**, y los roles quedaban fuera del MVP.
 **Decisión — lo que ENTRA:** **roles dentro de un mismo comercio, ya en el MVP.** Tabla `MerchantUser` (`userId`, `merchantId`, `role`) con dos roles reales: `OWNER` (acceso completo al panel y a la configuración) y `STAFF` (solo lectura del saldo de sellos + el scanner). Es un cambio caro y no cosmético: hasta hoy `Merchant.id === auth.users.id` y **todas** las políticas RLS eran `"merchantId" = auth.uid()`, lo que se rompe con más de un usuario por comercio. Ver §7.1.
 **Decisión — lo que SIGUE FUERA:** **multi-local / franquicias.** Si "Cafetería X" tiene 3 locales, hoy sigue necesitando 3 cuentas separadas y las métricas no se consolidan. Cuando entre, el modelo sería `Brand > Location` y toca migración de datos. No diseñar para eso ahora, pero **no cerrar la puerta**: evitar suposiciones de "un merchant es un lugar físico" en el código nuevo. La PK compuesta de `MerchantUser` ya permite, estructuralmente, que un usuario pertenezca a varios comercios.
@@ -543,6 +826,30 @@ Ya existe (`pages/public/Home.tsx`, PR #10). Sigue sin decidirse **cuándo** se 
 ### 8.9 ✅ RESUELTA (2026-09-24) — Nombre del saldo en el contrato de la API
 El contrato usa **`activeStamps`** y expone **`nextExpiryAt`** (§5.4). La PWA lo mapea internamente. Si la pantalla del cajero debe mostrar el vencimiento queda como mejora opcional de Dev 2 (§3.2).
 *(Texto original, abierta 2026-09-20:)* La respuesta de `/api/scan` sigue llamando `stampsCount` a un valor que ahora sale de `PassStampBalance.activeStamps`. ¿Se renombra el campo en el contrato (más honesto, rompe lo que Dev 2 ya tenga mockeado) o se mantiene el nombre por compatibilidad? ¿Se expone también `nextExpiryAt` para que el cajero pueda decirle al cliente "te vence un sello el jueves"? Decidir **antes** de publicar el Swagger, que es el contrato entre Dev 1 y Dev 2.
+
+### 8.10 ❓ Otros programas de lealtad: puntos, cashback, cupones, giftcard y membresía
+*(Abierta 2026-09-30. La base ya quedó decidida en la decisión 6.)*
+**Lo decidido:** existe `LoyaltyProgram` y **cada programa es una tarjeta distinta en la billetera** (`Pass` único por `(customerId, programId)`). Hoy solo se implementa `STAMPS`. Lo confirma el propio pitch de los planes (§6.5): *"cada programa de lealtad es una tarjeta distinta"*, y el límite de cada plan es de programas activos.
+**Lo que falta decidir:** en qué orden entran los demás y cómo se modela cada uno. No son todos lo mismo:
+
+| Tipo | Qué es en el fondo | Cómo encaja |
+|---|---|---|
+| `STAMPS` (sellos/visitas) | Saldo que se gana en entradas append-only y se calcula al leer | ✅ implementado (`Stamp`) |
+| `POINTS` | El mismo libro, con monto `N` por compra | Generalizar `Stamp` a un libro con `amount` **cuando entre**, no antes. Exige capturar el monto de la compra en caja |
+| `CASHBACK` | Puntos expresados en dinero, canjeables como descuento | Igual que `POINTS`, más reglas de conversión y de canje parcial |
+| `COUPON` | Beneficio de uso único, con vigencia | Entidad propia (emitido → usado/vencido), no un saldo |
+| `GIFTCARD` | **Dinero prepagado**: se compra, no se gana | ❌ Otro módulo: requiere proveedor de pago, reembolsos, débito exacto y tratamiento contable y tributario. En Google usa `giftCardObject`, no `loyaltyObject` |
+| `MEMBERSHIP` | **Un estado con vigencia** (activo de X a Y, con nivel), cobrado en forma recurrente | Entidad propia; se cruza con el cobro recurrente (§8.11) |
+
+**Regla que no cambia para ningún tipo:** todo saldo se calcula al leer a partir de un libro append-only. Nunca un contador que se corrige después (§5.4, regla 7).
+**Recomendación:** `POINTS` y `CASHBACK` primero (reutilizan el libro); `COUPON` después; `GIFTCARD` y `MEMBERSHIP` solo cuando exista cobro real.
+
+### 8.11 ❓ Planes y cobro: moneda, impuestos y límites
+*(Abierta 2026-09-30.)* El mockup de §6.5 define 4 planes en **USD**. Antes de cobrar de verdad falta decidir:
+- ¿USD o CLP? ¿Con IVA incluido? ¿Qué documento tributario se emite?
+- El proveedor de pago.
+- **Cuándo y dónde se aplican los límites** (programas, sucursales, usuarios, 100 clientes en la prueba). Recomendación: en el backend, al crear un local, invitar a un mesero, activar un programa o dar de alta un cliente, con un error explícito (402/403 con el código `PLAN_LIMIT`) y nunca borrando datos al bajar de plan.
+- Qué pasa al vencer la prueba sin suscripción: ¿solo lectura? ¿se deja de sellar? **No puede afectar la tarjeta que ya está en la billetera del cliente final.**
 
 ---
 
@@ -572,10 +879,11 @@ node --env-file=.env prisma/seed.js
 
 **Variables de entorno** (los `.env` no se versionan; copiar el `.env.example` de cada app):
 - `apps/frontend/.env` → `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL` (por defecto `http://localhost:3000`) y, antes de producción, `VITE_LEGAL_*` (datos de la empresa para `/terminos`).
-- `apps/backend/.env` → `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
+- `apps/frontend/.env`, nuevas (2026-09-30): `VITE_FEATURE_BILLING` (muestra el mockup de facturación y el banner de prueba, §6.5), `VITE_SUPPORT_EMAIL` y `VITE_SUPPORT_WHATSAPP` (§6.6).
+- `apps/backend/.env` → `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `ALLOWED_ORIGINS` (PR #13: orígenes permitidos por CORS, separados por comas).
 - Desarrollo sin certificados: **`ALLOW_MOCK_PASSES=true`**. Sin esta variable, `POST /api/customers` responde 500.
 - Antifraude: `STAMP_COOLDOWN_MINUTES` (por defecto 30). Para probar localmente sin esperar, usar `1`.
-- Billeteras reales (Dev 1): `APPLE_PASS_TYPE_IDENTIFIER`, `APPLE_TEAM_IDENTIFIER`, `APPLE_PASS_CERT`, `APPLE_PASS_KEY`, `APPLE_PASS_PASSWORD`, `APPLE_WWDR_CERT`, `GOOGLE_WALLET_ISSUER_ID`, `GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_WALLET_PRIVATE_KEY`.
+- Billeteras reales (Dev 1): `APPLE_PASS_TYPE_IDENTIFIER`, `APPLE_TEAM_IDENTIFIER`, `APPLE_PASS_CERT`, `APPLE_PASS_KEY`, `APPLE_PASS_PASSWORD`, `APPLE_WWDR_CERT`, `GOOGLE_WALLET_ISSUER_ID`, `GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_WALLET_PRIVATE_KEY` y, opcional para sandbox, `GOOGLE_WALLET_CLASS_ID`.
 - Tras editar el `.env` del backend hay que **reiniciar `pnpm run dev`**: el modo watch no lo vuelve a leer.
 
 **Cuentas de prueba** (las crea el seed; contraseña `password123` para todas):
@@ -604,4 +912,146 @@ El local del seed se llama **"Café Demo"**, su link es **`/join/cafe-demo`** y 
 - **Cambios de esquema:** siempre por migración Prisma, nunca SQL suelto contra la base, y avisando en el PR — el panel admin tipa contra esas tablas.
 - **Nueva app en el monorepo:** va en `apps/` y debe exponer los scripts `dev`, `build`, `lint`, `typecheck` y `test` para no romper la CI. **Ojo: el scanner NO es una app nueva** — vive en `apps/frontend` bajo `/scan` (decisión 3).
 - **Contrato entre Dev 1 y Dev 2:** el Swagger en `/api/docs` es la fuente de verdad. Si un endpoint cambia de forma, se avisa antes de mergear.
-- **Dependencias entre personas:** Dev 2 puede avanzar UI y escaneo con mocks; solo la integración final depende de Dev 1. Dev 1 puede construir todo `/api/scan` sin los certificados de Apple. **Lo que sí bloquea de verdad hoy (2026-09-24):** las credenciales de Apple/Google Wallet (Dev 1), sin las que el cliente no recibe su tarjeta real. El resto se puede avanzar en paralelo: ver §3.2.
+- **Paquetes compartidos:** `packages/shared` (lo crea Dev 3, §11.4) debe exponer los mismos scripts que las apps. Contratos que cruzan frontend y backend (tickets, planes) se tipan ahí una sola vez.
+- **Dependencias entre personas (2026-09-30):**
+  - La **migración `Brand > Location` de Dev 3 va primero** (§7.11). Hasta que se mergee, Dev 1 y Dev 2 usan `brandId = merchantId` en sus rutas nuevas.
+  - **Dev 2 consume el contrato de tickets de Dev 3** (§11.4) con un adaptador en memoria, así que no se bloquea.
+  - **Dev 1 revisa** los PR de backend de Dev 2 (módulo `staff`) y de Dev 3 (migración).
+  - Dev 1 y Dev 3 acuerdan los índices de la reportería.
+- **Dependencias entre personas (2026-09-24):** Dev 2 puede avanzar UI y escaneo con mocks; solo la integración final depende de Dev 1. Dev 1 puede construir todo `/api/scan` sin los certificados de Apple. **Lo que sí bloquea de verdad hoy (2026-09-24):** las credenciales de Apple/Google Wallet (Dev 1), sin las que el cliente no recibe su tarjeta real. El resto se puede avanzar en paralelo: ver §3.2.
+
+---
+
+## 11. Dev 3 — Multi-local y panel interno `/internal/*`
+
+*(Nueva 2026-09-30 — decisiones 5 a 8. Va al final para no renumerar las referencias existentes.)*
+
+**Objetivo:** que la plataforma soporte cadenas (`Brand > Location`) sin romper nada de lo que ya funciona, y darnos a nosotros un panel para operar: ver todas las marcas y sus locales, dónde están, a quién llamar y qué tickets tienen abiertos.
+
+### 11.1 Orden de trabajo
+1. **Migración `Brand > Location` + `LoyaltyProgram` + `PlatformAdmin` + `AuditLog`** (§11.2). Bloquea a Dev 1 y Dev 2: va primero y en un solo PR.
+2. **`packages/shared` + contrato de tickets** (§11.4). Publicarlo **antes** de construir la bandeja, porque Dev 2 programa contra él.
+3. **`/admin/locations`**: sucursales del dueño, con mapa (§11.3).
+4. **`/internal/*`**: marcas, mapa, tickets, clientes y auditoría (§11.5).
+
+### 11.2 Migración `Brand > Location`
+Modelo objetivo en §4.1. Pasos de la migración (Prisma, un solo PR, con Dev 1 de revisor):
+1. Crear `Brand`, `LoyaltyProgram`, `BrandMember`, `PlatformAdmin` y `AuditLog`.
+2. **Renombrar `Merchant` → `Location`**, conservando `id`, `slug` y `name`, y agregar `brandId` y los campos de dirección y contacto.
+3. **Backfill**, por cada local existente: una `Brand` (con `name` y `contactEmail` desde `Merchant.email`), un `LoyaltyProgram` `STAMPS` con el `stampValidityDays` del local, `Promotion.programId`, `Pass.programId`, y `Stamp`/`Scan` con `locationId` = el id del local y `programId`.
+4. Cambiar el unique de `Pass` a `(customerId, programId)` y, **al final**, eliminar `Merchant.stampValidityDays` y las columnas viejas.
+5. `MerchantUser` → `BrandMember`: `OWNER` sin `locationId` y `STAFF` con el `locationId` de su local actual.
+6. **RLS:** `current_brand_ids()`, `is_brand_owner(brandId)` y `current_location_ids()`, `SECURITY DEFINER STABLE` con `search_path` fijo, igual que las actuales. El `OWNER` ve toda su marca; el `STAFF` solo lee lo de su local. Escritura solo para `OWNER`. `authenticated` **sin grants** sobre `PlatformAdmin` y `AuditLog`.
+7. **`handle_new_user`**: un dueño nuevo recibe `Brand` + `Location` (slug neutro `local-<8 hex>`) + `LoyaltyProgram` + `BrandMember OWNER`. La regla sigue igual: **`raw_user_meta_data` no decide permisos** (§7.1).
+8. **Backend (en pareja con Dev 1):** `/api/scan` resuelve el pase por programa y registra `locationId` (el del `STAFF`, o el que elige el `OWNER`). El bloqueo de 30 min se evalúa por pase, es decir, por marca (§8.1). `by-slug` devuelve el local con su marca y su programa. El alta crea el pase en el programa. `staff` pasa a trabajar por marca.
+9. **Seed:** "Café Demo" con **2 locales** (`cafe-demo` y `cafe-demo-providencia`), 1 `OWNER`, meseros repartidos entre ambos locales y 1 `PlatformAdmin` `SUPERADMIN` (`admin@example.com`).
+
+**DoD:** SQL probado contra una BD real (pgTAP o e2e); flujo del §9 **sellando en un local y canjeando en otro**; un `STAFF` del local A no lee clientes del local B de otra marca; un usuario recién registrado no puede darse membresía por metadata; CI verde.
+
+### 11.3 Sucursales — `/admin/locations`
+- CRUD de locales de la marca para el `OWNER`: nombre, dirección, comuna, región, teléfono, contacto y slug (con la misma advertencia de QR impresos que hay hoy en Configuración).
+- Mapa **Leaflet + OpenStreetMap** con pin arrastrable. El componente `LocationMap` se reutiliza en `/internal`.
+- **Geocoding:** `GET /api/geocode?q=` en el backend, como proxy a Nominatim, con rate limit (la política de Nominatim es de 1 req/s y exige `User-Agent` identificable) y caché. El navegador nunca llama a Nominatim directamente.
+- Desactivar un local no borra nada: deja de aceptar escaneos y `/join/:slug` muestra "local no disponible".
+
+### 11.4 Contrato de tickets de soporte (fuente de verdad para Dev 2 y Dev 3)
+
+**Tipos** — `packages/shared/src/support.ts`:
+```ts
+export type TicketCategory =
+  | 'SCANNER'      // Escáner / cámara
+  | 'WALLET'       // Tarjetas en Apple / Google Wallet
+  | 'CUSTOMERS'    // Clientes y sellos
+  | 'PROMOTIONS'   // Promociones y programas
+  | 'TEAM'         // Equipo y accesos de meseros
+  | 'LOCATIONS'    // Sucursales
+  | 'BILLING'      // Facturación y planes
+  | 'ACCOUNT'      // Mi cuenta / inicio de sesión
+  | 'OTHER';
+export type TicketStatus = 'OPEN' | 'IN_PROGRESS' | 'WAITING_ON_MERCHANT' | 'RESOLVED' | 'CLOSED';
+export type TicketPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';   // solo la asigna el equipo interno
+export type TicketAuthorType = 'MERCHANT' | 'PLATFORM';
+
+export interface TicketAttachmentDto {
+  id: string; fileName: string; mimeType: 'image/png' | 'image/jpeg'; sizeBytes: number;
+  url: string;              // URL firmada de Supabase Storage, vence en 5 min
+}
+export interface TicketMessageDto {
+  id: string; authorType: TicketAuthorType; authorName: string;   // "Equipo de soporte" para PLATFORM
+  body: string; isInternal: boolean;     // siempre false en las respuestas para el dueño
+  attachments: TicketAttachmentDto[]; createdAt: string;
+}
+export interface TicketSummaryDto {
+  id: string; number: number;            // correlativo legible: #1024
+  category: TicketCategory; status: TicketStatus;
+  excerpt: string;                       // primeros 120 caracteres de la descripción
+  locationId: string | null; locationName: string | null;
+  lastMessageAt: string; createdAt: string;
+  unreadForMerchant: boolean;
+}
+export interface TicketDetailDto extends TicketSummaryDto {
+  description: string; contactPhone: string | null;   // E.164
+  messages: TicketMessageDto[];
+}
+export interface InternalTicketDto extends TicketDetailDto {   // solo /api/internal
+  brandId: string; brandName: string; priority: TicketPriority;
+  assignee: { userId: string; name: string } | null;
+  createdBy: { userId: string; email: string };
+  resolvedAt: string | null;
+}
+export interface Paginated<T> { items: T[]; page: number; pageSize: number; total: number; }
+```
+
+**Endpoints del dueño** (Dev 3 los construye; Dev 2 los simula hasta entonces). Solo `OWNER` de la marca:
+```jsonc
+// POST /api/brands/:brandId/support/tickets      multipart/form-data
+//   category: TicketCategory (obligatorio) · description: string 20–5000 (obligatorio)
+//   locationId?: uuid de un local de la marca · contactPhone?: E.164 · attachment?: PNG/JPG ≤ 10 MB
+// → 201 TicketDetailDto
+
+// GET  /api/brands/:brandId/support/tickets?status=&page=1&pageSize=20   → 200 Paginated<TicketSummaryDto>
+// GET  /api/brands/:brandId/support/tickets/:ticketId                     → 200 TicketDetailDto (sin notas internas)
+// POST /api/brands/:brandId/support/tickets/:ticketId/messages            multipart: body (1–5000) + attachment?
+//   → 201 TicketMessageDto · si el ticket estaba RESOLVED pasa a OPEN; si está CLOSED → 409
+```
+
+**Endpoints internos** (`PlatformAdminGuard`; `SUPPORT` y `SUPERADMIN`):
+```jsonc
+// GET   /api/internal/tickets?status=&category=&priority=&brandId=&assigneeId=&q=&page=   → Paginated<InternalTicketDto>
+// GET   /api/internal/tickets/:ticketId                                                    → InternalTicketDto (con notas internas)
+// PATCH /api/internal/tickets/:ticketId   { status?, priority?, assigneeId? | null }       → InternalTicketDto
+// POST  /api/internal/tickets/:ticketId/messages   multipart: body + isInternal (bool) + attachment?
+//   → una respuesta pública (isInternal: false) pasa el ticket a WAITING_ON_MERCHANT, salvo que se indique otro estado
+```
+
+**Reglas:**
+- **Storage:** bucket **privado** `support-attachments`, con ruta `{brandId}/{ticketId}/{uuid}.{png|jpg}`. El tipo se valida por **magic bytes**, no por la extensión ni el `Content-Type`. Solo se entregan URLs firmadas de 5 min.
+- Transiciones válidas: `OPEN → IN_PROGRESS → WAITING_ON_MERCHANT ⇄ IN_PROGRESS → RESOLVED → CLOSED`. `RESOLVED` se cierra solo a los 7 días sin respuesta (job). Cualquier otra transición responde 409.
+- `number` es un correlativo global (secuencia de Postgres), no el UUID.
+- Las notas internas **nunca** salen por los endpoints del dueño. Hay que testearlo.
+- Rate limit al crear: 10 tickets por hora por marca.
+- Cambios de estado, prioridad y asignación quedan en `AuditLog`.
+
+### 11.5 Panel interno — `/internal/*`
+**Acceso:** login con la misma pantalla de Supabase Auth. Tras el login, `GET /api/internal/me` dice si el usuario es `PlatformAdmin` y con qué rol; si no lo es, cae a `/admin` o `/scan` según su membresía. Páginas con `React.lazy` (§7.10).
+
+| Pantalla | Qué muestra / hace | `SUPPORT` | `SUPERADMIN` |
+|---|---|---|---|
+| `/internal/brands` | Listado con búsqueda: marca, plan (mock), estado, locales, clientes, último escaneo | ✅ ver | ✅ ver |
+| `/internal/brands/:id` | Datos de la marca y del `OWNER` (contacto), locales, programas, promociones, meseros y actividad reciente | ✅ ver | ✅ editar configuración, suspender o reactivar |
+| `/internal/locations/map` | Mapa con todas las sucursales (`LocationMap`), con filtro por marca y región | ✅ | ✅ |
+| `/internal/tickets` | Bandeja con filtros; detalle con hilo, notas internas, asignación, estado y prioridad (§11.4) | ✅ gestionar | ✅ gestionar |
+| `/internal/customers` | Búsqueda de clientes finales por marca: RUT y teléfono **enmascarados** | ✅ enmascarado | ✅ "Ver dato completo" con motivo obligatorio → `AuditLog` |
+| `/internal/audit` | Visor del `AuditLog`, con filtros por actor, entidad y fecha | ❌ | ✅ |
+
+**Reglas:**
+- Todo sale de `/api/internal/*`, nunca de supabase-js (§7.10).
+- Toda edición guarda `before`/`after` en `AuditLog`. Una marca suspendida hace que `/api/scan` responda 403 y `/join` muestre "local no disponible"; **las tarjetas que ya están en la billetera no se invalidan**.
+- **Fuera de alcance:** impersonar a un `OWNER`, crear o borrar marcas desde `/internal` (el alta la hace el dueño al registrarse) y asignar `PlatformAdmin` desde la UI.
+
+**DoD (Dev 3, panel interno):**
+- [ ] Un `OWNER`, un `STAFF` y un usuario sin sesión reciben 403/401 en **todos** los `/api/internal/*` (test que recorre los controladores).
+- [ ] `SUPPORT` no puede editar marcas, ver datos completos ni abrir `/internal/audit`.
+- [ ] Cada escritura interna y cada "ver dato completo" dejan su fila en `AuditLog`.
+- [ ] El chunk de `/internal` no aparece en el bundle principal (se revisa en el reporte de `vite build`).
+- [ ] Las notas internas no aparecen en ninguna respuesta de `/api/brands/:brandId/support/*`.

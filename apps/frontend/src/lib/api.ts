@@ -35,7 +35,8 @@ async function getOrRefreshSession() {
 }
 
 export async function authenticatedFetch(path: string, init?: RequestInit): Promise<Response> {
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data } = await supabase.auth.getSession();
+  const session = data?.session;
   
   if (!session) {
     return new Response(JSON.stringify({ error: 'No hay sesión activa' }), { 
