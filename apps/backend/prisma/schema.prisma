@@ -19,6 +19,7 @@ model Brand {
   locations    Merchant[]
   programs     LoyaltyProgram[]
   members      BrandMember[]
+  tickets      Ticket[]
   passes       Pass[]
   stamps       Stamp[]
   scans        Scan[]
@@ -47,6 +48,7 @@ model Merchant {
   scans       Scan[]
   stamps      Stamp[]
   members     BrandMember[]
+  tickets     Ticket[]
   createdAt   DateTime      @default(now())
 
   @@index([brandId])
@@ -221,6 +223,71 @@ model AuditLog {
   @@index([actorUserId, createdAt])
 }
 
+/// Contrato en packages/shared (support.ts) y HANDOFF §11.4. Solo lo usa el backend: RLS sin
+/// políticas y sin grants para anon ni authenticated.
+model Ticket {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  number            Int                @unique @default(autoincrement())
+  brandId           String             @db.Uuid
+  brand             Brand              @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  /// Local sobre el que se consulta (opcional).
+  merchantId        String?            @db.Uuid
+  merchant          Merchant?          @relation(fields: [merchantId], references: [id], onDelete: SetNull)
+  createdByUserId   String             @db.Uuid
+  category          TicketCategory
+  status            TicketStatus       @default(OPEN)
+  priority          TicketPriority     @default(NORMAL)
+  description       String
+  contactPhone      String?
+  assigneeUserId    String?            @db.Uuid
+  lastMessageAt     DateTime           @default(now())
+  /// Última respuesta pública del equipo: contra merchantReadAt define unreadForMerchant.
+  lastPublicReplyAt DateTime?
+  merchantReadAt    DateTime?
+  resolvedAt        DateTime?
+  closedAt          DateTime?
+  messages          TicketMessage[]
+  attachments       TicketAttachment[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @default(now()) @updatedAt
+
+  @@index([brandId, createdAt])
+  @@index([status, lastMessageAt])
+  @@index([assigneeUserId])
+}
+
+model TicketMessage {
+  id           String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketId     String             @db.Uuid
+  ticket       Ticket             @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorUserId String             @db.Uuid
+  authorType   TicketAuthorType
+  body         String
+  /// Nota interna del equipo: nunca sale por los endpoints del dueño.
+  isInternal   Boolean            @default(false)
+  attachments  TicketAttachment[]
+  createdAt    DateTime           @default(now())
+
+  @@index([ticketId, createdAt])
+}
+
+/// Adjunto en el bucket privado support-attachments. messageId NULL = adjunto del alta.
+model TicketAttachment {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketId         String         @db.Uuid
+  ticket           Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  messageId        String?        @db.Uuid
+  message          TicketMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  storagePath      String         @unique
+  fileName         String
+  mimeType         String
+  sizeBytes        Int
+  uploadedByUserId String         @db.Uuid
+  createdAt        DateTime       @default(now())
+
+  @@index([ticketId])
+}
+
 enum ScanType {
   STAMP_ADDED
   REWARD_REDEEMED
@@ -258,4 +325,36 @@ enum PlatformRole {
 enum AuditActorType {
   PLATFORM
   OWNER
+}
+
+enum TicketCategory {
+  SCANNER
+  WALLET
+  CUSTOMERS
+  PROMOTIONS
+  TEAM
+  LOCATIONS
+  BILLING
+  ACCOUNT
+  OTHER
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_ON_MERCHANT
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum TicketAuthorType {
+  MERCHANT
+  PLATFORM
 }
