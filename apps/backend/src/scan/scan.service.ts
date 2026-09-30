@@ -9,7 +9,6 @@ import {
 import type { Customer, LoyaltyProgram, Pass, Prisma, Promotion } from '@prisma/client';
 import { ScanMethod, ScanType } from '@prisma/client';
 import {
-  assertLocationOperational,
   findStampsProgram,
   resolveLocationAccess,
   type LocationWithBrand,
@@ -100,7 +99,6 @@ export class ScanService {
     }
 
     const { merchant } = await resolveLocationAccess(this.prisma, callerUserId, dto.merchantId);
-    assertLocationOperational(merchant);
 
     // El límite va después de validar la membresía (un extraño no consume el cupo de nadie) y
     // antes de buscar (el intento cuenta aunque el RUT no exista: eso es justo lo que se frena).

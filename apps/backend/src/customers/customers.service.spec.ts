@@ -157,6 +157,20 @@ describe('CustomersService', () => {
     expect(prismaMock.customer.create).not.toHaveBeenCalled();
   });
 
+  it('still deletes customer data while the brand is suspended (Ley 19.628)', async () => {
+    prismaMock.merchant.findUnique.mockResolvedValue({
+      ...activeLocation,
+      brand: { name: 'Café Demo', status: 'SUSPENDED' },
+    });
+    prismaMock.brandMember.findUnique.mockResolvedValue({ role: 'OWNER', merchantId: null });
+    prismaMock.pass.findUnique.mockResolvedValue({ id: 'p-1', customerId: 'c-1' });
+    prismaMock.pass.count.mockResolvedValue(0);
+
+    await expect(service.deleteCustomerByMerchant('m-1', 'c-1', 'user-owner')).resolves.toMatchObject({
+      success: true,
+    });
+  });
+
   it('looks up the pass to delete by the brand program, not by location', async () => {
     prismaMock.merchant.findUnique.mockResolvedValue(activeLocation);
     prismaMock.brandMember.findUnique.mockResolvedValue({ role: 'OWNER', merchantId: null });

@@ -31,7 +31,20 @@ export async function fetchMemberships(userId: string): Promise<Membership[]> {
   return Promise.all(rows.map(resolveMembership));
 }
 
+export const SUSPENDED_ACCOUNT_MESSAGE =
+  'Tu cuenta está suspendida. Escríbenos a soporte para reactivarla: tus datos siguen guardados.';
+
 async function resolveMembership(row: BrandMemberRow): Promise<Membership> {
+  // Con la marca suspendida el RLS oculta todo menos esta fila: sin este chequeo el panel
+  // diría "sin locales" en vez de explicar la suspensión.
+  const { data: brand, error: brandError } = await supabase
+    .from('Brand')
+    .select('status')
+    .eq('id', row.brandId)
+    .maybeSingle();
+  if (brandError) throw brandError;
+  if (brand?.status === 'SUSPENDED') throw new Error(SUSPENDED_ACCOUNT_MESSAGE);
+
   const [locationRes, programRes] = await Promise.all([
     row.merchantId
       ? Promise.resolve({ data: { id: row.merchantId }, error: null })

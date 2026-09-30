@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -20,7 +25,12 @@ describe('StaffService', () => {
     isActive: true,
     brand: { name: 'Cafeteria', status: 'ACTIVE' },
   };
-  const ownerMembership = { userId: mockOwnerId, brandId: mockBrandId, merchantId: null, role: 'OWNER' };
+  const ownerMembership = {
+    userId: mockOwnerId,
+    brandId: mockBrandId,
+    merchantId: null,
+    role: 'OWNER',
+  };
 
   beforeEach(() => {
     prisma = {
@@ -28,8 +38,14 @@ describe('StaffService', () => {
         findUnique: vi.fn().mockResolvedValue(mockLocation),
       },
       brandMember: {
-        findUnique: vi.fn().mockResolvedValue(ownerMembership),
-        upsert: vi.fn().mockResolvedValue({}),
+        findUnique: vi.fn(({ where }: any) =>
+          Promise.resolve(
+            where.userId_brandId.userId === mockOwnerId
+              ? ownerMembership
+              : null,
+          ),
+        ),
+        create: vi.fn().mockResolvedValue({}),
       },
     } as unknown as PrismaService;
 
@@ -56,7 +72,10 @@ describe('StaffService', () => {
 
   it('should throw UnauthorizedException if callerUserId is missing', async () => {
     await expect(
-      service.inviteStaff({ merchantId: mockMerchantId, email: 'staff@test.com' }, ''),
+      service.inviteStaff(
+        { merchantId: mockMerchantId, email: 'staff@test.com' },
+        '',
+      ),
     ).rejects.toThrow(UnauthorizedException);
   });
 
@@ -69,7 +88,10 @@ describe('StaffService', () => {
     } as any);
 
     await expect(
-      service.inviteStaff({ merchantId: mockMerchantId, email: 'newstaff@test.com' }, 'caller-staff'),
+      service.inviteStaff(
+        { merchantId: mockMerchantId, email: 'newstaff@test.com' },
+        'caller-staff',
+      ),
     ).rejects.toThrow('Solo el dueño del comercio puede invitar personal');
   });
 
@@ -77,15 +99,23 @@ describe('StaffService', () => {
     vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue(null);
 
     await expect(
-      service.inviteStaff({ merchantId: mockMerchantId, email: 'staff@test.com' }, mockOwnerId),
+      service.inviteStaff(
+        { merchantId: mockMerchantId, email: 'staff@test.com' },
+        mockOwnerId,
+      ),
     ).rejects.toThrow(ForbiddenException);
-    expect(mockSupabaseAdmin.auth.admin.inviteUserByEmail).not.toHaveBeenCalled();
+    expect(
+      mockSupabaseAdmin.auth.admin.inviteUserByEmail,
+    ).not.toHaveBeenCalled();
   });
 
   it('should invite staff without password using inviteUserByEmail', async () => {
     mockSupabaseAdmin.auth.admin.inviteUserByEmail.mockResolvedValue({
       data: {
-        user: { id: 'u0000000-0000-0000-0000-000000000002', email: 'mesero@cafeteria.cl' },
+        user: {
+          id: 'u0000000-0000-0000-0000-000000000002',
+          email: 'mesero@cafeteria.cl',
+        },
       },
       error: null,
     });
@@ -101,28 +131,33 @@ describe('StaffService', () => {
       'mesero@cafeteria.cl',
       { data: { merchant_id: mockMerchantId } },
     );
-    expect(prisma.brandMember.upsert).toHaveBeenCalledWith({
-      where: { userId_brandId: { userId: 'u0000000-0000-0000-0000-000000000002', brandId: mockBrandId } },
-      create: {
+    expect(prisma.brandMember.create).toHaveBeenCalledWith({
+      data: {
         userId: 'u0000000-0000-0000-0000-000000000002',
         brandId: mockBrandId,
         merchantId: mockMerchantId,
         role: 'STAFF',
       },
-      update: {},
     });
   });
 
   it('should create staff with password using createUser', async () => {
     mockSupabaseAdmin.auth.admin.createUser.mockResolvedValue({
       data: {
-        user: { id: 'u0000000-0000-0000-0000-000000000003', email: 'cajero@cafeteria.cl' },
+        user: {
+          id: 'u0000000-0000-0000-0000-000000000003',
+          email: 'cajero@cafeteria.cl',
+        },
       },
       error: null,
     });
 
     const result = await service.inviteStaff(
-      { merchantId: mockMerchantId, email: 'cajero@cafeteria.cl', password: 'ClaveSegura2026!' },
+      {
+        merchantId: mockMerchantId,
+        email: 'cajero@cafeteria.cl',
+        password: 'ClaveSegura2026!',
+      },
       mockOwnerId,
     );
 
@@ -134,9 +169,9 @@ describe('StaffService', () => {
       email_confirm: true,
       user_metadata: { merchant_id: mockMerchantId },
     });
-    expect(prisma.brandMember.upsert).toHaveBeenCalledWith(
+    expect(prisma.brandMember.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        create: {
+        data: {
           userId: 'u0000000-0000-0000-0000-000000000003',
           brandId: mockBrandId,
           merchantId: mockMerchantId,
@@ -146,6 +181,75 @@ describe('StaffService', () => {
     );
   });
 
+  it('rejects moving an existing member silently (409), but is idempotent for the same local', async () => {
+    const invitedId = 'u0000000-0000-0000-0000-000000000004';
+    mockSupabaseAdmin.auth.admin.inviteUserByEmail.mockResolvedValue({
+      data: { user: { id: invitedId, email: 'mesero@cafeteria.cl' } },
+      error: null,
+    });
+    const membershipOf = (existing: object | null) =>
+      vi
+        .spyOn(prisma.brandMember, 'findUnique')
+        .mockImplementation((({ where }: any) =>
+          Promise.resolve(
+            where.userId_brandId.userId === mockOwnerId
+              ? ownerMembership
+              : existing,
+          )) as any);
+    const invite = () =>
+      service.inviteStaff(
+        { merchantId: mockMerchantId, email: 'mesero@cafeteria.cl' },
+        mockOwnerId,
+      );
+
+    membershipOf({
+      userId: invitedId,
+      brandId: mockBrandId,
+      role: 'STAFF',
+      merchantId: 'otro-local',
+    });
+    await expect(invite()).rejects.toThrow(ConflictException);
+
+    membershipOf({
+      userId: invitedId,
+      brandId: mockBrandId,
+      role: 'OWNER',
+      merchantId: null,
+    });
+    await expect(invite()).rejects.toThrow(
+      'Ese usuario ya es dueño de la marca',
+    );
+
+    membershipOf({
+      userId: invitedId,
+      brandId: mockBrandId,
+      role: 'STAFF',
+      merchantId: mockMerchantId,
+    });
+    await expect(invite()).resolves.toMatchObject({
+      id: invitedId,
+      role: 'STAFF',
+    });
+    expect(prisma.brandMember.create).not.toHaveBeenCalled();
+  });
+
+  it('forbids inviting staff while the brand is suspended', async () => {
+    vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue({
+      ...mockLocation,
+      brand: { name: 'Cafeteria', status: 'SUSPENDED' },
+    } as any);
+
+    await expect(
+      service.inviteStaff(
+        { merchantId: mockMerchantId, email: 'x@test.com' },
+        mockOwnerId,
+      ),
+    ).rejects.toThrow('Este local no está habilitado para operar');
+    expect(
+      mockSupabaseAdmin.auth.admin.inviteUserByEmail,
+    ).not.toHaveBeenCalled();
+  });
+
   it('should throw BadRequestException if Supabase returns error', async () => {
     mockSupabaseAdmin.auth.admin.inviteUserByEmail.mockResolvedValue({
       data: null,
@@ -153,7 +257,10 @@ describe('StaffService', () => {
     });
 
     await expect(
-      service.inviteStaff({ merchantId: mockMerchantId, email: 'duplicate@test.com' }, mockOwnerId),
+      service.inviteStaff(
+        { merchantId: mockMerchantId, email: 'duplicate@test.com' },
+        mockOwnerId,
+      ),
     ).rejects.toThrow(BadRequestException);
   });
 });

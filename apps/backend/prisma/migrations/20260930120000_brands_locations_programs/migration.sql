@@ -220,15 +220,28 @@ ALTER TABLE "Scan" ADD CONSTRAINT "Scan_brandId_fkey" FOREIGN KEY ("brandId") RE
 ALTER TABLE "Scan" ADD CONSTRAINT "Scan_programId_fkey" FOREIGN KEY ("programId") REFERENCES "LoyaltyProgram"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- ---------------------------------------------------------------------------------------
--- 11. Funciones helper del RLS (mismo criterio que 20260921020000)
+-- 11. Funciones helper del RLS (mismo criterio que 20260921020000). Solo cuentan las marcas
+--     ACTIVE: una marca suspendida no ve ni escribe nada desde el panel (HANDOFF §8.12).
 -- ---------------------------------------------------------------------------------------
+
+-- Membresías del usuario en marcas activas. La base de todas las demás.
+CREATE OR REPLACE FUNCTION public.active_memberships()
+RETURNS TABLE ("brandId" uuid, "role" "MerchantRole", "merchantId" uuid)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT bm."brandId", bm."role", bm."merchantId"
+  FROM public."BrandMember" bm
+  JOIN public."Brand" b ON b."id" = bm."brandId"
+  WHERE bm."userId" = auth.uid() AND b."status" = 'ACTIVE'::"BrandStatus";
+$$;
 
 CREATE OR REPLACE FUNCTION public.current_brand_ids()
 RETURNS SETOF uuid
 LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
-  SELECT bm."brandId" FROM public."BrandMember" bm WHERE bm."userId" = auth.uid();
+  SELECT am."brandId" FROM public.active_memberships() am;
 $$;
 
 CREATE OR REPLACE FUNCTION public.is_brand_owner(b uuid)
@@ -237,8 +250,8 @@ LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
   SELECT EXISTS (
-    SELECT 1 FROM public."BrandMember" bm
-    WHERE bm."userId" = auth.uid() AND bm."brandId" = b AND bm."role" = 'OWNER'::"MerchantRole"
+    SELECT 1 FROM public.active_memberships() am
+    WHERE am."brandId" = b AND am."role" = 'OWNER'::"MerchantRole"
   );
 $$;
 
@@ -249,10 +262,9 @@ LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
   SELECT m."id"
-  FROM public."BrandMember" bm
-  JOIN public."Merchant" m ON m."brandId" = bm."brandId"
-  WHERE bm."userId" = auth.uid()
-    AND (bm."role" = 'OWNER'::"MerchantRole" OR bm."merchantId" = m."id");
+  FROM public.active_memberships() am
+  JOIN public."Merchant" m ON m."brandId" = am."brandId"
+  WHERE am."role" = 'OWNER'::"MerchantRole" OR am."merchantId" = m."id";
 $$;
 
 CREATE OR REPLACE FUNCTION public.is_merchant_owner(m uuid)
@@ -263,8 +275,8 @@ AS $$
   SELECT EXISTS (
     SELECT 1
     FROM public."Merchant" mm
-    JOIN public."BrandMember" bm ON bm."brandId" = mm."brandId"
-    WHERE mm."id" = m AND bm."userId" = auth.uid() AND bm."role" = 'OWNER'::"MerchantRole"
+    JOIN public.active_memberships() am ON am."brandId" = mm."brandId"
+    WHERE mm."id" = m AND am."role" = 'OWNER'::"MerchantRole"
   );
 $$;
 
@@ -275,8 +287,7 @@ SET search_path = public, pg_temp
 AS $$
   SELECT lp."id"
   FROM public."LoyaltyProgram" lp
-  JOIN public."BrandMember" bm ON bm."brandId" = lp."brandId"
-  WHERE bm."userId" = auth.uid();
+  JOIN public.active_memberships() am ON am."brandId" = lp."brandId";
 $$;
 
 CREATE OR REPLACE FUNCTION public.is_program_owner(p uuid)
@@ -287,9 +298,19 @@ AS $$
   SELECT EXISTS (
     SELECT 1
     FROM public."LoyaltyProgram" lp
-    JOIN public."BrandMember" bm ON bm."brandId" = lp."brandId"
-    WHERE lp."id" = p AND bm."userId" = auth.uid() AND bm."role" = 'OWNER'::"MerchantRole"
+    JOIN public.active_memberships() am ON am."brandId" = lp."brandId"
+    WHERE lp."id" = p AND am."role" = 'OWNER'::"MerchantRole"
   );
+$$;
+
+-- El miembro de una marca suspendida sí ve la fila de su marca (solo esa), para que el panel
+-- pueda decirle que la cuenta está suspendida en vez de mostrarle un panel vacío.
+CREATE OR REPLACE FUNCTION public.member_brand_ids_any_status()
+RETURNS SETOF uuid
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT bm."brandId" FROM public."BrandMember" bm WHERE bm."userId" = auth.uid();
 $$;
 
 -- ---------------------------------------------------------------------------------------
@@ -298,7 +319,7 @@ $$;
 -- ---------------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.assert_merchant_in_brand(p_merchant uuid, p_brand uuid)
 RETURNS void
-LANGUAGE plpgsql STABLE
+LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 BEGIN
@@ -311,7 +332,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.pass_derive_brand()
 RETURNS trigger
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 BEGIN
@@ -330,7 +351,7 @@ CREATE TRIGGER pass_derive_brand
 
 CREATE OR REPLACE FUNCTION public.ledger_derive_from_pass()
 RETURNS trigger
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 BEGIN
@@ -354,7 +375,7 @@ CREATE TRIGGER scan_derive_from_pass
 
 CREATE OR REPLACE FUNCTION public.brand_member_check_location()
 RETURNS trigger
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 BEGIN
@@ -373,7 +394,7 @@ CREATE TRIGGER brand_member_check_location
 -- Prisma no modela índices parciales y los marcaría como drift.
 CREATE OR REPLACE FUNCTION public.loyalty_program_single_stamps()
 RETURNS trigger
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 BEGIN
@@ -405,7 +426,7 @@ ALTER TABLE "PlatformAdmin" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "AuditLog" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "brand_select" ON "Brand"
-  FOR SELECT USING ("id" IN (SELECT public.current_brand_ids()));
+  FOR SELECT USING ("id" IN (SELECT public.member_brand_ids_any_status()));
 
 CREATE POLICY "merchant_select" ON "Merchant"
   FOR SELECT USING ("id" IN (SELECT public.current_merchant_ids()));
@@ -440,10 +461,10 @@ CREATE POLICY "promotion_delete" ON "Promotion"
 CREATE POLICY "pass_select" ON "Pass"
   FOR SELECT USING ("brandId" IN (SELECT public.current_brand_ids()));
 
+-- Stamp no tiene datos personales y la vista PassStampBalance (security_invoker) suma sobre
+-- él: si el STAFF solo viera los de su local, vería un saldo incompleto.
 CREATE POLICY "stamp_select" ON "Stamp"
-  FOR SELECT USING (
-    public.is_brand_owner("brandId") OR "merchantId" IN (SELECT public.current_merchant_ids())
-  );
+  FOR SELECT USING ("brandId" IN (SELECT public.current_brand_ids()));
 
 CREATE POLICY "scan_select" ON "Scan"
   FOR SELECT USING (
@@ -495,13 +516,13 @@ BEGIN
     RETURN new;
   END IF;
 
-  v_name := 'Mi Local (' || split_part(new.email, '@', 1) || ')';
+  v_name := 'Mi Local (' || COALESCE(NULLIF(split_part(new.email, '@', 1), ''), 'nuevo') || ')';
 
   INSERT INTO public."Brand" (id, name, "contactEmail")
   VALUES (new.id, v_name, new.email);
 
   INSERT INTO public."Merchant" (id, "brandId", email, name, slug)
-  VALUES (new.id, new.id, new.email, v_name, 'local-' || left(replace(new.id::text, '-', ''), 8));
+  VALUES (new.id, new.id, new.email, v_name, 'local-' || left(replace(new.id::text, '-', ''), 12));
 
   INSERT INTO public."LoyaltyProgram" ("brandId", name)
   VALUES (new.id, 'Tarjeta de sellos');
@@ -544,6 +565,8 @@ BEGIN
 END
 $$;
 
+REVOKE ALL ON FUNCTION public.active_memberships() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.member_brand_ids_any_status() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.current_brand_ids() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.is_brand_owner(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.current_program_ids() FROM PUBLIC;
@@ -557,11 +580,11 @@ REVOKE ALL ON FUNCTION public.loyalty_program_single_stamps() FROM PUBLIC;
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
-    EXECUTE 'REVOKE EXECUTE ON FUNCTION public.current_brand_ids(), public.is_brand_owner(uuid), public.current_program_ids(), public.is_program_owner(uuid), public.current_merchant_ids(), public.is_merchant_owner(uuid), public.assert_merchant_in_brand(uuid, uuid), public.pass_derive_brand(), public.ledger_derive_from_pass(), public.brand_member_check_location(), public.loyalty_program_single_stamps() FROM anon';
+    EXECUTE 'REVOKE EXECUTE ON FUNCTION public.active_memberships(), public.member_brand_ids_any_status(), public.current_brand_ids(), public.is_brand_owner(uuid), public.current_program_ids(), public.is_program_owner(uuid), public.current_merchant_ids(), public.is_merchant_owner(uuid), public.assert_merchant_in_brand(uuid, uuid), public.pass_derive_brand(), public.ledger_derive_from_pass(), public.brand_member_check_location(), public.loyalty_program_single_stamps() FROM anon';
   END IF;
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
     EXECUTE 'REVOKE EXECUTE ON FUNCTION public.assert_merchant_in_brand(uuid, uuid), public.pass_derive_brand(), public.ledger_derive_from_pass(), public.brand_member_check_location(), public.loyalty_program_single_stamps() FROM authenticated';
-    EXECUTE 'GRANT EXECUTE ON FUNCTION public.current_brand_ids(), public.is_brand_owner(uuid), public.current_program_ids(), public.is_program_owner(uuid), public.current_merchant_ids(), public.is_merchant_owner(uuid) TO authenticated';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.active_memberships(), public.member_brand_ids_any_status(), public.current_brand_ids(), public.is_brand_owner(uuid), public.current_program_ids(), public.is_program_owner(uuid), public.current_merchant_ids(), public.is_merchant_owner(uuid) TO authenticated';
   END IF;
 END
 $$;

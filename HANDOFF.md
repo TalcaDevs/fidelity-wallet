@@ -371,6 +371,8 @@ Prioridad: 🔴 bloquea el piloto · 🟠 necesario para el piloto · 🟡 deuda
 - [ ] §8.1 — Confirmar token estático + bloqueo de 30 min como política antifraude del MVP. *Con la decisión 5, ¿el bloqueo de 30 min es por marca o por local?* Recomendación: por marca, para que no se pueda sellar dos veces cruzando la calle.
 - [ ] §8.10 — Programas de lealtad no basados en sellos: orden de entrada y modelo.
 - [ ] §8.11 — Planes: moneda (USD vs. CLP), IVA y boleta, y cuándo se aplican los límites en el backend.
+- [x] §8.12 — Marca suspendida: sin acceso, datos conservados (implementado en el PR #16).
+- [ ] 🟠 §8.12 — **Legal:** retención de la base de clientes a 2 años de una cuenta suspendida. Requiere cambio de términos, o bien anonimizar.
 
 ---
 
@@ -414,9 +416,10 @@ Prioridad: 🔴 bloquea el piloto · 🟠 necesario para el piloto · 🟡 deuda
 **RLS resultante:**
 - **`OWNER`:** toda su marca.
 - **`STAFF`:**
-  - `Merchant`, `Scan` y `Stamp` solo de su local.
-  - `Pass` y `PassStampBalance` de toda la marca, porque el saldo es de la marca. Sin `passToken`.
+  - `Merchant` y `Scan` solo de su local.
+  - `Pass`, `Stamp` y `PassStampBalance` de toda la marca, porque el saldo es de la marca. `Stamp` no tiene datos personales y la vista suma sobre él (corrección de la revisión del PR #16). Sin `passToken`.
   - `Customer`: nada, igual que antes.
+- **Marca suspendida:** sus miembros no ven ni escriben nada; solo ven la fila de su `Brand`, para que el panel diga "cuenta suspendida". Todos los helpers del RLS filtran por `Brand.status = ACTIVE` a través de `active_memberships()`. En el backend, `resolveLocationAccess` exige por defecto un local operativo, salvo en el borrado por la Ley 19.628 (§8.12).
 - **Escritura del panel:** solo `Merchant.name`, `LoyaltyProgram.name`/`stampValidityDays` y `Promotion`, y solo el `OWNER`. Ya no hay escritura sobre membresías.
 - **Admin interno:** para que el trigger no le cree una marca, el usuario se crea con `user_metadata.platform_admin = true`. El flag no otorga nada: el acceso lo da la fila en `PlatformAdmin`.
 
@@ -863,7 +866,22 @@ El contrato usa **`activeStamps`** y expone **`nextExpiryAt`** (§5.4). La PWA l
 - ¿USD o CLP? ¿Con IVA incluido? ¿Qué documento tributario se emite?
 - El proveedor de pago.
 - **Cuándo y dónde se aplican los límites** (programas, sucursales, usuarios, 100 clientes en la prueba). Recomendación: en el backend, al crear un local, invitar a un mesero, activar un programa o dar de alta un cliente, con un error explícito (402/403 con el código `PLAN_LIMIT`) y nunca borrando datos al bajar de plan.
-- Qué pasa al vencer la prueba sin suscripción: ¿solo lectura? ¿se deja de sellar? **No puede afectar la tarjeta que ya está en la billetera del cliente final.**
+- Qué pasa al vencer la prueba sin suscripción: ¿solo lectura? ¿se deja de sellar? **No puede afectar la tarjeta que ya está en la billetera del cliente final.** *→ Respondido en §8.12: la marca se suspende y queda sin acceso.*
+
+### 8.12 ✅ DECIDIDA (2026-09-30) — Marca suspendida y retención de datos
+**Decisión:** una marca suspendida (por no pago, fin de la prueba o abuso; la suspende el equipo interno desde `/internal`) queda **sin acceso**:
+- El dueño y los meseros no ven nada en el panel ni en `/scan`, solo el mensaje "Tu cuenta está suspendida" (`SUSPENDED_ACCOUNT_MESSAGE`).
+- `/join` responde "local no disponible", no se emiten pases y no se sella ni se canjea.
+- **Los datos se conservan** para poder reactivar la marca, y las tarjetas en la billetera del cliente no se invalidan.
+- Excepción: el borrado de un cliente por la Ley 19.628 sigue funcionando por backend.
+- **Implementado en el PR #16** (RLS + backend + panel).
+
+**Retención a 2 años — ⚠️ pendiente de revisión legal, NO implementar todavía.** La idea es que, si una cuenta suspendida no se reactiva en 2 años, se borre la marca y nos quedemos solo con la base de clientes. El problema es que el cliente final entregó su RUT y su teléfono **para el programa de ese local** (términos §datos personales, Ley 19.628). Conservarlos para nosotros tras la baja del local es un **fin distinto**, que exige:
+- que los términos lo digan explícitamente;
+- que el cliente lo haya aceptado (subir `TERMS_VERSION`);
+- revisarlo contra la Ley 21.719.
+
+Alternativa segura: al cumplirse el plazo, borrar los datos personales y quedarse con datos **anonimizados y agregados** (conteos, frecuencias, métricas). **Responsable: Equipo — legal**, antes de que alguien construya el job.
 
 ---
 

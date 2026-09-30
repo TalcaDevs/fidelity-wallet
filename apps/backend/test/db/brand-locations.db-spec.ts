@@ -78,6 +78,50 @@ describe('RLS por marca y local', () => {
           { userId: string }[]
         >`SELECT "userId" FROM "BrandMember"`;
         expect(members.map((m) => m.userId)).toEqual([a.staffSecondId]);
+
+        const balance = await tx.$queryRaw<
+          { activeStamps: number }[]
+        >`SELECT "activeStamps" FROM "PassStampBalance"`;
+        expect(balance[0].activeStamps).toBe(2);
+      });
+    });
+  });
+
+  it('una marca suspendida no ve nada salvo su propia fila de Brand, y no escribe', async () => {
+    await inRollback(async (tx) => {
+      const a = await createBrand(tx, 'a');
+      await tx.brand.update({
+        where: { id: a.brandId },
+        data: { status: 'SUSPENDED' },
+      });
+
+      await as(tx, a.ownerId, async () => {
+        const rows = await tx.$queryRaw<{ n: number }[]>`
+          SELECT (SELECT count(*) FROM "Merchant")
+               + (SELECT count(*) FROM "Pass")
+               + (SELECT count(*) FROM "Stamp")
+               + (SELECT count(*) FROM "Scan")
+               + (SELECT count(*) FROM "Customer")
+               + (SELECT count(*) FROM "Promotion")
+               + (SELECT count(*) FROM "LoyaltyProgram")
+               + (SELECT count(*) FROM "PassStampBalance") AS n`;
+        expect(Number(rows[0].n)).toBe(0);
+
+        const brand = await tx.$queryRaw<
+          { status: string }[]
+        >`SELECT status::text FROM "Brand"`;
+        expect(brand).toEqual([{ status: 'SUSPENDED' }]);
+
+        expect(
+          await tx.$executeRaw`UPDATE "Promotion" SET name = 'x' WHERE id = ${a.promotionId}::uuid`,
+        ).toBe(0);
+      });
+
+      await as(tx, a.staffMainId, async () => {
+        const merchants = await tx.$queryRaw<
+          { id: string }[]
+        >`SELECT id FROM "Merchant"`;
+        expect(merchants).toEqual([]);
       });
     });
   });
@@ -320,7 +364,7 @@ describe('handle_new_user', () => {
 
       expect(brand).not.toBeNull();
       expect(merchant?.brandId).toBe(id);
-      expect(merchant?.slug).toBe(`local-${id.replace(/-/g, '').slice(0, 8)}`);
+      expect(merchant?.slug).toBe(`local-${id.replace(/-/g, '').slice(0, 12)}`);
       expect(programs.map((p) => p.type)).toEqual(['STAMPS']);
       expect(member).toMatchObject({ role: 'OWNER', merchantId: null });
     });

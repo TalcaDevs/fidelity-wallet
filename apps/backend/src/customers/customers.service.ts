@@ -169,6 +169,8 @@ export class CustomersService {
 
     const { merchant } = await resolveLocationAccess(this.prisma, callerUserId, merchantId, {
       ownerOnly: true,
+      // Derecho de cancelación (Ley 19.628): se ejerce aunque la marca esté suspendida.
+      requireOperational: false,
       forbiddenMessage: 'Solo el dueño del comercio puede eliminar clientes',
       ownerMessage: 'Solo el dueño del comercio puede eliminar clientes',
     });
