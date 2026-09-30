@@ -174,6 +174,21 @@ describe('RLS por marca y local', () => {
     });
   });
 
+  it('los tickets de soporte no se leen desde el panel: solo por el backend', async () => {
+    for (const table of ['Ticket', 'TicketMessage', 'TicketAttachment']) {
+      await inRollback(async (tx) => {
+        const a = await createBrand(tx, 'a');
+        await as(tx, a.ownerId, () =>
+          expectDbError(
+            tx,
+            () => tx.$queryRawUnsafe(`SELECT * FROM "${table}"`),
+            'permission denied',
+          ),
+        );
+      });
+    }
+  });
+
   it('el OWNER edita promociones y vigencia de su marca; el STAFF no', async () => {
     await inRollback(async (tx) => {
       const a = await createBrand(tx, 'a');

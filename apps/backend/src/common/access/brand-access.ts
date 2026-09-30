@@ -115,3 +115,14 @@ export async function findStampsProgram(
     orderBy: { createdAt: 'asc' },
   });
 }
+
+/** No exige marca activa: una marca suspendida tiene que poder escribir a soporte. */
+export async function requireBrandOwner(db: Db, userId: string, brandId: string): Promise<BrandMember> {
+  const membership = await db.brandMember.findUnique({
+    where: { userId_brandId: { userId, brandId } },
+  });
+  if (membership?.role !== MerchantRole.OWNER) {
+    throw new ForbiddenException(DEFAULT_OWNER_ONLY);
+  }
+  return membership;
+}

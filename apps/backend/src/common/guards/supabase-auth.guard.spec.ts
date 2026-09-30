@@ -1,4 +1,8 @@
-import { ExecutionContext, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  InternalServerErrorException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,7 +19,9 @@ describe('SupabaseAuthGuard', () => {
     user_metadata: { role: 'OWNER' },
   };
 
-  const createMockContext = (authHeader?: string): { context: ExecutionContext; request: any } => {
+  const createMockContext = (
+    authHeader?: string,
+  ): { context: ExecutionContext; request: any } => {
     const request: any = {
       headers: authHeader ? { authorization: authHeader } : {},
     };
@@ -124,7 +130,9 @@ describe('SupabaseAuthGuard', () => {
       const result = await guard.canActivate(context);
 
       expect(result).toBe(true);
-      expect(mockSupabaseClient.auth!.getUser).toHaveBeenCalledWith('valid-jwt-token');
+      expect(mockSupabaseClient.auth!.getUser).toHaveBeenCalledWith(
+        'valid-jwt-token',
+      );
       expect(request.user).toEqual({
         id: mockUser.id,
         email: mockUser.email,
@@ -135,7 +143,9 @@ describe('SupabaseAuthGuard', () => {
 
   describe('Configuration Handling', () => {
     it('throws InternalServerErrorException if Supabase credentials are missing', async () => {
-      const emptyConfig = { get: vi.fn().mockReturnValue(null) } as unknown as ConfigService;
+      const emptyConfig = {
+        get: vi.fn().mockReturnValue(null),
+      } as unknown as ConfigService;
       const unconfiguredGuard = new SupabaseAuthGuard(emptyConfig);
 
       // Limpiamos process.env temporalmente si existen

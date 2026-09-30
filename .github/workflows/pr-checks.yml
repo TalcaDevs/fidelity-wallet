@@ -32,6 +32,10 @@ jobs:
         # Falla si alguien olvidó commitear el pnpm-lock.yaml actualizado
         run: pnpm install --frozen-lockfile
 
+      - name: 📚 Build de paquetes compartidos
+        # apps/* importan @fidelity/shared desde su dist/
+        run: pnpm --filter './packages/**' run build
+
       - name: 🗄️ Generar Prisma Client
         # Necesario para que TypeScript no falle al buscar tipos de @prisma/client
         run: pnpm --filter backend exec prisma generate
@@ -89,6 +93,9 @@ jobs:
       - name: 🚀 Levantar Supabase local
         # Postgres + Auth bastan: el trigger handle_new_user y auth.uid() necesitan el esquema auth.
         run: supabase start -x studio,imgproxy,realtime,storage-api,edge-runtime,logflare,vector
+
+      - name: 📚 Build de paquetes compartidos
+        run: pnpm --filter './packages/**' run build
 
       - name: 🗄️ Aplicar migraciones desde cero
         run: |

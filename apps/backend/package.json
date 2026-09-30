@@ -26,6 +26,7 @@
     "test:db": "vitest run --config ./vitest.config.db.ts"
   },
   "dependencies": {
+    "@fidelity/shared": "workspace:*",
     "@nestjs/common": "^12.0.1",
     "@nestjs/config": "^12.0.0",
     "@nestjs/core": "^12.0.1",
