@@ -31,12 +31,13 @@ export function computeDateRange(preset: PeriodPreset): { from: string; to: stri
   let fromDate: Date;
 
   if (preset === '7d') {
-    fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+    // 7 días inclusivos contando hoy: hoy y los 6 días previos
+    fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
   } else if (preset === 'this_month') {
     fromDate = new Date(now.getFullYear(), now.getMonth(), 1);
   } else {
-    // '30d' por defecto
-    fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
+    // 30 días inclusivos contando hoy: hoy y los 29 días previos
+    fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29);
   }
 
   return {

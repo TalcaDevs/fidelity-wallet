@@ -137,73 +137,60 @@ function buildQueryString(params: Record<string, string | number | undefined>): 
   return str ? `?${str}` : '';
 }
 
+async function getReport<T>(
+  path: string,
+  params: Record<string, string | number | undefined>,
+  fallbackMessage: string,
+): Promise<T> {
+  const qs = buildQueryString(params);
+  const res = await authenticatedFetch(`${path}${qs}`);
+  if (!res.ok) {
+    const errorData: unknown = await res.json().catch(() => null);
+    throw new Error(extractApiError(errorData) ?? fallbackMessage);
+  }
+  return res.json();
+}
+
 export async function fetchOverviewReport(
   merchantId: string,
   params: ReportQueryParams = {},
 ): Promise<OverviewReport> {
-  const qs = buildQueryString({
-    from: params.from,
-    to: params.to,
-    tz: params.tz,
-  });
-
-  const res = await authenticatedFetch(`/api/merchants/${merchantId}/reports/overview${qs}`);
-  if (!res.ok) {
-    const errorData: unknown = await res.json().catch(() => null);
-    throw new Error(extractApiError(errorData) ?? 'No se pudo obtener el reporte general');
-  }
-  return res.json();
+  return getReport<OverviewReport>(
+    `/api/merchants/${merchantId}/reports/overview`,
+    { from: params.from, to: params.to, tz: params.tz },
+    'No se pudo obtener el reporte general',
+  );
 }
 
 export async function fetchRetentionReport(
   merchantId: string,
   params: RetentionQueryParams = {},
 ): Promise<RetentionReport> {
-  const qs = buildQueryString({
-    dormantDays: params.dormantDays,
-    tz: params.tz,
-  });
-
-  const res = await authenticatedFetch(`/api/merchants/${merchantId}/reports/retention${qs}`);
-  if (!res.ok) {
-    const errorData: unknown = await res.json().catch(() => null);
-    throw new Error(extractApiError(errorData) ?? 'No se pudo obtener el reporte de retención');
-  }
-  return res.json();
+  return getReport<RetentionReport>(
+    `/api/merchants/${merchantId}/reports/retention`,
+    { dormantDays: params.dormantDays, tz: params.tz },
+    'No se pudo obtener el reporte de retención',
+  );
 }
 
 export async function fetchPromotionsReport(
   merchantId: string,
   params: ReportQueryParams = {},
 ): Promise<PromotionPerformanceReport> {
-  const qs = buildQueryString({
-    from: params.from,
-    to: params.to,
-    tz: params.tz,
-  });
-
-  const res = await authenticatedFetch(`/api/merchants/${merchantId}/reports/promotions${qs}`);
-  if (!res.ok) {
-    const errorData: unknown = await res.json().catch(() => null);
-    throw new Error(extractApiError(errorData) ?? 'No se pudo obtener el reporte de promociones');
-  }
-  return res.json();
+  return getReport<PromotionPerformanceReport>(
+    `/api/merchants/${merchantId}/reports/promotions`,
+    { from: params.from, to: params.to, tz: params.tz },
+    'No se pudo obtener el reporte de promociones',
+  );
 }
 
 export async function fetchStaffActivityReport(
   merchantId: string,
   params: ReportQueryParams = {},
 ): Promise<StaffActivityReport> {
-  const qs = buildQueryString({
-    from: params.from,
-    to: params.to,
-    tz: params.tz,
-  });
-
-  const res = await authenticatedFetch(`/api/merchants/${merchantId}/reports/staff${qs}`);
-  if (!res.ok) {
-    const errorData: unknown = await res.json().catch(() => null);
-    throw new Error(extractApiError(errorData) ?? 'No se pudo obtener el reporte de personal');
-  }
-  return res.json();
+  return getReport<StaffActivityReport>(
+    `/api/merchants/${merchantId}/reports/staff`,
+    { from: params.from, to: params.to, tz: params.tz },
+    'No se pudo obtener el reporte de personal',
+  );
 }

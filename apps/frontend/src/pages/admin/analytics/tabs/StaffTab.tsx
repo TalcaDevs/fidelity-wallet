@@ -7,6 +7,12 @@ export interface StaffTabProps {
 export function StaffTab({ staff }: StaffTabProps) {
   const allAlerts = staff.staff.flatMap((s) => s.alerts);
 
+  const severityLabel: Record<string, string> = {
+    high: 'Alta',
+    medium: 'Media',
+    low: 'Baja',
+  };
+
   return (
     <div className="space-y-8" data-testid="tab-staff">
       {/* Antifraud Alerts Overview */}
@@ -49,10 +55,12 @@ export function StaffTab({ staff }: StaffTabProps) {
                   className={`px-2 py-0.5 rounded-full font-bold uppercase text-[10px] ${
                     alert.severity === 'high'
                       ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
-                      : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                      : alert.severity === 'medium'
+                      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
                   }`}
                 >
-                  Severidad {alert.severity}
+                  Severidad {severityLabel[alert.severity] || alert.severity}
                 </span>
               </div>
             ))}

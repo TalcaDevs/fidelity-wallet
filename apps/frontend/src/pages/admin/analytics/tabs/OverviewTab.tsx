@@ -4,10 +4,9 @@ import { DailyEvolutionLineChart } from '../components/DailyEvolutionLineChart';
 
 export interface OverviewTabProps {
   overview: OverviewReport;
-  loading?: boolean;
 }
 
-export function OverviewTab({ overview, loading = false }: OverviewTabProps) {
+export function OverviewTab({ overview }: OverviewTabProps) {
   return (
     <div className="space-y-8" data-testid="tab-overview">
       {/* KPI Cards Grid */}
@@ -17,28 +16,24 @@ export function OverviewTab({ overview, loading = false }: OverviewTabProps) {
           current={overview.kpis.newCustomers.current}
           previous={overview.kpis.newCustomers.previous}
           changePercentage={overview.kpis.newCustomers.changePercentage}
-          loading={loading}
         />
         <KpiCard
           title="Clientes Activos"
           current={overview.kpis.activeCustomers.current}
           previous={overview.kpis.activeCustomers.previous}
           changePercentage={overview.kpis.activeCustomers.changePercentage}
-          loading={loading}
         />
         <KpiCard
           title="Sellos Entregados"
           current={overview.kpis.stampsDelivered.current}
           previous={overview.kpis.stampsDelivered.previous}
           changePercentage={overview.kpis.stampsDelivered.changePercentage}
-          loading={loading}
         />
         <KpiCard
           title="Premios Canjeados"
           current={overview.kpis.rewardsRedeemed.current}
           previous={overview.kpis.rewardsRedeemed.previous}
           changePercentage={overview.kpis.rewardsRedeemed.changePercentage}
-          loading={loading}
         />
         <KpiCard
           title="Tasa de Recurrencia"
@@ -46,14 +41,12 @@ export function OverviewTab({ overview, loading = false }: OverviewTabProps) {
           previous={overview.kpis.recurrenceRate.previous}
           changePercentage={overview.kpis.recurrenceRate.changePercentage}
           suffix="%"
-          loading={loading}
         />
         <KpiCard
           title="Sellos Vencidos"
           current={overview.kpis.expiredStamps.current}
           previous={overview.kpis.expiredStamps.previous}
           changePercentage={overview.kpis.expiredStamps.changePercentage}
-          loading={loading}
         />
       </div>
 

@@ -22,14 +22,9 @@ import {
 
 export interface AnalyticsProps {
   merchantId: string | null;
-  brandId?: string | null;
-  locationId?: string | null;
 }
 
-export function Analytics({ merchantId, brandId, locationId }: AnalyticsProps) {
-  // brandId y locationId preparados para la evolución multi-local tras PR #16
-  const targetId = merchantId || brandId || locationId || null;
-
+export function Analytics({ merchantId }: AnalyticsProps) {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('30d');
   const [dormantDays, setDormantDays] = useState<number>(30);
@@ -63,7 +58,7 @@ export function Analytics({ merchantId, brandId, locationId }: AnalyticsProps) {
 
   // Carga de reportes vinculados a dateRange (Overview, Promotions, Staff)
   useEffect(() => {
-    if (!targetId) return;
+    if (!merchantId) return;
 
     let isMounted = true;
     setLoadingOverview(true);
@@ -80,9 +75,9 @@ export function Analytics({ merchantId, brandId, locationId }: AnalyticsProps) {
     };
 
     Promise.allSettled([
-      fetchOverviewReport(targetId, queryParams),
-      fetchPromotionsReport(targetId, queryParams),
-      fetchStaffActivityReport(targetId, queryParams),
+      fetchOverviewReport(merchantId, queryParams),
+      fetchPromotionsReport(merchantId, queryParams),
+      fetchStaffActivityReport(merchantId, queryParams),
     ]).then(([resOverview, resPromotions, resStaff]) => {
       if (!isMounted) return;
 
@@ -117,17 +112,17 @@ export function Analytics({ merchantId, brandId, locationId }: AnalyticsProps) {
     return () => {
       isMounted = false;
     };
-  }, [targetId, dateRange, timeZone, retryCounter]);
+  }, [merchantId, dateRange, timeZone, retryCounter]);
 
   // Carga desacoplada de Retention (reacciona independientemente a dormantDays)
   useEffect(() => {
-    if (!targetId) return;
+    if (!merchantId) return;
 
     let isMounted = true;
     setLoadingRetention(true);
     setErrorRetention(null);
 
-    fetchRetentionReport(targetId, { dormantDays, tz: timeZone })
+    fetchRetentionReport(merchantId, { dormantDays, tz: timeZone })
       .then((data) => {
         if (!isMounted) return;
         setRetention(data);
@@ -145,22 +140,10 @@ export function Analytics({ merchantId, brandId, locationId }: AnalyticsProps) {
     return () => {
       isMounted = false;
     };
-  }, [targetId, dormantDays, timeZone, retryCounter]);
+  }, [merchantId, dormantDays, timeZone, retryCounter]);
 
-  // Seguimiento de carga inicial completada
-  const [hasInitialLoaded, setHasInitialLoaded] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (!loadingOverview && !loadingRetention && !loadingPromotions && !loadingStaff) {
-      setHasInitialLoaded(true);
-    }
-  }, [loadingOverview, loadingRetention, loadingPromotions, loadingStaff]);
-
-  // Determinación de carga: durante la carga inicial o durante el refresco de la pestaña activa
+  // Determinación de carga directa por pestaña activa
   const isTabLoading = useMemo(() => {
-    if (!hasInitialLoaded) {
-      return loadingOverview || loadingRetention || loadingPromotions || loadingStaff;
-    }
     switch (activeTab) {
       case 'overview':
         return loadingOverview;
@@ -171,7 +154,7 @@ export function Analytics({ merchantId, brandId, locationId }: AnalyticsProps) {
       case 'staff':
         return loadingStaff;
     }
-  }, [hasInitialLoaded, activeTab, loadingOverview, loadingRetention, loadingPromotions, loadingStaff]);
+  }, [activeTab, loadingOverview, loadingRetention, loadingPromotions, loadingStaff]);
 
   const activeTabError = useMemo(() => {
     switch (activeTab) {
@@ -186,7 +169,7 @@ export function Analytics({ merchantId, brandId, locationId }: AnalyticsProps) {
     }
   }, [activeTab, errorOverview, errorRetention, errorPromotions, errorStaff]);
 
-  if (!targetId) {
+  if (!merchantId) {
     return (
       <div className="p-8 text-center text-slate-500">
         No se ha seleccionado ningún comercio asociado.

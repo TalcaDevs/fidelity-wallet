@@ -171,7 +171,7 @@ describe('Analytics Page', () => {
       expect(screen.getByText('Carlos Equipo')).toBeInTheDocument();
       expect(screen.getByText('45')).toBeInTheDocument();
       expect(screen.getByText(/4 o más sellos otorgados al mismo cliente/)).toBeInTheDocument();
-      expect(screen.getByText(/Severidad high/i)).toBeInTheDocument();
+      expect(screen.getByText(/Severidad Alta/i)).toBeInTheDocument();
     });
   });
 
@@ -218,7 +218,10 @@ describe('Analytics Page', () => {
       resolveRetention = resolve;
     });
 
+    const pendingPromise = new Promise(() => {});
     vi.spyOn(reportsService, 'fetchRetentionReport').mockReturnValue(retentionPromise as any);
+    vi.spyOn(reportsService, 'fetchPromotionsReport').mockReturnValue(pendingPromise as any);
+    vi.spyOn(reportsService, 'fetchStaffActivityReport').mockReturnValue(pendingPromise as any);
 
     render(<Analytics merchantId={merchantId} />);
 
@@ -292,19 +295,6 @@ describe('Analytics Page', () => {
     await waitFor(() => {
       expect(screen.getByText('Sin datos registrados para el período seleccionado')).toBeInTheDocument();
     });
-  });
-
-  it('loads data successfully using brandId or locationId when merchantId is null', async () => {
-    render(<Analytics merchantId={null} brandId="brand-custom-123" />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Clientes Nuevos')).toBeInTheDocument();
-    });
-
-    expect(reportsService.fetchOverviewReport).toHaveBeenCalledWith(
-      'brand-custom-123',
-      expect.any(Object),
-    );
   });
 });
 
