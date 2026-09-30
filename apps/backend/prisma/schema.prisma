@@ -16,6 +16,9 @@ model Brand {
   contactEmail String?
   contactPhone String?
   status       BrandStatus      @default(ACTIVE)
+  /// Plan asignado a mano por el equipo interno hasta que exista cobro real (HANDOFF §6.5).
+  planId       PlanId           @default(TRIAL)
+  trialEndsAt  DateTime         @default(dbgenerated("(now() + '30 days'::interval)"))
   locations    Merchant[]
   programs     LoyaltyProgram[]
   members      BrandMember[]
@@ -357,4 +360,11 @@ enum TicketPriority {
 enum TicketAuthorType {
   MERCHANT
   PLATFORM
+}
+
+enum PlanId {
+  TRIAL
+  STARTER
+  PRO
+  BUSINESS
 }

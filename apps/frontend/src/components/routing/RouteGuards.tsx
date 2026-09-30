@@ -1,5 +1,8 @@
+import type { ReactNode } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
+import type { PlatformRole } from '@fidelity/shared';
+import type { PlatformAdminState } from '../../hooks/usePlatformAdmin';
 import type { MembershipState, MerchantRole } from '../../hooks/useMembership';
 import { supabase } from '../../lib/supabase';
 import { ROUTES, buildLoginUrl, resolveRedirectTarget } from './routePaths';
@@ -57,10 +60,12 @@ export function RequireRole({
   session,
   membership,
   allow,
+  platformAdmin,
 }: {
   session: Session | null;
   membership: MembershipState;
   allow: readonly MerchantRole[];
+  platformAdmin?: PlatformAdminState;
 }) {
   const location = useLocation();
 
@@ -69,13 +74,18 @@ export function RequireRole({
     return <Navigate to={buildLoginUrl(from)} state={{ from } satisfies LocationState} replace />;
   }
 
-  if (membership.loading) {
+  if (membership.loading || (!membership.role && platformAdmin?.loading)) {
     return <FullScreenLoader label="Cargando tu cuenta..." />;
   }
 
   // Fail-closed: si no pudimos confirmar la membresía (error de red, tabla
   // inaccesible, usuario sin local) no se asume ningún rol ni se redirige en
   // silencio. Se deniega y se dice por qué, con una salida clara.
+  // El equipo interno no tiene marca: su lugar es /internal.
+  if (!membership.role && platformAdmin?.role) {
+    return <Navigate to={ROUTES.internal} replace />;
+  }
+
   if (membership.error || !membership.role) {
     return <AccessDenied reason={membership.error} />;
   }
@@ -85,6 +95,27 @@ export function RequireRole({
   }
 
   return <Outlet />;
+}
+
+/** /internal/*: solo PlatformAdmin, según /api/internal/me (el backend lo revalida en cada request). */
+export function RequirePlatformAdmin({
+  session,
+  platformAdmin,
+  children,
+}: {
+  session: Session | null;
+  platformAdmin: PlatformAdminState;
+  children: (session: Session, role: PlatformRole) => ReactNode;
+}) {
+  const location = useLocation();
+
+  if (!session) {
+    const from = `${location.pathname}${location.search}`;
+    return <Navigate to={buildLoginUrl(from)} state={{ from } satisfies LocationState} replace />;
+  }
+  if (platformAdmin.loading) return <FullScreenLoader label="Verificando acceso interno..." />;
+  if (!platformAdmin.role) return <Navigate to={ROUTES.admin} replace />;
+  return <>{children(session, platformAdmin.role)}</>;
 }
 
 /**

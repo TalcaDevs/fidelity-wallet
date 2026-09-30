@@ -43,6 +43,12 @@ export const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
   CLOSED: 'Cerrado',
 };
 
+/** Las mismas etiquetas, desde el punto de vista del equipo interno. */
+export const TICKET_STATUS_LABELS_INTERNAL: Record<TicketStatus, string> = {
+  ...TICKET_STATUS_LABELS,
+  WAITING_ON_MERCHANT: 'Esperando al comercio',
+};
+
 /** Solo la asigna el equipo interno. */
 export const TICKET_PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'] as const;
 export type TicketPriority = (typeof TICKET_PRIORITIES)[number];
