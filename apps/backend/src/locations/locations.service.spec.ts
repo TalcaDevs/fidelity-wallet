@@ -36,10 +36,15 @@ describe('LocationsService', () => {
           .fn()
           .mockResolvedValue({ role: 'OWNER', merchantId: null }),
       },
-      brand: { findUnique: vi.fn().mockResolvedValue({ status: 'ACTIVE' }) },
+      brand: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValue({ status: 'ACTIVE', planId: 'BUSINESS' }),
+      },
       merchant: {
         findMany: vi.fn().mockResolvedValue([]),
-        findFirst: vi.fn().mockResolvedValue({ id: 'm-1' }),
+        findFirst: vi.fn().mockResolvedValue({ id: 'm-1', isActive: true }),
+        count: vi.fn().mockResolvedValue(1),
         create: vi.fn(({ data }: any) => Promise.resolve(merchant(data))),
         update: vi.fn(({ data }: any) => Promise.resolve(merchant(data))),
       },
@@ -84,7 +89,7 @@ describe('LocationsService', () => {
     ).rejects.toThrow(NotFoundException);
     expect(prisma.merchant.findFirst).toHaveBeenCalledWith({
       where: { id: 'm-ajeno', brandId: 'b-1' },
-      select: { id: true },
+      select: { id: true, isActive: true },
     });
   });
 

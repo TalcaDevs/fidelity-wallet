@@ -112,7 +112,7 @@ La relación usuario↔comercio↔rol vive hoy en la tabla `MerchantUser`. Un co
 **Fuera del MVP (no construirlo aunque sea tentador):**
 - ~~Multi-local / franquicias con jerarquía `Brand > Location`~~ — **entró el 2026-09-30** (decisión 5). Lo que sigue afuera es que cada marca elija saldo por local (`LoyaltyProgram.scope = LOCATION`): el campo existe, pero no se implementa.
 - Programas que no sean sellos: puntos, cashback, cupones, giftcard y membresía (§8.10). Tampoco niveles/tiers.
-- Cobro real: proveedor de pago, boletas y aplicación de los límites del plan (§8.11).
+- Cobro real: proveedor de pago y boletas (§8.11). Los límites del plan sí se aplican (PR4).
 - Impersonar a un `OWNER` desde el panel interno.
 - Integración con POS o boleta electrónica.
 - App nativa de cualquier tipo.
@@ -280,13 +280,13 @@ Prioridad: 🔴 bloquea el piloto · 🟠 necesario para el piloto · 🟡 deuda
 #### Dev 1 — Backend, motor de pases y reportería
 
 **Nuevo foco: reportería y analítica del dueño (§5.8)**
-- [ ] 🟠 **Módulo `reports`** en NestJS con `GET /api/brands/:brandId/reports/{overview,retention,promotions,locations,staff}`. Solo `OWNER`, con filtros `from`/`to`/`locationId` y zona `America/Santiago` (contrato en §5.8).
-- [ ] 🟠 **Retención y recurrencia:** clientes nuevos vs. recurrentes, frecuencia de visita, clientes dormidos y cohortes por mes de alta.
-- [ ] 🟠 **Rendimiento por promoción:** canjes por promoción (`Scan.promotionId`), sellos vencidos sin usar (breakage) y días promedio hasta el canje. *Absorbe la tarea "métricas por promoción" que tenía el Dev 3 anterior.*
+- [x] 🟠 *(PR #19)* **Módulo `reports`** en NestJS con `GET /api/brands/:brandId/reports/{overview,retention,promotions,locations,staff}`. Solo `OWNER`, con filtros `from`/`to`/`locationId` y zona `America/Santiago` (contrato en §5.8). *Hoy existen `overview`, `retention`, `promotions` y `staff`; falta `locations`.*
+- [x] 🟠 *(PR #19)* **Retención y recurrencia:** clientes nuevos vs. recurrentes, frecuencia de visita, clientes dormidos y cohortes por mes de alta.
+- [x] 🟠 *(PR #19)* **Rendimiento por promoción:** canjes por promoción (`Scan.promotionId`), sellos vencidos sin usar (breakage) y días promedio hasta el canje. *Absorbe la tarea "métricas por promoción" que tenía el Dev 3 anterior.*
 - [ ] 🟠 **Comparativo por local y heatmap día × hora.** Depende de `locationId` en `Scan` (§11.2); mientras tanto, se agrupa por comercio.
-- [ ] 🟠 **Actividad por mesero y antifraude:** sellos por `createdByUserId`, porcentaje `MANUAL` por mesero y alertas de auto-sellado (heurísticas en §5.8).
+- [x] 🟠 *(PR #19)* **Actividad por mesero y antifraude:** sellos por `createdByUserId`, porcentaje `MANUAL` por mesero y alertas de auto-sellado (heurísticas en §5.8).
 - [ ] 🟡 **Exportar a Excel (`.xlsx`)**: `GET …/reports/export`. El plan lo vende como "Reportes exportables a Excel" (§6.5).
-- [ ] 🟡 **Pantallas `/admin/analytics` y `/admin/reports`** en el frontend, también de Dev 1. Hay que elegir la librería de gráficos: hoy el frontend no tiene ninguna.
+- [x] 🟡 *(PR #17)* **Pantalla `/admin/analytics`** en el frontend, con gráficos SVG propios (sin librería) y skeletons. `/admin/reports` no existe como pantalla aparte.
 - [ ] 🟡 Índices para las agregaciones (`Scan(merchantId, createdAt)`, `Stamp(expiresAt)`…), acordados con Dev 3 en la misma migración o en una siguiente.
 
 **Motor de pases (sigue en su lista, detrás de la reportería)**
@@ -308,26 +308,26 @@ Prioridad: 🔴 bloquea el piloto · 🟠 necesario para el piloto · 🟡 deuda
 #### Dev 2 — PWA del cajero, landing, Equipo, Facturación y Soporte
 
 **Nuevo: Equipo (§6.4) — full-stack en el módulo `staff`**
-- [ ] 🟠 Backend: listar, reenviar invitación, reasignar local y dar de baja (`GET`, `POST …/resend`, `PATCH`, `DELETE` en §6.4). El `invite` que ya existe pasa a recibir `locationId`. Dev 1 revisa el PR.
-- [ ] 🟠 UI `/admin/team`: tabla de meseros con estado (`INVITED` \| `ACTIVE`), local asignado, último ingreso y acciones con `ConfirmDialog`.
-- [x] 🟡 *(PR3 de Dev 3: la tabla de Equipo se rehízo para pantallas con menú lateral, con tabla completa desde `xl`, acciones en una línea y el aviso de "superaste el límite".)* Mostrar el uso contra el límite del plan ("3 de 3 usuarios"), leído del mockup de suscripción (§6.5). **No se bloquea en el backend todavía** (§8.11).
+- [x] 🟠 *(PR #15)* Backend: listar, reenviar invitación, reasignar local y dar de baja (`GET`, `POST …/resend`, `PATCH`, `DELETE` en §6.4). El `invite` que ya existe pasa a recibir `locationId`. Dev 1 revisa el PR.
+- [x] 🟠 *(PR #15)* UI `/admin/team`: tabla de meseros con estado (`INVITED` \| `ACTIVE`), local asignado, último ingreso y acciones con `ConfirmDialog`.
+- [x] 🟡 *(PR3 de Dev 3: la tabla de Equipo se rehízo para pantallas con menú lateral, con tabla completa desde `xl`, acciones en una línea y el aviso de "superaste el límite".)* Mostrar el uso contra el límite del plan ("3 de 3 usuarios"), leído del mockup de suscripción (§6.5). *(PR4 de Dev 3: el backend ya bloquea, §8.11, y el botón "Agregar usuario" se deshabilita al llegar al límite.)*
 
 **Nuevo: mockup de Facturación (§6.5)**
-- [ ] 🟠 `/admin/billing` tras `VITE_FEATURE_BILLING`: plan actual, uso vs. límites, los 4 planes con precio mensual/anual, historial de boletas simulado y "cambiar plan" deshabilitado.
-- [ ] 🟠 Banner de periodo de prueba ("te quedan N días") en el layout del panel, con el botón "Suscribirme" apuntando a `/admin/billing`.
-- [ ] 🟡 Catálogo de planes como constante tipada en `packages/shared` (§6.5), para que Dev 1 (gating de métricas y exportación) y Dev 3 (plan de cada marca en `/internal`) lean lo mismo.
+- [x] 🟠 *(PR #15)* `/admin/billing` tras `VITE_FEATURE_BILLING`: plan actual, uso vs. límites, los 4 planes con precio mensual/anual, historial de boletas simulado y "cambiar plan" deshabilitado.
+- [x] 🟠 *(PR #15)* Banner de periodo de prueba ("te quedan N días") en el layout del panel, con el botón "Suscribirme" apuntando a `/admin/billing`.
+- [x] 🟡 Catálogo de planes como constante tipada en `packages/shared` (§6.5), para que Dev 1 (gating de métricas y exportación) y Dev 3 (plan de cada marca en `/internal`) lean lo mismo.
 
 **Nuevo: mockup de Soporte (§6.6)**
-- [ ] 🟠 `/admin/support`: formulario (categoría, descripción, local opcional, teléfono opcional, captura opcional PNG/JPG ≤ 10 MB) y tarjeta "Otras formas de contacto" (correo y WhatsApp desde `VITE_SUPPORT_EMAIL` / `VITE_SUPPORT_WHATSAPP`).
-- [ ] 🟠 "Mis solicitudes": lista con número, categoría, estado y fecha, y detalle con el hilo de mensajes y respuesta.
-- [ ] 🟠 Programar contra **los tipos de §11.4** (`packages/shared`) con un adaptador en memoria (`supportService` con la misma firma que tendrá la API). Cuando Dev 3 publique los endpoints, solo se cambia el adaptador. *(2026-10-01: **la API ya existe** (PR2 de Dev 3), así que se puede ir directo contra ella. Para importar los tipos, agregar `"@fidelity/shared": "workspace:*"` a `apps/frontend`.)*
+- [x] 🟠 *(PR #15)* `/admin/support`: formulario (categoría, descripción, local opcional, teléfono opcional, captura opcional PNG/JPG ≤ 10 MB) y tarjeta "Otras formas de contacto" (correo y WhatsApp desde `VITE_SUPPORT_EMAIL` / `VITE_SUPPORT_WHATSAPP`).
+- [x] 🟠 *(PR #15)* "Mis solicitudes": lista con número, categoría, estado y fecha, y detalle con el hilo de mensajes y respuesta.
+- [x] 🟠 Programar contra **los tipos de §11.4** (`packages/shared`) con un adaptador en memoria (`supportService` con la misma firma que tendrá la API). Cuando Dev 3 publique los endpoints, solo se cambia el adaptador. *(2026-10-01: **la API ya existe** (PR2 de Dev 3), así que se puede ir directo contra ella. Para importar los tipos, agregar `"@fidelity/shared": "workspace:*"` a `apps/frontend`.)*
 
 **Escáner y landing (lo que quedaba)**
 - [ ] 🔴 **Probar la cámara en iOS Safari y Android Chrome reales** y medir el objetivo de < 2 s. Fuera de `localhost` la cámara exige **HTTPS**.
 - [ ] 🟠 **Probar la sesión con varias horas de pantalla abierta.** El refresh automático ya existe (PR #12); falta la prueba real en una tablet.
 - [ ] 🟡 **Probar en un teléfono real la pantalla de elección de premio** con 3 o más promociones: lista larga en pantallas chicas y uso con una mano.
 - [ ] 🟡 **`/scan` con locales (decisión 7):** el `STAFF` escanea en su `locationId`. Un `OWNER` con varios locales elige el local al abrir `/scan`.
-- [ ] 🟠 **QR imprimible del link de registro** *(reasignada desde el Dev 3 anterior).* Configuración ya muestra el link y permite copiarlo; falta generar el QR para imprimir, uno por local.
+- [x] 🟠 **QR imprimible del link de registro** *(hecho en el PR4 de Dev 3):* en Sucursales, cada local tiene "Link y QR" con copiar, cambiar el slug, descargar PNG e imprimir.
 - [ ] 🟡 **Texto del panel de promociones** *(reasignada):* explicarle al dueño que puede tener varias activas y que los sellos sirven para cualquiera.
 - [x] 🟠 PWA instalable (PR #12).
 - [x] 🟠 Refresh automático de sesión y reintento en 401 (PR #12).
@@ -360,8 +360,17 @@ Prioridad: 🔴 bloquea el piloto · 🟠 necesario para el piloto · 🟡 deuda
 - [x] 🟡 Visor de `AuditLog`.
 - [x] 🟠 **Plan de cada marca guardado en `Brand`** (`planId`, `trialEndsAt`, migración `20261002120000_brand_plan`). Lo asigna a mano el `SUPERADMIN` desde `/internal` y queda en `AuditLog`; `/admin/billing` muestra el plan real *(PR3)*.
 
+**Fase 4 — PR4 (2026-09-30)**
+- [x] 🟠 **Límites del plan en el backend** (§8.11): `assertPlanAllows` (`common/plan/plan-limits.ts`) bloquea crear o reactivar un local, invitar un mesero y dar de alta un cliente nuevo en la prueba, con 403 y `code: PLAN_LIMIT`. En el panel, "Agregar sucursal", "Activar" y "Agregar usuario" se deshabilitan al llegar al límite.
+- [x] 🟠 **Sucursales completas:** "Link y QR" por local (QR con `qrcode`, PNG, impresión y cambio de slug con la advertencia de QR impresos). Configuración queda solo con lo de la marca: `GET/PATCH /api/brands/:brandId/settings` guarda nombre y vigencia en **una** transacción. Se quitó el guardado no atómico por supabase-js.
+- [x] 🟠 **`/internal/summary`** como portada del panel interno: marcas por estado y plan, pruebas que vencen en 7 días, cola de tickets y actividad diaria de 7 días en hora de Chile.
+- [x] 🟡 **Pines del mapa por bbox:** `GET /api/internal/locations?minLat&maxLat&minLng&maxLng`. El mapa encuadra al abrir y, cuando el usuario lo mueve, pide solo lo que está a la vista.
+- [x] 🟠 **Seguridad:** `helmet` en el backend (CSP solo en producción). Emitir un pase a mano (`POST /api/passes/generate`) queda solo para el `OWNER`. Las capturas de los tickets se validan por magic bytes y **se decodifican y recodifican con `sharp`**: se rechazan las corruptas, las truncadas y las de dimensiones absurdas, y se descartan los políglotas y los metadatos EXIF/GPS. Siguen subiéndose por el backend a Supabase Storage.
+- [x] 🟡 El filtro de excepciones conserva los campos propios de la app (`code`, `resource`, `limit`).
+- [x] 🟡 **Seed nuevo** con 3 marcas dentro de los límites de su plan, clientes, sellos, canjes y tickets (§9).
+
 **Heredado del Dev 3 anterior**
-- [ ] 🟡 Llaves de producción y despliegue (§7.5).
+- [ ] 🟡 Llaves de producción y despliegue (§7.5). **Va en su propio PR.**
 
 #### Equipo — legal
 - [ ] 🔴 **Completar y validar los términos antes de producción.** Definir `VITE_LEGAL_COMPANY`, `VITE_LEGAL_COMPANY_RUT`, `VITE_LEGAL_ADDRESS` y `VITE_LEGAL_CONTACT_EMAIL` (ver `apps/frontend/.env.example`). Mientras falten, `/terminos` muestra los marcadores `[…]` y un aviso visible de borrador. El texto es una plantilla estándar y **necesita revisión de un abogado**, incluida la adecuación a la Ley 21.719 de protección de datos cuando entre en vigencia.
@@ -373,7 +382,7 @@ Prioridad: 🔴 bloquea el piloto · 🟠 necesario para el piloto · 🟡 deuda
 - [ ] §8.8 — Aviso de vencimiento: con cuánta antelación, por qué canal y quién lo construye.
 - [ ] §8.1 — Confirmar token estático + bloqueo de 30 min como política antifraude del MVP. *Con la decisión 5, ¿el bloqueo de 30 min es por marca o por local?* Recomendación: por marca, para que no se pueda sellar dos veces cruzando la calle.
 - [ ] §8.10 — Programas de lealtad no basados en sellos: orden de entrada y modelo.
-- [ ] §8.11 — Planes: moneda (USD vs. CLP), IVA y boleta, y cuándo se aplican los límites en el backend.
+- [ ] §8.11 — Planes: moneda (USD vs. CLP), IVA y boleta. *(Los límites ya se aplican en el backend.)*
 - [x] §8.12 — Marca suspendida: sin acceso, datos conservados (implementado en el PR #16).
 - [ ] 🟠 §8.12 — **Legal:** retención de la base de clientes a 2 años de una cuenta suspendida. Requiere cambio de términos, o bien anonimizar.
 
@@ -880,13 +889,13 @@ El contrato usa **`activeStamps`** y expone **`nextExpiryAt`** (§5.4). La PWA l
 *(Abierta 2026-09-30.)* El mockup de §6.5 define 4 planes en **USD**. Antes de cobrar de verdad falta decidir:
 - ¿USD o CLP? ¿Con IVA incluido? ¿Qué documento tributario se emite?
 - El proveedor de pago.
-- **Cuándo y dónde se aplican los límites** (programas, sucursales, usuarios, 100 clientes en la prueba). Recomendación: en el backend, al crear un local, invitar a un mesero, activar un programa o dar de alta un cliente, con un error explícito (402/403 con el código `PLAN_LIMIT`) y nunca borrando datos al bajar de plan.
+- ~~Cuándo y dónde se aplican los límites~~ → **decidido e implementado (2026-09-30, PR4):** el backend bloquea **al instante** crecer más allá del plan (crear o reactivar un local, invitar un mesero, un cliente nuevo en la prueba), con 403 y `code: PLAN_LIMIT`. Lo que ya existe no se borra: una marca que baja de plan conserva sus locales y meseros, pero no puede sumar más hasta volver al límite. El límite de programas se aplicará cuando exista más de un tipo (§8.10).
 - Qué pasa al vencer la prueba sin suscripción: ¿solo lectura? ¿se deja de sellar? **No puede afectar la tarjeta que ya está en la billetera del cliente final.** *→ Respondido en §8.12: la marca se suspende y queda sin acceso.*
 
 ### 8.13 ✅ DECIDIDA (2026-10-02) — Plan manual y prueba vencida
 - **El plan se guarda en `Brand.planId`**, y el equipo interno lo asigna a mano desde `/internal` hasta que exista cobro real. Toda marca nueva parte en `TRIAL` con `trialEndsAt` = alta + 30 días.
 - **Una prueba vencida no dispara nada automático:** queda `PAST_DUE` y se ve como "Prueba vencida" en `/internal/brands`. El equipo decide si suspende la marca (§8.12). Como todavía no hay cómo pagar, suspender en automático cortaría a marcas que no tienen alternativa.
-- Los límites del plan siguen siendo solo informativos (§8.11).
+- Los límites del plan se aplican en el backend desde el PR4 (§8.11).
 
 ### 8.12 ✅ DECIDIDA (2026-09-30) — Marca suspendida y retención de datos
 **Decisión:** una marca suspendida (por no pago, fin de la prueba o abuso; la suspende el equipo interno desde `/internal`) queda **sin acceso**:
@@ -942,16 +951,17 @@ node --env-file=.env prisma/seed.js
 - Billeteras reales (Dev 1): `APPLE_PASS_TYPE_IDENTIFIER`, `APPLE_TEAM_IDENTIFIER`, `APPLE_PASS_CERT`, `APPLE_PASS_KEY`, `APPLE_PASS_PASSWORD`, `APPLE_WWDR_CERT`, `GOOGLE_WALLET_ISSUER_ID`, `GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_WALLET_PRIVATE_KEY` y, opcional para sandbox, `GOOGLE_WALLET_CLASS_ID`.
 - Tras editar el `.env` del backend hay que **reiniciar `pnpm run dev`**: el modo watch no lo vuelve a leer.
 
-**Cuentas de prueba** (las crea el seed; contraseña `password123` para todas):
+**Cuentas de prueba** (las crea el seed; contraseña `password123` para todas). Cada marca queda dentro de los límites de su plan, porque el backend bloquea crecer más allá (§8.11):
 
-| Rol | Correo | Entra a |
-|---|---|---|
-| `OWNER` | `owner@example.com` | `/admin/*` (panel completo) |
-| `STAFF` (local centro) | `cajero1@example.com` · `cajero2@example.com` | `/scan` |
-| `STAFF` (local Providencia) | `mesero@example.com` · `staff@example.com` | `/scan` |
-| `PlatformAdmin` `SUPERADMIN` | `admin@example.com` | `/internal/*` (cuando exista, §11.5). No tiene marca |
+| Marca | Plan | Locales (`/join/…`) | `OWNER` | `STAFF` |
+|---|---|---|---|---|
+| **Café Demo** | Pro | `cafe-demo` (Santiago), `cafe-demo-providencia`, `cafe-demo-nunoa` | `owner@example.com` | `cajero1` y `cajero2` (centro), `mesero` y `staff` (Providencia), `barista` (Ñuñoa), todos `@example.com` |
+| **Heladería Sur** | Prueba gratis, vence en 4 días; **en el límite** de locales y de equipo | `heladeria-sur` (Concepción) | `heladeria@example.com` | `heladeria.caja@example.com` |
+| **Panadería Norte** | Inicial, **suspendida** | `panaderia-norte` (Antofagasta), `panaderia-norte-serena` | `panaderia@example.com` | `panaderia.caja@example.com` |
 
-La marca del seed es **"Café Demo"**, con **2 locales**: `/join/cafe-demo` y `/join/cafe-demo-providencia`. Tiene 2 promociones activas, Café (5 sellos) y Almuerzo (10), y los sellos valen en ambos locales. El `OWNER` trabaja por defecto con el local más antiguo. Un local registrado a mano recibe un slug neutro `local-xxxxxxxx`, que el dueño puede personalizar en Configuración.
+`admin@example.com` es `PlatformAdmin` `SUPERADMIN`, entra a `/internal/*` y no tiene marca.
+
+El seed también carga clientes con sellos y canjes repartidos en los últimos 20 días (el resumen de `/internal` y la analítica tienen datos), y tickets en varios estados. Café Demo tiene 2 promociones activas, Café (5 sellos) y Almuerzo (10), y los sellos valen en todos sus locales. El `OWNER` trabaja por defecto con el local más antiguo. Un local registrado a mano recibe un slug neutro `local-xxxxxxxx`, que el dueño puede personalizar en Sucursales → "Link y QR".
 
 **Tests contra la BD real** (RLS, triggers, `handle_new_user`), con Supabase local levantado y las migraciones aplicadas: `pnpm --filter backend run test:db`. Cada test corre en una transacción que se revierte, así que no ensucia los datos.
 
@@ -1132,7 +1142,7 @@ export interface Paginated<T> { items: T[]; page: number; pageSize: number; tota
 - Cambios de estado, prioridad y asignación quedan en `AuditLog`.
 
 ### 11.5 ✅ Panel interno — `/internal/*` *(PR3)*
-> **Implementado.** Rutas del frontend: `/internal/tickets`, `/internal/brands`, `/internal/brands/:id`, `/internal/map`, `/internal/customers` y `/internal/audit` (solo `SUPERADMIN`).
+> **Implementado.** Rutas del frontend: `/internal/summary` (portada, PR4), `/internal/tickets`, `/internal/brands`, `/internal/brands/:id`, `/internal/map`, `/internal/customers` y `/internal/audit` (solo `SUPERADMIN`).
 >
 > API en `apps/backend/src/internal`:
 > - `GET /api/me/access`: dice si la sesión es del equipo interno, sin 403 para los demás.
@@ -1149,7 +1159,8 @@ export interface Paginated<T> { items: T[]; page: number; pageSize: number; tota
 > - El geocoding tiene un tope de 5 búsquedas en espera (503 inmediato al pasarlo) y comparte las búsquedas iguales en vuelo.
 > - Las pantallas con mapa de `/internal` también se cargan de forma diferida.
 > - `InternalLocationsService` se separó de `InternalBrandsService`.
-> - Pendiente 🟡: filtrar los pines por bbox del viewport cuando haya miles de locales. Hoy hay un tope de 2.000 más el filtro por región.
+> - *(PR4)* Los pines se filtran por el bbox del viewport (`minLat`, `maxLat`, `minLng`, `maxLng`), con el tope de 2.000 y el filtro por región.
+> - *(PR4)* `/internal` abre en `/internal/summary` (`GET /api/internal/summary`, `SUPPORT` y `SUPERADMIN`).
 **Acceso:** login con la misma pantalla de Supabase Auth. Tras el login, `GET /api/internal/me` dice si el usuario es `PlatformAdmin` y con qué rol; si no lo es, cae a `/admin` o `/scan` según su membresía. Páginas con `React.lazy` (§7.10).
 
 | Pantalla | Qué muestra / hace | `SUPPORT` | `SUPERADMIN` |

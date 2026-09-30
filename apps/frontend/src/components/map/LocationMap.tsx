@@ -36,12 +36,18 @@ export function LocationMap({
   value,
   onChange,
   onPinClick,
+  onBoundsChange,
+  autoFit = true,
   className = 'h-80',
 }: {
   pins?: MapPin[];
   value?: { latitude: number; longitude: number } | null;
   onChange?: (coords: { latitude: number; longitude: number }) => void;
   onPinClick?: (id: string) => void;
+  /** Se llama al terminar de mover o hacer zoom, con lo que queda a la vista. */
+  onBoundsChange?: (bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number }) => void;
+  /** Encuadrar los pins cuando cambian. Apagarlo cuando los pins dependen de la vista, o se encadenan. */
+  autoFit?: boolean;
   className?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -50,10 +56,12 @@ export function LocationMap({
   const pickerRef = useRef<L.Marker | null>(null);
   const onChangeRef = useRef(onChange);
   const onPinClickRef = useRef(onPinClick);
+  const onBoundsChangeRef = useRef(onBoundsChange);
   useEffect(() => {
     onChangeRef.current = onChange;
     onPinClickRef.current = onPinClick;
-  }, [onChange, onPinClick]);
+    onBoundsChangeRef.current = onBoundsChange;
+  }, [onChange, onPinClick, onBoundsChange]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -62,6 +70,10 @@ export function LocationMap({
     pinsLayerRef.current = L.layerGroup().addTo(map);
     map.on('click', (e: L.LeafletMouseEvent) => {
       onChangeRef.current?.({ latitude: e.latlng.lat, longitude: e.latlng.lng });
+    });
+    map.on('moveend', () => {
+      const b = map.getBounds();
+      onBoundsChangeRef.current?.({ minLat: b.getSouth(), maxLat: b.getNorth(), minLng: b.getWest(), maxLng: b.getEast() });
     });
     mapRef.current = map;
     // El contenedor puede medir 0 al montar dentro de un modal o una pestaña.
@@ -85,10 +97,10 @@ export function LocationMap({
         .addTo(layer);
       marker.on('click', () => onPinClickRef.current?.(pin.id));
     }
-    if (pins.length > 0 && !value) {
+    if (autoFit && pins.length > 0 && !value) {
       map.fitBounds(L.latLngBounds(pins.map((p) => [p.latitude, p.longitude] as L.LatLngTuple)), { padding: [40, 40], maxZoom: 15 });
     }
-  }, [pins, value]);
+  }, [pins, value, autoFit]);
 
   useEffect(() => {
     const map = mapRef.current;

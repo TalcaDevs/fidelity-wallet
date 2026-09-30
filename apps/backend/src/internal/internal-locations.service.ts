@@ -46,10 +46,17 @@ export class InternalLocationsService {
   async pins(
     query: ListLocationPinsQueryDto,
   ): Promise<InternalLocationPinDto[]> {
+    const bbox = toBbox(query);
     const locations = await this.prisma.merchant.findMany({
       where: {
-        latitude: { not: null },
-        longitude: { not: null },
+        latitude: {
+          not: null,
+          ...(bbox ? { gte: bbox.minLat, lte: bbox.maxLat } : {}),
+        },
+        longitude: {
+          not: null,
+          ...(bbox ? { gte: bbox.minLng, lte: bbox.maxLng } : {}),
+        },
         ...(query.brandId ? { brandId: query.brandId } : {}),
         ...(query.region ? { region: query.region } : {}),
       },
@@ -80,4 +87,12 @@ export class InternalLocationsService {
       isActive: l.isActive,
     }));
   }
+}
+
+/** El bbox solo aplica si vienen los cuatro bordes; uno suelto se ignora. */
+function toBbox(q: ListLocationPinsQueryDto) {
+  const { minLat, maxLat, minLng, maxLng } = q;
+  if ([minLat, maxLat, minLng, maxLng].some((v) => v === undefined))
+    return null;
+  return { minLat: minLat!, maxLat: maxLat!, minLng: minLng!, maxLng: maxLng! };
 }

@@ -25,6 +25,7 @@ import {
   type UserAccessInfo,
 } from '../common/users/user-directory.service.js';
 import { maskPhone } from '../common/utils/mask.util.js';
+import { assertPlanAllows } from '../common/plan/plan-limits.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
   InviteStaffMemberDto,
@@ -95,6 +96,7 @@ export class StaffService {
       callerUserId,
       dto.locationId,
     );
+    await assertPlanAllows(this.prisma, brandId, 'teamUsers');
     const supabase = this.getSupabaseAdmin();
 
     if (dto.password) {

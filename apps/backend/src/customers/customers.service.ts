@@ -13,6 +13,7 @@ import {
   locationWithBrandSelect,
   resolveLocationAccess,
 } from '../common/access/brand-access.js';
+import { assertPlanAllows } from '../common/plan/plan-limits.js';
 import { normalizePhone } from '../common/utils/phone.util.js';
 import { cleanRut, validateRut } from '../common/utils/rut.util.js';
 import { PassesService } from '../passes/passes.service.js';
@@ -104,6 +105,21 @@ export class CustomersService {
 
         if (!program || !activePromotion) {
           throw new BadRequestException('El comercio no tiene una promoción activa configurada');
+        }
+
+        // Un cliente que ya tiene la tarjeta siempre puede volver a entrar; solo las altas nuevas
+        // cuentan contra el límite de clientes del plan.
+        const existingPass = await tx.pass.findFirst({
+          where: {
+            programId: program.id,
+            customer: { OR: [{ rut: normalizedRut }, { phone: normalizedPhone }] },
+          },
+          select: { id: true },
+        });
+        if (!existingPass) {
+          await assertPlanAllows(tx, merchant.brandId, 'customers', {
+            publicMessage: 'Este local no puede registrar nuevos clientes por ahora. Consulta en caja.',
+          });
         }
 
         // 2. Buscar o crear cliente (resolución de identidad y términos)

@@ -2,6 +2,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import helmet from 'helmet';
 import { AppModule } from './app.module.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 
@@ -11,6 +12,10 @@ async function bootstrap() {
 
   // Configuración para proxy inverso (Railway, Render, Fly, Nginx): resuelve IP real del cliente para Throttler
   app.set('trust proxy', 1);
+
+  // Headers de seguridad (nosniff, frameguard, HSTS, sin X-Powered-By). La API solo sirve JSON,
+  // salvo Swagger en desarrollo, que necesita scripts inline: por eso la CSP va solo en producción.
+  app.use(helmet({ contentSecurityPolicy: process.env.NODE_ENV === 'production' }));
 
   // Prefijo global para todos los endpoints de la API
   app.setGlobalPrefix('api');

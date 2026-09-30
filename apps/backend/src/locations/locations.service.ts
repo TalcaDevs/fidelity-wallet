@@ -6,6 +6,7 @@ import {
   requireActiveBrandOwner,
   type Db,
 } from '../common/access/brand-access.js';
+import { assertPlanAllows } from '../common/plan/plan-limits.js';
 import { isValidSlug, slugify } from '../common/utils/slug.util.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type {
@@ -79,6 +80,7 @@ export class LocationsService {
     dto: CreateLocationDto,
   ): Promise<LocationDto> {
     await requireActiveBrandOwner(this.prisma, userId, brandId);
+    await assertPlanAllows(this.prisma, brandId, 'locations');
     const create = async () =>
       this.prisma.merchant.create({
         data: {
@@ -112,10 +114,13 @@ export class LocationsService {
     await requireActiveBrandOwner(this.prisma, userId, brandId);
     const existing = await this.prisma.merchant.findFirst({
       where: { id: locationId, brandId },
-      select: { id: true },
+      select: { id: true, isActive: true },
     });
     if (!existing)
       throw new NotFoundException('El local no existe en tu marca');
+    if (dto.isActive === true && !existing.isActive) {
+      await assertPlanAllows(this.prisma, brandId, 'locations');
+    }
 
     return toLocationDto(
       await this.prisma.merchant.update({

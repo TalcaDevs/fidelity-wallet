@@ -20,14 +20,22 @@ export class HttpExceptionFilter implements ExceptionFilter {
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message: string | object = 'Ha ocurrido un error interno en el servidor';
     let error = 'Internal Server Error';
+    // Campos propios de la app (p. ej. code: PLAN_LIMIT) para que el cliente distinga el caso sin parsear el texto.
+    let extra: Record<string, unknown> = {};
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
       const res = exception.getResponse();
       if (typeof res === 'object' && res !== null) {
-        const resObj = res as Record<string, unknown>;
-        message = (resObj.message as string | object) ?? exception.message;
-        error = (resObj.error as string) ?? exception.name;
+        const {
+          message: resMessage,
+          error: resError,
+          statusCode: _statusCode,
+          ...rest
+        } = res as Record<string, unknown>;
+        message = (resMessage as string | object) ?? exception.message;
+        error = (resError as string) ?? exception.name;
+        extra = rest;
       } else {
         message = res;
         error = exception.name;
@@ -49,6 +57,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     }
 
     response.status(status).json({
+      ...extra,
       statusCode: status,
       message,
       error,

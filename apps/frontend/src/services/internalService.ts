@@ -5,8 +5,10 @@ import type {
   InternalBrandUpdateInput,
   InternalCustomerDto,
   InternalLocationPinDto,
+  InternalSummaryDto,
   InternalTicketDto,
   LocationDto,
+  LocationPinsBbox,
   LocationUpdateInput,
   Paginated,
   PlatformMeDto,
@@ -71,7 +73,13 @@ export function updateLocationInternal(locationId: string, input: LocationUpdate
   return requestJson(`/api/internal/locations/${locationId}`, { method: 'PATCH', ...jsonBody(input) }, 'No se pudo guardar el local');
 }
 
-export function listLocationPins(filters: { brandId?: string; region?: string } = {}): Promise<InternalLocationPinDto[]> {
+export function getSummary(): Promise<InternalSummaryDto> {
+  return requestJson('/api/internal/summary', undefined, 'No se pudo cargar el resumen');
+}
+
+export function listLocationPins(
+  filters: { brandId?: string; region?: string } & Partial<LocationPinsBbox> = {},
+): Promise<InternalLocationPinDto[]> {
   return requestJson(`/api/internal/locations${query(filters)}`, undefined, 'No se pudo cargar el mapa');
 }
 
