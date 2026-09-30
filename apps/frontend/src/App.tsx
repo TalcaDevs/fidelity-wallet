@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Dashboard } from './pages/admin/Dashboard';
+import { Analytics } from './pages/admin/Analytics';
 import { SupabaseAuth } from './auth/SupabaseAuth';
 import { Layout } from './components/Layout';
 import { PromotionsModule } from './pages/admin/PromotionsModule';
@@ -57,6 +58,7 @@ export default function App() {
             <Route element={<Layout session={session} role={membership.role} />}>
               <Route path={ROUTES.admin} element={<Navigate to={ROUTES.dashboard} replace />} />
               <Route path={ROUTES.dashboard} element={<Dashboard session={session} brandId={membership.brandId} />} />
+              <Route path={ROUTES.analytics} element={<Analytics merchantId={membership.merchantId} />} />
               <Route path={ROUTES.promotions} element={<PromotionsModule programId={membership.programId} />} />
               <Route path={ROUTES.customers} element={<Customers brandId={membership.brandId} merchantId={membership.merchantId} />} />
               <Route path={ROUTES.settings} element={<Settings session={session} merchantId={membership.merchantId} />} />
@@ -68,6 +70,7 @@ export default function App() {
           {/* Las rutas del panel vivían en la raíz: los enlaces y marcadores
               viejos siguen funcionando en vez de caer en el 404. */}
           <Route path="/dashboard" element={<Navigate to={ROUTES.dashboard} replace />} />
+          <Route path="/analytics" element={<Navigate to={ROUTES.analytics} replace />} />
           <Route path="/promotions" element={<Navigate to={ROUTES.promotions} replace />} />
           <Route path="/customers" element={<Navigate to={ROUTES.customers} replace />} />
           <Route path="/settings" element={<Navigate to={ROUTES.settings} replace />} />
