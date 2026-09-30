@@ -45,7 +45,7 @@ export default defineConfig(({ mode }) => {
   ],
   server: {
     host: enableHttps ? true : false,
-    allowedHosts: enableHttps ? true : false,
+    allowedHosts: enableHttps ? true : undefined,
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:3000',
