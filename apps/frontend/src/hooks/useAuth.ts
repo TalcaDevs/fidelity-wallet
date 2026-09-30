@@ -25,7 +25,9 @@ export function useAuth() {
         refreshTimeout = window.setTimeout(() => { refreshTimeout = null; }, 5000);
         
         try {
-          const { data: { session } } = await supabase.auth.getSession();
+          const { data, error } = await supabase.auth.getSession();
+          if (error || !data || !data.session) return;
+          const session = data.session;
           if (session && session.expires_at) {
             const timeToExpiry = session.expires_at * 1000 - Date.now();
             if (timeToExpiry < 300000) { // 5 minutos
