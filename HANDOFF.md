@@ -310,7 +310,7 @@ Prioridad: 🔴 bloquea el piloto · 🟠 necesario para el piloto · 🟡 deuda
 **Nuevo: Equipo (§6.4) — full-stack en el módulo `staff`**
 - [ ] 🟠 Backend: listar, reenviar invitación, reasignar local y dar de baja (`GET`, `POST …/resend`, `PATCH`, `DELETE` en §6.4). El `invite` que ya existe pasa a recibir `locationId`. Dev 1 revisa el PR.
 - [ ] 🟠 UI `/admin/team`: tabla de meseros con estado (`INVITED` \| `ACTIVE`), local asignado, último ingreso y acciones con `ConfirmDialog`.
-- [ ] 🟡 Mostrar el uso contra el límite del plan ("3 de 3 usuarios"), leído del mockup de suscripción (§6.5). **No se bloquea en el backend todavía** (§8.11).
+- [x] 🟡 *(PR3 de Dev 3: la tabla de Equipo se rehízo para pantallas con menú lateral, con tabla completa desde `xl`, acciones en una línea y el aviso de "superaste el límite".)* Mostrar el uso contra el límite del plan ("3 de 3 usuarios"), leído del mockup de suscripción (§6.5). **No se bloquea en el backend todavía** (§8.11).
 
 **Nuevo: mockup de Facturación (§6.5)**
 - [ ] 🟠 `/admin/billing` tras `VITE_FEATURE_BILLING`: plan actual, uso vs. límites, los 4 planes con precio mensual/anual, historial de boletas simulado y "cambiar plan" deshabilitado.
@@ -345,19 +345,20 @@ Prioridad: 🔴 bloquea el piloto · 🟠 necesario para el piloto · 🟡 deuda
 - [ ] 🟡 Dev 1 revisa el PR1 (impacto en `/api/scan`, alta y emisión).
 - [x] 🟠 `packages/shared` (`@fidelity/shared`) con los scripts de CI y el contrato de tickets (§11.4). *(PR2)*
 
-**Fase 2 — sucursales del dueño**
-- [ ] 🟠 `/admin/locations`: CRUD de locales con dirección, comuna, región, contacto y mapa **Leaflet + OpenStreetMap** con pin arrastrable. Geocoding por `GET /api/geocode?q=` (proxy a Nominatim, con rate limit y `User-Agent` propio).
+**Fase 2 — sucursales del dueño** *(PR3, 2026-10-02)*
+- [x] 🟠 `/admin/locations`: CRUD de locales con dirección, comuna, región, contacto y mapa **Leaflet + OpenStreetMap** con pin arrastrable. Geocoding por `GET /api/geocode?q=` (proxy a Nominatim, con rate limit y `User-Agent` propio).
 
 **Fase 3 — panel interno `/internal/*`**
 - [x] 🟠 Guard `PlatformAdminGuard` en `/api/internal/*` y `GET /api/internal/me` *(PR2)*.
-- [ ] 🟠 En el frontend: rutas `/internal/*` con `React.lazy` y redirección si no es admin interno *(PR4)*.
-- [ ] 🟠 Marcas: listado con búsqueda (plan, estado, número de locales y clientes) y detalle (locales, programas, promociones, contacto del `OWNER`, actividad).
-- [ ] 🟠 Mapa con todas las sucursales.
-- [ ] 🟠 Editar la configuración de marcas y locales y suspender o reactivar una marca, con cada cambio en `AuditLog` (solo `SUPERADMIN`).
+- [x] 🟠 En el frontend: rutas `/internal/*` con `React.lazy` (chunk propio) y redirección: el admin interno cae en `/internal` al entrar y cualquier otro sale de ahí *(PR3)*.
+- [x] 🟠 Marcas: listado con búsqueda (plan, estado, número de locales y clientes) y detalle (locales, programas, promociones, contacto del `OWNER`, actividad).
+- [x] 🟠 Mapa con todas las sucursales.
+- [x] 🟠 Editar la configuración de marcas y locales y suspender o reactivar una marca, con cada cambio en `AuditLog` (solo `SUPERADMIN`).
 - [x] 🟠 **API de tickets** (§11.4): endpoints del dueño e internos, adjuntos en Storage, `AuditLog` y cierre automático *(PR2)*.
-- [ ] 🟠 **Bandeja de tickets en `/internal`** (UI): filtros, asignación, estados, prioridad, respuestas y notas internas *(PR4)*.
-- [ ] 🟡 Búsqueda de clientes finales con RUT y teléfono **enmascarados**; ver el dato completo exige un motivo y queda en `AuditLog` (solo `SUPERADMIN`, Ley 19.628).
-- [ ] 🟡 Visor de `AuditLog`.
+- [x] 🟠 **Bandeja de tickets en `/internal`** (UI): filtros, asignación, estados, prioridad, respuestas y notas internas *(PR3)*.
+- [x] 🟡 Búsqueda de clientes finales con RUT y teléfono **enmascarados**; ver el dato completo exige un motivo y queda en `AuditLog` (solo `SUPERADMIN`, Ley 19.628).
+- [x] 🟡 Visor de `AuditLog`.
+- [x] 🟠 **Plan de cada marca guardado en `Brand`** (`planId`, `trialEndsAt`, migración `20261002120000_brand_plan`). Lo asigna a mano el `SUPERADMIN` desde `/internal` y queda en `AuditLog`; `/admin/billing` muestra el plan real *(PR3)*.
 
 **Heredado del Dev 3 anterior**
 - [ ] 🟡 Llaves de producción y despliegue (§7.5).
@@ -882,6 +883,11 @@ El contrato usa **`activeStamps`** y expone **`nextExpiryAt`** (§5.4). La PWA l
 - **Cuándo y dónde se aplican los límites** (programas, sucursales, usuarios, 100 clientes en la prueba). Recomendación: en el backend, al crear un local, invitar a un mesero, activar un programa o dar de alta un cliente, con un error explícito (402/403 con el código `PLAN_LIMIT`) y nunca borrando datos al bajar de plan.
 - Qué pasa al vencer la prueba sin suscripción: ¿solo lectura? ¿se deja de sellar? **No puede afectar la tarjeta que ya está en la billetera del cliente final.** *→ Respondido en §8.12: la marca se suspende y queda sin acceso.*
 
+### 8.13 ✅ DECIDIDA (2026-10-02) — Plan manual y prueba vencida
+- **El plan se guarda en `Brand.planId`**, y el equipo interno lo asigna a mano desde `/internal` hasta que exista cobro real. Toda marca nueva parte en `TRIAL` con `trialEndsAt` = alta + 30 días.
+- **Una prueba vencida no dispara nada automático:** queda `PAST_DUE` y se ve como "Prueba vencida" en `/internal/brands`. El equipo decide si suspende la marca (§8.12). Como todavía no hay cómo pagar, suspender en automático cortaría a marcas que no tienen alternativa.
+- Los límites del plan siguen siendo solo informativos (§8.11).
+
 ### 8.12 ✅ DECIDIDA (2026-09-30) — Marca suspendida y retención de datos
 **Decisión:** una marca suspendida (por no pago, fin de la prueba o abuso; la suspende el equipo interno desde `/internal`) queda **sin acceso**:
 - El dueño y los meseros no ven nada en el panel ni en `/scan`, solo el mensaje "Tu cuenta está suspendida" (`SUSPENDED_ACCOUNT_MESSAGE`).
@@ -929,6 +935,7 @@ node --env-file=.env prisma/seed.js
 - `apps/backend/.env` → `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `ALLOWED_ORIGINS` (PR #13: orígenes permitidos por CORS, separados por comas).
 - Desarrollo sin certificados: **`ALLOW_MOCK_PASSES=true`**. Sin esta variable, `POST /api/customers` responde 500.
 - Antifraude: `STAMP_COOLDOWN_MINUTES` (por defecto 30). Para probar localmente sin esperar, usar `1`.
+- Mapas: `GEOCODING_CONTACT_EMAIL` (correo en el `User-Agent` hacia Nominatim; su política lo exige en producción).
 - Soporte: `SUPPORT_AUTOCLOSE_INTERVAL_MINUTES` (por defecto 60; `0` apaga el cierre automático de tickets `RESOLVED`).
 - **`packages/shared` se compila:** tras un pull que lo toque, corre `pnpm --filter @fidelity/shared build`. `pnpm run dev` lo recompila en modo watch.
 - **Storage local (adjuntos de tickets):** si subir una captura falla con `database error, code: 42P10`, la imagen de `storage-api` es más vieja que el esquema `storage`. Se arregla con `printf v1.77.0 > supabase/.temp/storage-version`, seguido de `npx supabase stop` y `npx supabase start`.
@@ -1018,7 +1025,10 @@ Pasos del plan original, con lo que cambió:
 - **`GET /api/merchants/by-slug/:slug`** agrega `brandId` y `brandName`.
 - **Google Wallet:** la clase pasa a ser una por programa (`fidelity_<programId>`), y la tarjeta muestra el nombre de la marca.
 
-### 11.3 Sucursales — `/admin/locations`
+### 11.3 ✅ Sucursales — `/admin/locations` *(PR3)*
+> **Implementado:** `GET/POST/PATCH /api/brands/:brandId/locations` (solo el OWNER de una marca activa) y `GET /api/geocode?q=`, con cola de 1 req/s, caché de 24 h y búsqueda solo en Chile. El slug se genera desde el nombre (`cafe-demo-nunoa`, `-2`, …).
+> - Tipos en `packages/shared/src/locations.ts`, con la lista de regiones `CHILE_REGIONS`.
+> - En el frontend, los componentes `LocationMap` (Leaflet con `divIcon`) y `LocationForm` se comparten con `/internal`. La página y Leaflet se cargan de forma diferida.
 - CRUD de locales de la marca para el `OWNER`: nombre, dirección, comuna, región, teléfono, contacto y slug (con la misma advertencia de QR impresos que hay hoy en Configuración).
 - Mapa **Leaflet + OpenStreetMap** con pin arrastrable. El componente `LocationMap` se reutiliza en `/internal`.
 - **Geocoding:** `GET /api/geocode?q=` en el backend, como proxy a Nominatim, con rate limit (la política de Nominatim es de 1 req/s y exige `User-Agent` identificable) y caché. El navegador nunca llama a Nominatim directamente.
@@ -1121,7 +1131,19 @@ export interface Paginated<T> { items: T[]; page: number; pageSize: number; tota
 - Rate limit al crear: 10 tickets por hora por marca.
 - Cambios de estado, prioridad y asignación quedan en `AuditLog`.
 
-### 11.5 Panel interno — `/internal/*`
+### 11.5 ✅ Panel interno — `/internal/*` *(PR3)*
+> **Implementado.** Rutas del frontend: `/internal/tickets`, `/internal/brands`, `/internal/brands/:id`, `/internal/map`, `/internal/customers` y `/internal/audit` (solo `SUPERADMIN`).
+>
+> API en `apps/backend/src/internal`:
+> - `GET /api/me/access`: dice si la sesión es del equipo interno, sin 403 para los demás.
+> - `GET /api/internal/brands[/:id]` y `PATCH /api/internal/brands/:id`, que edita datos, plan y estado.
+> - `PATCH /api/internal/locations/:id`.
+> - `GET /api/internal/locations`: los pines del mapa.
+> - `GET /api/internal/customers`: RUT o teléfono exactos, o filtro por marca.
+> - `POST /api/internal/customers/:id/reveal`: exige motivo.
+> - `GET /api/internal/audit`.
+>
+> Las escrituras usan `recordAudit`/`diffFields` (`common/audit`), que guardan solo los campos que cambian, con su valor antes y después. Tipos en `packages/shared/src/internal.ts`. La ruta del mapa quedó en `/internal/map` y no en `/internal/locations/map`.
 **Acceso:** login con la misma pantalla de Supabase Auth. Tras el login, `GET /api/internal/me` dice si el usuario es `PlatformAdmin` y con qué rol; si no lo es, cae a `/admin` o `/scan` según su membresía. Páginas con `React.lazy` (§7.10).
 
 | Pantalla | Qué muestra / hace | `SUPPORT` | `SUPERADMIN` |

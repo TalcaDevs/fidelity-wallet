@@ -31,6 +31,7 @@ export function Team({ brandId }: { brandId: string | null }) {
   const teamLimit = subscription ? getPlan(subscription.planId).limits.teamUsers : null;
   const teamUsers = team.staff.filter((m) => m.role === 'STAFF').length;
   const atLimit = teamLimit !== null && teamUsers >= teamLimit;
+  const overLimit = teamLimit !== null && teamUsers > teamLimit;
 
   async function handleRemove(member: StaffMemberDto) {
     setIsRemoving(true);
@@ -55,52 +56,48 @@ export function Team({ brandId }: { brandId: string | null }) {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <section className="lg:col-span-2 bg-white dark:bg-slate-800/80 rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-200/20 dark:shadow-none">
-          <div className="flex flex-wrap items-baseline justify-between gap-2 mb-6">
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Usuarios</h2>
-            {teamLimit !== null && (
-              <p className={`text-sm font-bold ${atLimit ? 'text-orange-600' : 'text-slate-500'}`}>
-                {teamUsers} de {teamLimit} usuarios de equipo
-                {atLimit && ' · llegaste al límite de tu plan'}
-              </p>
-            )}
-          </div>
+      <aside className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-br from-brand-blue to-blue-700 rounded-3xl px-6 py-5 text-white shadow-xl shadow-brand-blue/30">
+        <div>
+          <h2 className="text-lg font-bold">Acceso al escáner</h2>
+          <p className="text-blue-100 text-sm">Tu equipo entra al escáner desde cualquier navegador con su correo y contraseña.</p>
+        </div>
+        <Link to={ROUTES.scan} className="shrink-0 bg-black/20 hover:bg-black/40 transition-colors px-5 py-3 rounded-xl text-sm font-bold text-center">
+          Abrir escáner web
+        </Link>
+      </aside>
 
-          {team.error ? (
-            <ErrorAlert message={team.error} />
-          ) : team.loading ? (
-            <div className="animate-pulse space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-16 bg-slate-100 dark:bg-slate-900 rounded-xl" />
-              ))}
-            </div>
-          ) : (
-            <StaffList
-              staff={team.staff}
-              actions={{
-                onViewActivity: (member) => setDialog({ kind: 'activity', member }),
-                onReassign: (member) => setDialog({ kind: 'reassign', member }),
-                onResendInvite: (member) => void team.resendInvite(member.userId),
-                onRemove: (member) => setDialog({ kind: 'remove', member }),
-              }}
-            />
+      <section className="bg-white dark:bg-slate-800/80 rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-200/20 dark:shadow-none">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-6">
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white">Usuarios</h2>
+          {teamLimit !== null && (
+            <p className={`text-sm font-bold ${atLimit ? 'text-orange-600' : 'text-slate-500'}`}>
+              {teamUsers} de {teamLimit} usuarios de equipo
+              {overLimit ? ' · superaste el límite de tu plan' : atLimit ? ' · llegaste al límite de tu plan' : ''}
+            </p>
           )}
-        </section>
+        </div>
 
-        <aside className="bg-gradient-to-br from-brand-blue to-blue-700 rounded-3xl p-8 text-white shadow-xl shadow-brand-blue/30 h-fit">
-          <h2 className="text-xl font-bold mb-2">Acceso al escáner</h2>
-          <p className="text-blue-100 text-sm leading-relaxed mb-6">
-            Tu equipo entra al escáner desde cualquier navegador con su correo y contraseña.
-          </p>
-          <Link
-            to={ROUTES.scan}
-            className="block bg-black/20 hover:bg-black/40 transition-colors px-5 py-3 rounded-xl text-sm font-bold text-center"
-          >
-            Abrir escáner web
-          </Link>
-        </aside>
-      </div>
+        {team.error ? (
+          <ErrorAlert message={team.error} />
+        ) : team.loading ? (
+          <div className="animate-pulse space-y-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-16 bg-slate-100 dark:bg-slate-900 rounded-xl" />
+            ))}
+          </div>
+        ) : (
+          <StaffList
+            staff={team.staff}
+            actions={{
+              onViewActivity: (member) => setDialog({ kind: 'activity', member }),
+              onReassign: (member) => setDialog({ kind: 'reassign', member }),
+              onResendInvite: (member) => void team.resendInvite(member.userId),
+              onRemove: (member) => setDialog({ kind: 'remove', member }),
+            }}
+          />
+        )}
+      </section>
+
 
       {dialog?.kind === 'invite' && (
         <InviteModal locations={locations} onClose={close} onInvite={team.inviteStaff} />

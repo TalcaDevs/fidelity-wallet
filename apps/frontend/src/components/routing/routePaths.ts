@@ -6,12 +6,14 @@ export const ROUTES = {
   dashboard: '/admin/dashboard',
   analytics: '/admin/analytics',
   team: '/admin/team',
+  locations: '/admin/locations',
   billing: '/admin/billing',
   support: '/admin/support',
   promotions: '/admin/promotions',
   customers: '/admin/customers',
   settings: '/admin/settings',
   scan: '/scan',
+  internal: '/internal',
   terms: '/terminos',
 } as const;
 

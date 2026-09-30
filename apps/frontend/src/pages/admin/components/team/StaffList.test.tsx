@@ -43,7 +43,7 @@ describe('StaffList', () => {
     const ownerRow = within(table).getByText('dueno@test.cl').closest('tr')!;
     expect(within(ownerRow).queryByText('Dar de baja')).toBeNull();
     expect(within(ownerRow).queryByText('Cambiar local')).toBeNull();
-    expect(within(ownerRow).getByText('Todos')).toBeInTheDocument();
+    expect(within(ownerRow).getByText('Todos los locales')).toBeInTheDocument();
   });
 
   it('offers to resend the invitation only when the backend allows it', async () => {
