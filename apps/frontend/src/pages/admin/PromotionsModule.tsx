@@ -7,7 +7,7 @@ import { useToast } from '../../hooks/useToast';
 
 export type { Promotion };
 
-export function PromotionsModule({ merchantId }: { merchantId: string | null }) {
+export function PromotionsModule({ programId }: { programId: string | null }) {
   const { notifySuccess } = useToast();
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [promoToDelete, setPromoToDelete] = useState<Promotion | null>(null);
@@ -17,10 +17,10 @@ export function PromotionsModule({ merchantId }: { merchantId: string | null }) 
   const [editingPromoId, setEditingPromoId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchPromotions = useCallback(async (merchantId: string) => {
+  const fetchPromotions = useCallback(async (programId: string) => {
     setLoading(true);
     try {
-      const data = await listPromotions(merchantId);
+      const data = await listPromotions(programId);
       setPromotions(data);
     } catch (err) {
       console.error('Error fetching promotions:', err);
@@ -31,10 +31,10 @@ export function PromotionsModule({ merchantId }: { merchantId: string | null }) 
   }, []);
 
   useEffect(() => {
-    if (merchantId) {
-      fetchPromotions(merchantId);
+    if (programId) {
+      fetchPromotions(programId);
     }
-  }, [merchantId, fetchPromotions]);
+  }, [programId, fetchPromotions]);
 
   const handleOpenModal = (id: string | null = null) => {
     setEditingPromoId(id);
@@ -46,7 +46,7 @@ export function PromotionsModule({ merchantId }: { merchantId: string | null }) 
       setError(null);
       await setPromotionActive(promoId, !currentStatus);
       notifySuccess(currentStatus ? 'Promoción desactivada.' : 'Promoción activada.');
-      if (merchantId) fetchPromotions(merchantId);
+      if (programId) fetchPromotions(programId);
     } catch (err) {
       console.error('Error toggling status:', err);
       setError('Error al actualizar el estado de la promoción');
@@ -62,7 +62,7 @@ export function PromotionsModule({ merchantId }: { merchantId: string | null }) 
       await deletePromotion(promoToDelete.id);
       notifySuccess(`Promoción "${promoToDelete.name}" eliminada.`);
       setPromoToDelete(null);
-      if (merchantId) fetchPromotions(merchantId);
+      if (programId) fetchPromotions(programId);
     } catch (err) {
       console.error('Error deleting promotion:', err);
       setError('Error al eliminar la promoción');
@@ -84,16 +84,16 @@ export function PromotionsModule({ merchantId }: { merchantId: string | null }) 
         />
       )}
 
-      {isModalOpen && merchantId && (
+      {isModalOpen && programId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60 backdrop-blur-sm transition-opacity">
           <div className="duration-200">
             <PromotionSettings
-              merchantId={merchantId}
+              programId={programId}
               promoId={editingPromoId}
               onClose={() => {
                 setIsModalOpen(false);
                 setEditingPromoId(null);
-                fetchPromotions(merchantId);
+                fetchPromotions(programId);
               }}
             />
           </div>

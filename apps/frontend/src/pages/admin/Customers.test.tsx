@@ -30,7 +30,7 @@ describe('Customers page (Ley 19.628)', () => {
       },
     ]);
 
-    render(<Customers merchantId="m-1" />);
+    render(<Customers brandId="m-1" merchantId="m-1" />);
 
     await waitFor(() => {
       expect(screen.getByText('Acciones')).toBeInTheDocument();
@@ -53,7 +53,7 @@ describe('Customers page (Ley 19.628)', () => {
     ]);
     const deleteSpy = vi.spyOn(customersService, 'deleteCustomer').mockResolvedValue(undefined);
 
-    render(<Customers merchantId="m-1" />);
+    render(<Customers brandId="m-1" merchantId="m-1" />);
 
     await waitFor(() => {
       expect(screen.getByTitle('Eliminar datos personales (Ley 19.628)')).toBeInTheDocument();
@@ -90,7 +90,7 @@ describe('Customers page (Ley 19.628)', () => {
     ]);
     const deleteSpy = vi.spyOn(customersService, 'deleteCustomer').mockResolvedValue(undefined);
 
-    render(<Customers merchantId="m-1" />);
+    render(<Customers brandId="m-1" merchantId="m-1" />);
 
     await waitFor(() => {
       expect(screen.getByTitle('Eliminar datos personales (Ley 19.628)')).toBeInTheDocument();

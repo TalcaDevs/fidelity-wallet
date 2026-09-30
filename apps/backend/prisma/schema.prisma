@@ -7,45 +7,101 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Merchant {
-  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name              String
-  email             String         @unique
-  /// Identificador público de la landing /join/:slug. Estable: no cambia al renombrar el local.
-  slug              String         @unique
-  /// Vigencia de los sellos en dias. NULL = los sellos de este local no vencen.
-  stampValidityDays Int?
-  promotions        Promotion[]
-  passes            Pass[]
-  scans             Scan[]
-  stamps            Stamp[]
-  users             MerchantUser[]
-  createdAt         DateTime       @default(now())
+/// En toda marca migrada o que se registra sola, Brand.id = el id de su primer local.
+model Brand {
+  id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String
+  legalName    String?
+  taxId        String?
+  contactEmail String?
+  contactPhone String?
+  status       BrandStatus      @default(ACTIVE)
+  locations    Merchant[]
+  programs     LoyaltyProgram[]
+  members      BrandMember[]
+  passes       Pass[]
+  stamps       Stamp[]
+  scans        Scan[]
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @default(now()) @updatedAt
 }
 
-model MerchantUser {
+/// Un LOCAL de una marca (HANDOFF §4.1: Merchant = Location).
+model Merchant {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  brandId     String        @db.Uuid
+  brand       Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  name        String
+  email       String?       @unique
+  /// Identificador público de la landing /join/:slug. Estable: no cambia al renombrar el local.
+  slug        String        @unique
+  address     String?
+  commune     String?
+  region      String?
+  latitude    Float?
+  longitude   Float?
+  phone       String?
+  contactName String?
+  isActive    Boolean       @default(true)
+  passes      Pass[]
+  scans       Scan[]
+  stamps      Stamp[]
+  members     BrandMember[]
+  createdAt   DateTime      @default(now())
+
+  @@index([brandId])
+}
+
+model BrandMember {
   userId     String       @db.Uuid
-  merchantId String       @db.Uuid
-  merchant   Merchant     @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  brandId    String       @db.Uuid
+  brand      Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
   role       MerchantRole @default(STAFF)
+  /// Obligatorio para STAFF, NULL para OWNER (CHECK en la migración).
+  merchantId String?      @db.Uuid
+  merchant   Merchant?    @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   createdAt  DateTime     @default(now())
 
-  @@id([userId, merchantId])
+  @@id([userId, brandId])
   @@index([userId])
+  @@index([merchantId])
+}
+
+/// A lo más un programa STAMPS por marca (trigger loyalty_program_single_stamps).
+model LoyaltyProgram {
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  brandId           String       @db.Uuid
+  brand             Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  type              ProgramType  @default(STAMPS)
+  /// LOCATION está reservado y no se implementa.
+  scope             ProgramScope @default(BRAND)
+  name              String
+  /// Vigencia de los sellos en dias. NULL = los sellos de este programa no vencen.
+  stampValidityDays Int?
+  isActive          Boolean      @default(true)
+  promotions        Promotion[]
+  passes            Pass[]
+  stamps            Stamp[]
+  scans             Scan[]
+  createdAt         DateTime     @default(now())
+
+  @@index([brandId])
 }
 
 model Promotion {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  merchantId   String   @db.Uuid
-  merchant     Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  programId    String         @db.Uuid
+  program      LoyaltyProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
   name         String
   targetStamps Int
   rewardName   String
-  isActive     Boolean  @default(true)
+  isActive     Boolean        @default(true)
   stamps       Stamp[]
   /// Canjes de esta promoción (Scan REWARD_REDEEMED).
   scans        Scan[]
-  createdAt    DateTime @default(now())
+  createdAt    DateTime       @default(now())
+
+  @@index([programId])
 }
 
 model Customer {
@@ -65,59 +121,104 @@ model Customer {
 }
 
 model Pass {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  customerId String   @db.Uuid
-  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  merchantId String   @db.Uuid
-  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  passToken  String   @unique
+  id         String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId String         @db.Uuid
+  customer   Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  programId  String         @db.Uuid
+  program    LoyaltyProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+  /// Lo fija el trigger pass_derive_brand desde programId.
+  brandId    String         @db.Uuid
+  brand      Brand          @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  /// Local donde el cliente se registró.
+  merchantId String         @db.Uuid
+  merchant   Merchant       @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  passToken  String         @unique
   scans      Scan[]
   stamps     Stamp[]
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
 
-  @@unique([customerId, merchantId])
+  @@unique([customerId, programId])
+  @@index([brandId])
+  @@index([merchantId])
 }
 
 /// Fuente de verdad de los sellos. El saldo NO se guarda: se calcula al leer
 /// contando las filas no consumidas y no vencidas (vista PassStampBalance).
 model Stamp {
-  id               String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  passId           String     @db.Uuid
-  pass             Pass       @relation(fields: [passId], references: [id], onDelete: Cascade)
-  merchantId       String     @db.Uuid
-  merchant         Merchant   @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  promotionId      String?    @db.Uuid
-  promotion        Promotion? @relation(fields: [promotionId], references: [id], onDelete: SetNull)
-  earnedAt         DateTime   @default(now())
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  passId           String         @db.Uuid
+  pass             Pass           @relation(fields: [passId], references: [id], onDelete: Cascade)
+  /// brandId y programId los fija el trigger ledger_derive_from_pass desde passId.
+  brandId          String         @db.Uuid
+  brand            Brand          @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  programId        String         @db.Uuid
+  program          LoyaltyProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+  merchantId       String         @db.Uuid
+  merchant         Merchant       @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  promotionId      String?        @db.Uuid
+  promotion        Promotion?     @relation(fields: [promotionId], references: [id], onDelete: SetNull)
+  earnedAt         DateTime       @default(now())
   /// Congelado al momento de sellar (earnedAt + stampValidityDays). No se recalcula.
   expiresAt        DateTime?
   consumedAt       DateTime?
-  consumedByScanId String?    @db.Uuid
-  sourceScanId     String?    @db.Uuid
-  createdByUserId  String?    @db.Uuid
+  consumedByScanId String?        @db.Uuid
+  sourceScanId     String?        @db.Uuid
+  createdByUserId  String?        @db.Uuid
 
   @@index([passId, consumedAt, expiresAt])
   @@index([merchantId])
+  @@index([brandId, earnedAt])
 }
 
 model Scan {
-  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  passId          String     @db.Uuid
-  pass            Pass       @relation(fields: [passId], references: [id], onDelete: Cascade)
-  merchantId      String     @db.Uuid
-  merchant        Merchant   @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  passId          String         @db.Uuid
+  pass            Pass           @relation(fields: [passId], references: [id], onDelete: Cascade)
+  /// brandId y programId los fija el trigger ledger_derive_from_pass desde passId.
+  brandId         String         @db.Uuid
+  brand           Brand          @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  programId       String         @db.Uuid
+  program         LoyaltyProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+  merchantId      String         @db.Uuid
+  merchant        Merchant       @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   type            ScanType
   /// Solo en REWARD_REDEEMED: qué promoción eligió canjear el cliente. Los sellos son un saldo
   /// único del pase, así que un sello (STAMP_ADDED) no pertenece a ninguna promoción.
-  promotionId     String?    @db.Uuid
-  promotion       Promotion? @relation(fields: [promotionId], references: [id], onDelete: SetNull)
+  promotionId     String?        @db.Uuid
+  promotion       Promotion?     @relation(fields: [promotionId], references: [id], onDelete: SetNull)
   /// Auditoria: que usuario (dueno o mesero) ejecuto el scan.
-  createdByUserId String?    @db.Uuid
-  method          ScanMethod @default(QR)
-  createdAt       DateTime   @default(now())
+  createdByUserId String?        @db.Uuid
+  method          ScanMethod     @default(QR)
+  createdAt       DateTime       @default(now())
 
   @@index([promotionId])
+  @@index([brandId, createdAt])
+  @@index([merchantId, createdAt])
+}
+
+/// Se asigna solo por seed o SQL, nunca desde la UI. Sin grants para anon ni authenticated.
+model PlatformAdmin {
+  userId    String       @id @db.Uuid
+  role      PlatformRole @default(SUPPORT)
+  createdAt DateTime     @default(now())
+}
+
+/// Append-only.
+model AuditLog {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorUserId String         @db.Uuid
+  actorType   AuditActorType
+  action      String
+  entity      String
+  entityId    String?
+  before      Json?
+  after       Json?
+  reason      String?
+  createdAt   DateTime       @default(now())
+
+  @@index([entity, entityId])
+  @@index([actorUserId, createdAt])
 }
 
 enum ScanType {
@@ -133,4 +234,28 @@ enum ScanMethod {
 enum MerchantRole {
   OWNER
   STAFF
+}
+
+enum BrandStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum ProgramType {
+  STAMPS
+}
+
+enum ProgramScope {
+  BRAND
+  LOCATION
+}
+
+enum PlatformRole {
+  SUPERADMIN
+  SUPPORT
+}
+
+enum AuditActorType {
+  PLATFORM
+  OWNER
 }

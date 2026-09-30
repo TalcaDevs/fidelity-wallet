@@ -22,14 +22,23 @@ export class PublicMerchantDto {
   })
   id: string;
 
-  @ApiProperty({ description: 'Nombre visible del comercio', example: 'Cafetería Central' })
+  @ApiProperty({ description: 'Nombre visible del local', example: 'Cafetería Central — Providencia' })
   name: string;
+
+  @ApiProperty({
+    description: 'ID de la marca a la que pertenece el local. El saldo de sellos vale en todos sus locales',
+    example: 'd3b07384-d113-4011-8e8e-d9006fa70bc6',
+  })
+  brandId: string;
+
+  @ApiProperty({ description: 'Nombre de la marca', example: 'Cafetería Central' })
+  brandName: string;
 
   @ApiProperty({ description: 'Identificador público de la landing /join/:slug', example: 'cafeteria-central' })
   slug: string;
 
   @ApiProperty({
-    description: 'Vigencia de los sellos en días. null = no vencen',
+    description: 'Vigencia de los sellos en días, definida en el programa de la marca. null = no vencen',
     example: 90,
     nullable: true,
     type: Number,

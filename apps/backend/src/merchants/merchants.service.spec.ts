@@ -16,12 +16,24 @@ describe('MerchantsService', () => {
   const merchantId = 'a0000000-0000-0000-0000-000000000001';
   const ownerId = 'owner-1';
 
-  const mockMerchant = {
+  const promotions = [{ id: 'promo-1', name: 'Café gratis', targetStamps: 5, rewardName: 'Café' }];
+
+  const withProgram = (program: object | null, brand: object = {}) => ({
     id: merchantId,
-    name: 'Cafetería Central',
+    name: 'Cafetería Central — Providencia',
     slug: 'cafeteria-central',
-    stampValidityDays: 90,
-    promotions: [{ id: 'promo-1', name: 'Café gratis', targetStamps: 5, rewardName: 'Café' }],
+    isActive: true,
+    brandId: merchantId,
+    brand: { name: 'Cafetería Central', status: 'ACTIVE', programs: program ? [program] : [], ...brand },
+  });
+  const mockMerchant = withProgram({ stampValidityDays: 90, isActive: true, promotions });
+
+  const mockLocation = {
+    id: merchantId,
+    brandId: merchantId,
+    name: 'Cafetería Central — Providencia',
+    isActive: true,
+    brand: { name: 'Cafetería Central', status: 'ACTIVE' },
   };
 
   beforeEach(() => {
@@ -30,8 +42,8 @@ describe('MerchantsService', () => {
         findUnique: vi.fn().mockResolvedValue(mockMerchant),
         update: vi.fn().mockResolvedValue({ slug: 'nuevo-slug' }),
       },
-      merchantUser: {
-        findUnique: vi.fn().mockResolvedValue({ userId: ownerId, merchantId, role: 'OWNER' }),
+      brandMember: {
+        findUnique: vi.fn().mockResolvedValue({ userId: ownerId, brandId: merchantId, merchantId: null, role: 'OWNER' }),
       },
     } as unknown as PrismaService;
 
@@ -46,9 +58,11 @@ describe('MerchantsService', () => {
         id: merchantId,
         name: mockMerchant.name,
         slug: mockMerchant.slug,
+        brandId: merchantId,
+        brandName: 'Cafetería Central',
         stampValidityDays: 90,
-        activePromotion: mockMerchant.promotions[0],
-        activePromotions: mockMerchant.promotions,
+        activePromotion: promotions[0],
+        activePromotions: promotions,
       });
     });
 
@@ -62,11 +76,27 @@ describe('MerchantsService', () => {
           id: true,
           name: true,
           slug: true,
-          stampValidityDays: true,
-          promotions: {
-            where: { isActive: true },
-            orderBy: { createdAt: 'desc' },
-            select: { id: true, name: true, targetStamps: true, rewardName: true },
+          isActive: true,
+          brandId: true,
+          brand: {
+            select: {
+              name: true,
+              status: true,
+              programs: {
+                where: { type: 'STAMPS' },
+                orderBy: { createdAt: 'asc' },
+                take: 1,
+                select: {
+                  stampValidityDays: true,
+                  isActive: true,
+                  promotions: {
+                    where: { isActive: true },
+                    orderBy: { createdAt: 'desc' },
+                    select: { id: true, name: true, targetStamps: true, rewardName: true },
+                  },
+                },
+              },
+            },
           },
         },
       });
@@ -81,12 +111,36 @@ describe('MerchantsService', () => {
     });
 
     it('returns activePromotion null when the merchant has no active promotion', async () => {
-      vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue({ ...mockMerchant, promotions: [] } as any);
+      vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue(
+        withProgram({ stampValidityDays: 90, isActive: true, promotions: [] }) as any,
+      );
 
       const result = await service.findPublicBySlug('cafeteria-central');
 
       expect(result.activePromotion).toBeNull();
       expect(result.activePromotions).toEqual([]);
+    });
+
+    it('offers no promotions when the brand program is inactive or missing', async () => {
+      vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValueOnce(
+        withProgram({ stampValidityDays: 90, isActive: false, promotions }) as any,
+      );
+      expect((await service.findPublicBySlug('cafeteria-central')).activePromotions).toEqual([]);
+
+      vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValueOnce(withProgram(null) as any);
+      const result = await service.findPublicBySlug('cafeteria-central');
+      expect(result.activePromotions).toEqual([]);
+      expect(result.stampValidityDays).toBeNull();
+    });
+
+    it('answers an inactive location or a suspended brand as not found', async () => {
+      vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValueOnce({ ...mockMerchant, isActive: false } as any);
+      await expect(service.findPublicBySlug('cafeteria-central')).rejects.toThrow(NotFoundException);
+
+      vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValueOnce(
+        withProgram({ stampValidityDays: 90, isActive: true, promotions }, { status: 'SUSPENDED' }) as any,
+      );
+      await expect(service.findPublicBySlug('cafeteria-central')).rejects.toThrow(NotFoundException);
     });
 
     it('throws NotFoundException when the slug does not exist', async () => {
@@ -102,6 +156,10 @@ describe('MerchantsService', () => {
   });
 
   describe('updateSlug', () => {
+    beforeEach(() => {
+      vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue(mockLocation as any);
+    });
+
     it('normalizes and saves the new slug for the OWNER', async () => {
       const result = await service.updateSlug(merchantId, '  Café Central! ', ownerId);
 
@@ -114,10 +172,10 @@ describe('MerchantsService', () => {
     });
 
     it('forbids STAFF and non-members', async () => {
-      vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({ role: 'STAFF' } as any);
+      vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue({ role: 'STAFF', merchantId } as any);
       await expect(service.updateSlug(merchantId, 'otro', 'staff-1')).rejects.toThrow(ForbiddenException);
 
-      vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue(null);
+      vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue(null);
       await expect(service.updateSlug(merchantId, 'otro', 'extraño')).rejects.toThrow(ForbiddenException);
 
       expect(prisma.merchant.update).not.toHaveBeenCalled();

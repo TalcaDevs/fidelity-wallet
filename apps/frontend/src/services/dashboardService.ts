@@ -53,12 +53,12 @@ export function toScan(row: RawScanRow): ScanWithCustomer {
   };
 }
 
-export async function fetchDashboardStats(merchantId: string): Promise<DashboardStats> {
+export async function fetchDashboardStats(brandId: string): Promise<DashboardStats> {
   const [passesRes, stampsRes, rewardsRes, scansRes] = await Promise.all([
-    supabase.from('Pass').select('id', { count: 'exact', head: true }).eq('merchantId', merchantId),
-    supabase.from('Scan').select('*', { count: 'exact', head: true }).eq('merchantId', merchantId).eq('type', 'STAMP_ADDED'),
-    supabase.from('Scan').select('*', { count: 'exact', head: true }).eq('merchantId', merchantId).eq('type', 'REWARD_REDEEMED'),
-    supabase.from('Scan').select('id, type, createdAt, method, pass:Pass(customer:Customer(rut, phone))').eq('merchantId', merchantId).order('createdAt', { ascending: false }).limit(5),
+    supabase.from('Pass').select('id', { count: 'exact', head: true }).eq('brandId', brandId),
+    supabase.from('Scan').select('*', { count: 'exact', head: true }).eq('brandId', brandId).eq('type', 'STAMP_ADDED'),
+    supabase.from('Scan').select('*', { count: 'exact', head: true }).eq('brandId', brandId).eq('type', 'REWARD_REDEEMED'),
+    supabase.from('Scan').select('id, type, createdAt, method, pass:Pass(customer:Customer(rut, phone))').eq('brandId', brandId).order('createdAt', { ascending: false }).limit(5),
   ]);
 
   // supabase-js no lanza: devuelve { data, count, error }. Sin esta comprobación

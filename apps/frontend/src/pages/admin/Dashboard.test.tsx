@@ -32,7 +32,7 @@ describe('Dashboard', () => {
       fetchStats: vi.fn(),
     });
 
-    render(<Dashboard session={null} merchantId="merchant-1" />);
+    render(<Dashboard session={null} brandId="merchant-1" />);
 
     expect(screen.getByText('QR')).toBeInTheDocument();
     expect(screen.getByText('Manual')).toBeInTheDocument();

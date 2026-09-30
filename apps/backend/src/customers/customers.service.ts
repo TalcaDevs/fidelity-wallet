@@ -7,6 +7,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, type Customer } from '@prisma/client';
+import {
+  findStampsProgram,
+  isLocationOperational,
+  locationWithBrandSelect,
+  resolveLocationAccess,
+} from '../common/access/brand-access.js';
 import { normalizePhone } from '../common/utils/phone.util.js';
 import { cleanRut, validateRut } from '../common/utils/rut.util.js';
 import { PassesService } from '../passes/passes.service.js';
@@ -81,20 +87,22 @@ export class CustomersService {
 
     const executeTransaction = () =>
       this.prisma.$transaction(async (tx) => {
-        // 1. Validar que el comercio exista
+        // 1. Validar que el local exista y esté operando
         const merchant = await tx.merchant.findUnique({
           where: { id: dto.merchantId },
+          select: locationWithBrandSelect,
         });
 
-        if (!merchant) {
+        if (!merchant || !isLocationOperational(merchant)) {
           throw new NotFoundException('El comercio especificado no existe');
         }
 
-        const activePromotion = await tx.promotion.findFirst({
-          where: { merchantId: dto.merchantId, isActive: true },
-        });
+        const program = await findStampsProgram(tx, merchant.brandId);
+        const activePromotion = program?.isActive
+          ? await tx.promotion.findFirst({ where: { programId: program.id, isActive: true } })
+          : null;
 
-        if (!activePromotion) {
+        if (!program || !activePromotion) {
           throw new BadRequestException('El comercio no tiene una promoción activa configurada');
         }
 
@@ -106,10 +114,10 @@ export class CustomersService {
           termsAcceptance,
         );
 
-        // 3. Buscar o crear el Pase (tarjeta) para este comercio específico mediante PassesService
+        // 3. Buscar o crear el Pase (tarjeta) del programa de la marca
         const { pass, isNew: isNewPass } = await this.passesService.findOrCreatePass(
           customer.id,
-          dto.merchantId,
+          { programId: program.id, merchantId: merchant.id, brandId: merchant.brandId },
           tx,
         );
 
@@ -145,9 +153,9 @@ export class CustomersService {
 
 
   /**
-   * Elimina un cliente y su pase en el comercio especificado (Ley 19.628).
-   * Solo el OWNER del comercio puede ejecutar esta acción.
-   * Si el cliente no tiene más pases en otros comercios, el registro Customer
+   * Elimina un cliente y su pase en la marca del local indicado (Ley 19.628).
+   * Solo el OWNER de la marca puede ejecutar esta acción.
+   * Si el cliente no tiene más pases en otras marcas, el registro Customer
    * se elimina por completo de la base de datos.
    */
   async deleteCustomerByMerchant(
@@ -159,28 +167,23 @@ export class CustomersService {
       throw new ForbiddenException('Usuario no autenticado');
     }
 
-    // Verificar que el usuario que llama sea OWNER del comercio
-    const membership = await this.prisma.merchantUser.findUnique({
-      where: {
-        userId_merchantId: {
-          userId: callerUserId,
-          merchantId,
-        },
-      },
+    const { merchant } = await resolveLocationAccess(this.prisma, callerUserId, merchantId, {
+      ownerOnly: true,
+      forbiddenMessage: 'Solo el dueño del comercio puede eliminar clientes',
+      ownerMessage: 'Solo el dueño del comercio puede eliminar clientes',
     });
 
-    if (!membership || membership.role !== 'OWNER') {
-      throw new ForbiddenException('Solo el dueño del comercio puede eliminar clientes');
-    }
-
-    const pass = await this.prisma.pass.findUnique({
-      where: {
-        customerId_merchantId: {
-          customerId,
-          merchantId,
-        },
-      },
-    });
+    const program = await findStampsProgram(this.prisma, merchant.brandId);
+    const pass = program
+      ? await this.prisma.pass.findUnique({
+          where: {
+            customerId_programId: {
+              customerId,
+              programId: program.id,
+            },
+          },
+        })
+      : null;
 
     if (!pass) {
       throw new NotFoundException('Cliente o pase no encontrado en este comercio');

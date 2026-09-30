@@ -297,7 +297,7 @@ Prioridad: 🔴 bloquea el piloto · 🟠 necesario para el piloto · 🟡 deuda
 - [ ] 🟠 **Adaptar el motor a la decisión 5 junto con Dev 3:** `/api/scan`, alta y emisión pasan a resolver el `Pass` por `(customerId, programId)` y a registrar `locationId`. Dev 1 revisa el PR de la migración.
 - [ ] 🟠 **Recuperar un pase perdido** y **verificación por OTP SMS.** Siguen abiertas: el PR #13 las quitó antes del merge. Un cliente antiguo con un solo dato guardado sigue identificándose solo por ese dato.
 - [ ] 🟡 Tests pendientes del DoD (§5.7): vencimiento contra una BD real (hoy la query está mockeada), no-retroactividad de `stampValidityDays` y e2e reales (`test/app.e2e-spec.ts` sigue siendo el del boilerplate).
-- [ ] 🟡 **Tests del SQL** (`slugify`, `generate_merchant_slug`, `handle_new_user`) contra una BD real, con pgTAP o un e2e en `test/`. *Se cruza con Dev 3: la migración reescribe `handle_new_user`.*
+- [ ] 🟡 **Tests del SQL** (`slugify`, `generate_merchant_slug`, `handle_new_user`) contra una BD real, con pgTAP o un e2e en `test/`. *Parcial (2026-09-30): `handle_new_user`, RLS y triggers ya están cubiertos en `test/db` (Dev 3, PR1). Faltan `slugify` y `generate_merchant_slug`, que se pueden agregar a la misma suite.*
 - [ ] 🟡 **`ManualLookupLimiter` es en memoria y por instancia.** Con más de una instancia del backend hay que moverlo a un store compartido (Redis).
 - [x] 🟠 `POST /api/customers` atómico (PR #13).
 - [x] 🟡 Borrado de datos personales, Ley 19.628 (PR #13).
@@ -337,10 +337,12 @@ Prioridad: 🔴 bloquea el piloto · 🟠 necesario para el piloto · 🟡 deuda
 
 #### Dev 3 — Infra, base de datos y panel interno (§11)
 
-**Fase 1 — migración `Brand > Location` + `LoyaltyProgram` (primera tarea: bloquea a los otros dos)**
-- [ ] 🔴 Migración Prisma con `Brand`, `Location` (el `Merchant` de hoy, que conserva su `id` y su `slug`), `LoyaltyProgram`, `PlatformAdmin` y `AuditLog`, más el backfill de los datos existentes (§11.2).
-- [ ] 🔴 Reescribir el RLS y las funciones (`current_brand_ids()`, `is_brand_owner()`, `current_location_ids()`) y `handle_new_user`, que ahora crea `Brand` + `Location` + `LoyaltyProgram` + membresía `OWNER`. Se mantiene la regla: `raw_user_meta_data` no decide permisos.
-- [ ] 🔴 Ajustar los usos en el backend (scan, customers, passes, merchants, staff) en pareja con Dev 1, y actualizar el seed: "Café Demo" con 2 locales.
+**Fase 1 — migración `Brand > Location` + `LoyaltyProgram` (primera tarea: bloquea a los otros dos)** — *(2026-09-30, PR1 de Dev 3, pendiente de merge)*
+- [x] 🔴 Migración `20260930120000_brands_locations_programs` con `Brand`, `LoyaltyProgram`, `BrandMember`, `PlatformAdmin` y `AuditLog`, más el backfill. **La tabla `Merchant` NO se renombra:** pasa a significar "local" (glosario en §4.1). Probada sobre datos reales (1 local, 9 pases) y desde cero, sin drift contra `schema.prisma`.
+- [x] 🔴 RLS por marca (`current_brand_ids()`, `is_brand_owner()`, `current_program_ids()`, `is_program_owner()`; `current_merchant_ids()` e `is_merchant_owner()` conservan su firma), triggers de consistencia y `handle_new_user` (crea `Brand` + `Merchant` + `LoyaltyProgram` + `OWNER`). `raw_user_meta_data` sigue sin decidir permisos.
+- [x] 🔴 Backend adaptado (scan, customers, passes, merchants, staff) con el helper `common/access/brand-access.ts`; panel adaptado (membresía, dashboard, clientes, promociones, configuración); seed con 2 locales y un `SUPERADMIN`. Flujo real verificado: alta en un local, sellos alternando locales, canje en el otro, y 403 al mesero en un local ajeno.
+- [x] 🟠 Tests del SQL contra BD real: `pnpm --filter backend run test:db` (15 tests de RLS, triggers y `handle_new_user`) y job `db-tests` en la CI con Supabase local. *Cierra el pendiente 🟡 de tests del SQL de Dev 1 para `handle_new_user`.*
+- [ ] 🟡 Dev 1 revisa el PR1 (impacto en `/api/scan`, alta y emisión).
 - [ ] 🟠 Crear `packages/shared` con los scripts de CI (§10) y publicar ahí los tipos de tickets (§11.4).
 
 **Fase 2 — sucursales del dueño**
@@ -389,22 +391,34 @@ Prioridad: 🔴 bloquea el piloto · 🟠 necesario para el piloto · 🟡 deuda
 
 **Convenciones:** tablas y columnas en **PascalCase/camelCase** entrecomilladas en SQL (`"Stamp"."expiresAt"`), no snake_case. Los IDs son UUID generados por Postgres (`gen_random_uuid()`).
 
-### 4.1 ⏳ Modelos planeados (decisiones 5 a 8, 2026-09-30) — los crea Dev 3
+### 4.1 Brand > Location (decisiones 5 a 8) — implementado en `20260930120000_brands_locations_programs`
 
-**Todavía no existen en el código.** Este es el objetivo de la migración de §11.2. Hasta que se mergee, la tabla de arriba es la que vale.
+> **Glosario: `Merchant` = local (Location).** La tabla y la columna `merchantId` **no se renombraron**, para no romper el RLS, el panel, los QR impresos ni los PR abiertos de Dev 1 y Dev 2. En código nuevo, "merchant" significa "local"; "brand", "marca". Donde §0.1, §3.2, §5.8, §6.4 u §11 digan `Location`/`locationId`, léase `Merchant`/`merchantId`.
+>
+> Las filas `Merchant`, `MerchantUser`, `Promotion`, `Pass`, `Stamp` y `Scan` de la tabla de arriba quedan **reemplazadas** por esta.
 
 | Modelo | Campos clave | Notas |
 |---|---|---|
-| `Brand` | `id`, `name`, `legalName?`, `taxId?` (RUT empresa), `contactEmail`, `contactPhone?`, `status` (`ACTIVE` \| `SUSPENDED`), `planId` (mock, §6.5), `trialEndsAt?` | La marca: el cliente que nos paga. Una marca suspendida no emite ni sella |
-| `Location` | `id` (**= el `Merchant.id` actual**), `brandId`, `name`, `slug` (único, **se conserva**), `address`, `commune`, `region`, `lat?`, `lng?`, `phone?`, `contactName?`, `isActive` | Es el `Merchant` de hoy renombrado. Conservar `id` y `slug` evita romper los QR impresos y el historial de `Scan` |
-| `LoyaltyProgram` | `id`, `brandId`, `type` (`STAMPS`, único valor implementado), `scope` (`BRAND`; `LOCATION` reservado), `name`, `stampValidityDays?`, `isActive` | Cada programa es **una tarjeta distinta en la billetera** (§8.10). `stampValidityDays` se mueve acá desde `Merchant` |
-| `Promotion` | + `programId` | Cuelga del programa, no del local |
-| `Pass` | `customerId`, `programId`, `passToken` · **`@@unique([customerId, programId])`** | Reemplaza a `@@unique([customerId, merchantId])`. Hoy es equivalente, porque hay un programa por marca |
-| `Stamp` · `Scan` | + `programId`, + `locationId` | `locationId` = dónde se dio el sello o el canje; lo necesitan la reportería por local (§5.8) y el antifraude |
-| `MerchantUser` → `BrandMember` | `userId`, `brandId`, `role` (`OWNER` \| `STAFF`), `locationId?` | `OWNER` sin local (ve toda la marca); `STAFF` con `locationId` obligatorio |
-| `PlatformAdmin` | `userId` (PK), `role` (`SUPERADMIN` \| `SUPPORT`), `createdAt` | Se asigna solo por seed o SQL, **nunca desde la UI**. `authenticated` no tiene grants sobre esta tabla |
-| `AuditLog` | `id`, `actorUserId`, `actorType` (`PLATFORM` \| `OWNER`), `action`, `entity`, `entityId`, `before?` (jsonb), `after?` (jsonb), `reason?`, `createdAt` | Append-only. Registra toda edición desde `/internal` y toda vista de un dato personal completo |
-| `Ticket` · `TicketMessage` · `TicketAttachment` | ver §11.4 | Contrato compartido con Dev 2 |
+| `Brand` | `id`, `name`, `legalName?`, `taxId?`, `contactEmail?`, `contactPhone?`, `status` (`ACTIVE` \| `SUSPENDED`) | **`Brand.id` = id de su primer local** en toda marca migrada o registrada sola, así que `brandId = merchantId` para esos datos. Marca suspendida: `/join` responde 404, el alta 404 y `/api/scan` 403. *`planId`/`trialEndsAt` quedan para el mockup de facturación (§6.5)* |
+| `Merchant` (local) | + `brandId`, `address?`, `commune?`, `region?`, `latitude?`, `longitude?`, `phone?`, `contactName?`, `isActive`; `email` pasa a nullable | Conserva `id`, `slug` y `name`. **`stampValidityDays` se eliminó** (vive en el programa). Local inactivo: mismo trato que marca suspendida |
+| `BrandMember` | `userId`, `brandId`, `role`, `merchantId?` · PK `[userId, brandId]` | **Reemplaza a `MerchantUser` (eliminada).** CHECK: `OWNER` sin local, `STAFF` con local; un trigger exige que el local sea de la marca |
+| `LoyaltyProgram` | `id`, `brandId`, `type` (`STAMPS`), `scope` (`BRAND`; `LOCATION` reservado), `name`, `stampValidityDays?`, `isActive` | A lo más **un `STAMPS` por marca** (trigger `loyalty_program_single_stamps`). Programa inactivo = sin promociones canjeables |
+| `Promotion` | `programId` en vez de `merchantId` | |
+| `Pass` | + `programId`, `brandId` · **`@@unique([customerId, programId])`** | `merchantId` queda como **local de alta**. `brandId` lo fija el trigger `pass_derive_brand` |
+| `Stamp` · `Scan` | + `brandId`, `programId` | `merchantId` = local donde ocurrió. `brandId`/`programId` los fija el trigger `ledger_derive_from_pass`: lo que mande el backend se ignora, y un local de otra marca es rechazado |
+| `PassStampBalance` *(vista)* | + `brandId`, `programId` | Sigue con `security_invoker` |
+| `PlatformAdmin` | `userId` (PK), `role` (`SUPERADMIN` \| `SUPPORT`) | RLS sin políticas y sin grants para `anon`/`authenticated` |
+| `AuditLog` | `actorUserId`, `actorType`, `action`, `entity`, `entityId?`, `before?`, `after?`, `reason?` | Append-only. Mismo tratamiento que `PlatformAdmin` |
+| `Ticket` · `TicketMessage` · `TicketAttachment` | ver §11.4 | ⏳ PR2 de Dev 3 |
+
+**RLS resultante:**
+- **`OWNER`:** toda su marca.
+- **`STAFF`:**
+  - `Merchant`, `Scan` y `Stamp` solo de su local.
+  - `Pass` y `PassStampBalance` de toda la marca, porque el saldo es de la marca. Sin `passToken`.
+  - `Customer`: nada, igual que antes.
+- **Escritura del panel:** solo `Merchant.name`, `LoyaltyProgram.name`/`stampValidityDays` y `Promotion`, y solo el `OWNER`. Ya no hay escritura sobre membresías.
+- **Admin interno:** para que el trigger no le cree una marca, el usuario se crea con `user_metadata.platform_admin = true`. El flag no otorga nada: el acceso lo da la fila en `PlatformAdmin`.
 
 ---
 
@@ -891,9 +905,13 @@ node --env-file=.env prisma/seed.js
 | Rol | Correo | Entra a |
 |---|---|---|
 | `OWNER` | `owner@example.com` | `/admin/*` (panel completo) |
-| `STAFF` | `cajero1@example.com` · `cajero2@example.com` · `mesero@example.com` · `staff@example.com` | `/scan` |
+| `STAFF` (local centro) | `cajero1@example.com` · `cajero2@example.com` | `/scan` |
+| `STAFF` (local Providencia) | `mesero@example.com` · `staff@example.com` | `/scan` |
+| `PlatformAdmin` `SUPERADMIN` | `admin@example.com` | `/internal/*` (cuando exista, §11.5). No tiene marca |
 
-El local del seed se llama **"Café Demo"**, su link es **`/join/cafe-demo`** y tiene 2 promociones activas: Café (5 sellos) y Almuerzo (10). Un local registrado a mano recibe un slug neutro `local-xxxxxxxx`, que el dueño puede personalizar en Configuración.
+La marca del seed es **"Café Demo"**, con **2 locales**: `/join/cafe-demo` y `/join/cafe-demo-providencia`. Tiene 2 promociones activas, Café (5 sellos) y Almuerzo (10), y los sellos valen en ambos locales. El `OWNER` trabaja por defecto con el local más antiguo. Un local registrado a mano recibe un slug neutro `local-xxxxxxxx`, que el dueño puede personalizar en Configuración.
+
+**Tests contra la BD real** (RLS, triggers, `handle_new_user`), con Supabase local levantado y las migraciones aplicadas: `pnpm --filter backend run test:db`. Cada test corre en una transacción que se revierte, así que no ensucia los datos.
 
 **Probar el flujo del cliente de punta a punta:**
 1. Abrir `/join/<slug>` en una ventana de incógnito y registrarse con un RUT **y** un teléfono nuevos, aceptando los términos.
@@ -934,19 +952,36 @@ El local del seed se llama **"Café Demo"**, su link es **`/join/cafe-demo`** y 
 3. **`/admin/locations`**: sucursales del dueño, con mapa (§11.3).
 4. **`/internal/*`**: marcas, mapa, tickets, clientes y auditoría (§11.5).
 
-### 11.2 Migración `Brand > Location`
-Modelo objetivo en §4.1. Pasos de la migración (Prisma, un solo PR, con Dev 1 de revisor):
+### 11.2 ✅ Migración `Brand > Location` *(2026-09-30, PR1 — modelo real en §4.1)*
+Decisiones de implementación tomadas en el grill del 2026-09-30:
+- **Sin renombrar `Merchant`** (glosario en §4.1).
+- **4 PRs secuenciales:** PR1 migración, PR2 tickets, PR3 sucursales, PR4 panel interno.
+- **Bloqueo de 30 min por marca.**
+- **Tests del SQL en la CI con Supabase local.**
+
+Pasos del plan original, con lo que cambió:
 1. Crear `Brand`, `LoyaltyProgram`, `BrandMember`, `PlatformAdmin` y `AuditLog`.
-2. **Renombrar `Merchant` → `Location`**, conservando `id`, `slug` y `name`, y agregar `brandId` y los campos de dirección y contacto.
+2. ~~Renombrar `Merchant` → `Location`~~ **No se renombró:** se agregaron `brandId` y los campos de dirección y contacto a `Merchant`.
 3. **Backfill**, por cada local existente: una `Brand` (con `name` y `contactEmail` desde `Merchant.email`), un `LoyaltyProgram` `STAMPS` con el `stampValidityDays` del local, `Promotion.programId`, `Pass.programId`, y `Stamp`/`Scan` con `locationId` = el id del local y `programId`.
 4. Cambiar el unique de `Pass` a `(customerId, programId)` y, **al final**, eliminar `Merchant.stampValidityDays` y las columnas viejas.
 5. `MerchantUser` → `BrandMember`: `OWNER` sin `locationId` y `STAFF` con el `locationId` de su local actual.
-6. **RLS:** `current_brand_ids()`, `is_brand_owner(brandId)` y `current_location_ids()`, `SECURITY DEFINER STABLE` con `search_path` fijo, igual que las actuales. El `OWNER` ve toda su marca; el `STAFF` solo lee lo de su local. Escritura solo para `OWNER`. `authenticated` **sin grants** sobre `PlatformAdmin` y `AuditLog`.
+6. **RLS:** `current_brand_ids()`, `is_brand_owner(brandId)`, `current_program_ids()` e `is_program_owner()`. `current_merchant_ids()` e `is_merchant_owner()` mantienen su firma con semántica de marca. Todas son `SECURITY DEFINER STABLE` con `search_path` fijo. El `OWNER` ve toda su marca. El `STAFF` lee su local, más los pases y saldos de la marca (ver §4.1). Escritura solo para `OWNER`. `authenticated` **sin grants** sobre `PlatformAdmin` y `AuditLog`.
 7. **`handle_new_user`**: un dueño nuevo recibe `Brand` + `Location` (slug neutro `local-<8 hex>`) + `LoyaltyProgram` + `BrandMember OWNER`. La regla sigue igual: **`raw_user_meta_data` no decide permisos** (§7.1).
 8. **Backend (en pareja con Dev 1):** `/api/scan` resuelve el pase por programa y registra `locationId` (el del `STAFF`, o el que elige el `OWNER`). El bloqueo de 30 min se evalúa por pase, es decir, por marca (§8.1). `by-slug` devuelve el local con su marca y su programa. El alta crea el pase en el programa. `staff` pasa a trabajar por marca.
 9. **Seed:** "Café Demo" con **2 locales** (`cafe-demo` y `cafe-demo-providencia`), 1 `OWNER`, meseros repartidos entre ambos locales y 1 `PlatformAdmin` `SUPERADMIN` (`admin@example.com`).
 
-**DoD:** SQL probado contra una BD real (pgTAP o e2e); flujo del §9 **sellando en un local y canjeando en otro**; un `STAFF` del local A no lee clientes del local B de otra marca; un usuario recién registrado no puede darse membresía por metadata; CI verde.
+**DoD:**
+- [x] SQL probado contra una BD real (`test/db`, Vitest + Prisma con `SET ROLE` y JWT de Supabase, job `db-tests`).
+- [x] Flujo del §9 **sellando en un local y canjeando en otro**, contra el backend y Supabase locales.
+- [x] Un `STAFF` no lee datos de otra marca ni clientes, y no puede escanear en otro local de su marca (403).
+- [x] Un usuario recién registrado no puede darse membresía por metadata.
+- [ ] CI verde en el PR. *El job `db-tests` es nuevo: validar que `supabase start` corre en GitHub Actions.*
+
+**Para quien hace pull del PR1:** `pnpm --filter backend exec prisma generate`, luego `prisma migrate deploy`, y para tener los 2 locales, reset + seed (§9).
+- **Frontend:** los servicios del panel filtran por `brandId`/`programId`, y `useMembership` expone `brandId`, `merchantId` y `programId`.
+- **Backend:** `resolveLocationAccess` (en `common/access/brand-access.ts`) reemplaza a los `merchantUser.findUnique`.
+- **`GET /api/merchants/by-slug/:slug`** agrega `brandId` y `brandName`.
+- **Google Wallet:** la clase pasa a ser una por programa (`fidelity_<programId>`), y la tarjeta muestra el nombre de la marca.
 
 ### 11.3 Sucursales — `/admin/locations`
 - CRUD de locales de la marca para el `OWNER`: nombre, dirección, comuna, región, teléfono, contacto y slug (con la misma advertencia de QR impresos que hay hoy en Configuración).

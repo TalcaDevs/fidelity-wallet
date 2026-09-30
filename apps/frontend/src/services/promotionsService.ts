@@ -2,7 +2,7 @@ import { supabase } from '../lib/supabase';
 
 export interface Promotion {
   id: string;
-  merchantId: string;
+  programId: string;
   name: string;
   targetStamps: number;
   rewardName: string;
@@ -12,11 +12,11 @@ export interface Promotion {
 
 export type PromotionFormValues = Pick<Promotion, 'name' | 'targetStamps' | 'rewardName'>;
 
-export async function listPromotions(merchantId: string): Promise<Promotion[]> {
+export async function listPromotions(programId: string): Promise<Promotion[]> {
   const { data, error } = await supabase
     .from('Promotion')
     .select('*')
-    .eq('merchantId', merchantId)
+    .eq('programId', programId)
     .order('createdAt', { ascending: false });
 
   if (error) throw error;
@@ -36,9 +36,9 @@ export async function getPromotion(promoId: string): Promise<PromotionFormValues
   return data;
 }
 
-export async function createPromotion(merchantId: string, values: PromotionFormValues): Promise<void> {
+export async function createPromotion(programId: string, values: PromotionFormValues): Promise<void> {
   const { error } = await supabase.from('Promotion').insert([{
-    merchantId,
+    programId,
     name: values.name,
     targetStamps: values.targetStamps,
     rewardName: values.rewardName,

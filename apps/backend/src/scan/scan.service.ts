@@ -6,8 +6,14 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import type { Customer, Merchant, Pass, Prisma, Promotion } from '@prisma/client';
+import type { Customer, LoyaltyProgram, Pass, Prisma, Promotion } from '@prisma/client';
 import { ScanMethod, ScanType } from '@prisma/client';
+import {
+  assertLocationOperational,
+  findStampsProgram,
+  resolveLocationAccess,
+  type LocationWithBrand,
+} from '../common/access/brand-access.js';
 import { maskPhone, maskRut } from '../common/utils/mask.util.js';
 import { normalizePhone } from '../common/utils/phone.util.js';
 import { cleanRut, validateRut } from '../common/utils/rut.util.js';
@@ -43,9 +49,13 @@ export function resolveStampCooldownMs(raw: string | undefined): number {
 }
 
 type PassWithRelations = Pass & {
-  merchant: Merchant;
   customer: Customer | null;
 };
+
+interface ScanContext {
+  merchant: LocationWithBrand;
+  program: LoyaltyProgram;
+}
 
 type Tx = Prisma.TransactionClient;
 
@@ -89,20 +99,8 @@ export class ScanService {
       throw new UnauthorizedException('Usuario no autenticado');
     }
 
-    const membership = await this.prisma.merchantUser.findUnique({
-      where: {
-        userId_merchantId: {
-          userId: callerUserId,
-          merchantId: dto.merchantId,
-        },
-      },
-    });
-
-    if (!membership) {
-      throw new ForbiddenException(
-        'El usuario no está autorizado como personal o dueño en este comercio',
-      );
-    }
+    const { merchant } = await resolveLocationAccess(this.prisma, callerUserId, dto.merchantId);
+    assertLocationOperational(merchant);
 
     // El límite va después de validar la membresía (un extraño no consume el cupo de nadie) y
     // antes de buscar (el intento cuenta aunque el RUT no exista: eso es justo lo que se frena).
@@ -110,12 +108,18 @@ export class ScanService {
       this.manualLookupLimiter.consume(callerUserId);
     }
 
-    const pass = await this.resolvePass(dto);
+    const program = await findStampsProgram(this.prisma, merchant.brandId);
+    if (!program || !program.isActive) {
+      throw new BadRequestException('El comercio no tiene una promoción activa válida');
+    }
+    const context: ScanContext = { merchant, program };
+
+    const pass = await this.resolvePass(dto, program);
 
     // Los sellos son un saldo único del pase: cualquier sello vigente sirve para cualquier
     // promoción activa. La más reciente es la "de referencia" (la que muestran landing y pase).
     const activePromotions = await this.prisma.promotion.findMany({
-      where: { merchantId: dto.merchantId, isActive: true },
+      where: { programId: program.id, isActive: true },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -136,8 +140,8 @@ export class ScanService {
     if (dto.action === ScanActionType.STAMP) {
       const result = await this.executeStampAction(
         pass,
+        context,
         activePromotions,
-        dto,
         callerUserId,
         maskedCustomer,
         method,
@@ -152,9 +156,9 @@ export class ScanService {
       const chosen = this.resolveRedeemPromotion(activePromotions, dto.promotionId);
       const result = await this.executeRedeemAction(
         pass,
+        context,
         chosen,
         activePromotions,
-        dto,
         callerUserId,
         maskedCustomer,
         method,
@@ -195,11 +199,10 @@ export class ScanService {
 
   /**
    * Resuelve el pase a partir del QR (passToken) o, en el ingreso manual, del RUT/teléfono
-   * del cliente. El ingreso manual solo busca dentro del comercio del escaneo, así que no
-   * puede alcanzar pases de otro local.
+   * del cliente. Solo valen pases del programa de la marca del local.
    */
-  private async resolvePass(dto: ScanActionDto): Promise<PassWithRelations> {
-    const include = { merchant: true, customer: true } as const;
+  private async resolvePass(dto: ScanActionDto, program: LoyaltyProgram): Promise<PassWithRelations> {
+    const include = { customer: true } as const;
 
     if (dto.passToken) {
       const pass = await this.prisma.pass.findUnique({
@@ -211,7 +214,7 @@ export class ScanService {
         throw new NotFoundException('No se encontró un pase para el token proporcionado');
       }
 
-      if (pass.merchantId !== dto.merchantId) {
+      if (pass.programId !== program.id) {
         throw new ForbiddenException('El pase no pertenece a este comercio');
       }
 
@@ -240,7 +243,7 @@ export class ScanService {
     }
 
     const pass = await this.prisma.pass.findFirst({
-      where: { merchantId: dto.merchantId, customer: customerWhere },
+      where: { programId: program.id, customer: customerWhere },
       include,
     });
 
@@ -268,8 +271,8 @@ export class ScanService {
 
   private async executeStampAction(
     pass: PassWithRelations,
+    { merchant, program }: ScanContext,
     activePromotions: Promotion[],
-    dto: ScanActionDto,
     callerUserId: string,
     maskedCustomer: MaskedCustomerDto | undefined,
     method: ScanMethod,
@@ -285,16 +288,16 @@ export class ScanService {
       // el cooldown fuera 0.
       const now = new Date();
       const expiresAt =
-        pass.merchant.stampValidityDays && pass.merchant.stampValidityDays > 0
-          ? new Date(now.getTime() + pass.merchant.stampValidityDays * 24 * 60 * 60 * 1000)
+        program.stampValidityDays && program.stampValidityDays > 0
+          ? new Date(now.getTime() + program.stampValidityDays * 24 * 60 * 60 * 1000)
           : null;
 
       // Bloqueo por pase: un sello cada stampCooldownMs. Se evalúa dentro del lock de fila,
-      // así que dos cajeros escaneando a la vez no pueden colar un segundo sello.
+      // así que dos cajeros escaneando a la vez no pueden colar un segundo sello. Es por marca:
+      // sellar en un local también bloquea sellar en otro.
       const latestScan = await tx.scan.findFirst({
         where: {
           passId: pass.id,
-          merchantId: dto.merchantId,
           type: ScanType.STAMP_ADDED,
         },
         orderBy: { createdAt: 'desc' },
@@ -332,10 +335,13 @@ export class ScanService {
         };
       }
 
+      // brandId y programId los vuelve a fijar el trigger ledger_derive_from_pass.
       const scan = await tx.scan.create({
         data: {
           passId: pass.id,
-          merchantId: dto.merchantId,
+          merchantId: merchant.id,
+          brandId: merchant.brandId,
+          programId: program.id,
           type: ScanType.STAMP_ADDED,
           createdByUserId: callerUserId,
           method,
@@ -346,7 +352,9 @@ export class ScanService {
       await tx.stamp.create({
         data: {
           passId: pass.id,
-          merchantId: dto.merchantId,
+          merchantId: merchant.id,
+          brandId: merchant.brandId,
+          programId: program.id,
           sourceScanId: scan.id,
           createdByUserId: callerUserId,
           earnedAt: now,
@@ -381,9 +389,9 @@ export class ScanService {
 
   private async executeRedeemAction(
     pass: PassWithRelations,
+    { merchant, program }: ScanContext,
     promotion: Promotion,
     activePromotions: Promotion[],
-    dto: ScanActionDto,
     callerUserId: string,
     maskedCustomer: MaskedCustomerDto | undefined,
     method: ScanMethod,
@@ -399,7 +407,6 @@ export class ScanService {
       const latestRedeem = await tx.scan.findFirst({
         where: {
           passId: pass.id,
-          merchantId: dto.merchantId,
           type: ScanType.REWARD_REDEEMED,
           promotionId: promotion.id,
         },
@@ -444,7 +451,9 @@ export class ScanService {
       const scan = await tx.scan.create({
         data: {
           passId: pass.id,
-          merchantId: dto.merchantId,
+          merchantId: merchant.id,
+          brandId: merchant.brandId,
+          programId: program.id,
           type: ScanType.REWARD_REDEEMED,
           promotionId: promotion.id,
           createdByUserId: callerUserId,

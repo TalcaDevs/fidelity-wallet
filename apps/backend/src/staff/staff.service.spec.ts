@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -10,15 +10,25 @@ describe('StaffService', () => {
   let mockSupabaseAdmin: any;
 
   const mockMerchantId = 'a0000000-0000-0000-0000-000000000001';
+  const mockBrandId = 'b0000000-0000-0000-0000-000000000001';
   const mockOwnerId = 'owner-uuid-123';
+
+  const mockLocation = {
+    id: mockMerchantId,
+    brandId: mockBrandId,
+    name: 'Cafeteria',
+    isActive: true,
+    brand: { name: 'Cafeteria', status: 'ACTIVE' },
+  };
+  const ownerMembership = { userId: mockOwnerId, brandId: mockBrandId, merchantId: null, role: 'OWNER' };
 
   beforeEach(() => {
     prisma = {
       merchant: {
-        findUnique: vi.fn(),
+        findUnique: vi.fn().mockResolvedValue(mockLocation),
       },
-      merchantUser: {
-        findUnique: vi.fn(),
+      brandMember: {
+        findUnique: vi.fn().mockResolvedValue(ownerMembership),
         upsert: vi.fn().mockResolvedValue({}),
       },
     } as unknown as PrismaService;
@@ -46,74 +56,33 @@ describe('StaffService', () => {
 
   it('should throw UnauthorizedException if callerUserId is missing', async () => {
     await expect(
-      service.inviteStaff(
-        {
-          merchantId: mockMerchantId,
-          email: 'staff@test.com',
-        },
-        '',
-      ),
+      service.inviteStaff({ merchantId: mockMerchantId, email: 'staff@test.com' }, ''),
     ).rejects.toThrow(UnauthorizedException);
   });
 
-  it('should throw ForbiddenException if caller is not an OWNER of the merchant', async () => {
-    vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({
-      id: 'mu-1',
+  it('should throw ForbiddenException if caller is not an OWNER of the brand', async () => {
+    vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue({
       userId: 'caller-staff',
+      brandId: mockBrandId,
       merchantId: mockMerchantId,
-      role: 'STAFF', // Not OWNER!
-      createdAt: new Date(),
+      role: 'STAFF',
     } as any);
 
     await expect(
-      service.inviteStaff(
-        {
-          merchantId: mockMerchantId,
-          email: 'newstaff@test.com',
-        },
-        'caller-staff',
-      ),
-    ).rejects.toThrow(ForbiddenException);
+      service.inviteStaff({ merchantId: mockMerchantId, email: 'newstaff@test.com' }, 'caller-staff'),
+    ).rejects.toThrow('Solo el dueño del comercio puede invitar personal');
   });
 
-  it('should throw NotFoundException if merchant does not exist', async () => {
-    vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({
-      id: 'mu-owner',
-      userId: mockOwnerId,
-      merchantId: mockMerchantId,
-      role: 'OWNER',
-      createdAt: new Date(),
-    } as any);
-
+  it('should throw ForbiddenException if the location does not exist', async () => {
     vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue(null);
 
     await expect(
-      service.inviteStaff(
-        {
-          merchantId: mockMerchantId,
-          email: 'staff@test.com',
-        },
-        mockOwnerId,
-      ),
-    ).rejects.toThrow(NotFoundException);
+      service.inviteStaff({ merchantId: mockMerchantId, email: 'staff@test.com' }, mockOwnerId),
+    ).rejects.toThrow(ForbiddenException);
+    expect(mockSupabaseAdmin.auth.admin.inviteUserByEmail).not.toHaveBeenCalled();
   });
 
   it('should invite staff without password using inviteUserByEmail', async () => {
-    vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({
-      id: 'mu-owner',
-      userId: mockOwnerId,
-      merchantId: mockMerchantId,
-      role: 'OWNER',
-      createdAt: new Date(),
-    } as any);
-
-    vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue({
-      id: mockMerchantId,
-      name: 'Cafeteria',
-      email: 'owner@test.com',
-      stampValidityDays: null,
-    } as any);
-
     mockSupabaseAdmin.auth.admin.inviteUserByEmail.mockResolvedValue({
       data: {
         user: { id: 'u0000000-0000-0000-0000-000000000002', email: 'mesero@cafeteria.cl' },
@@ -122,10 +91,7 @@ describe('StaffService', () => {
     });
 
     const result = await service.inviteStaff(
-      {
-        merchantId: mockMerchantId,
-        email: 'mesero@cafeteria.cl',
-      },
+      { merchantId: mockMerchantId, email: 'mesero@cafeteria.cl' },
       mockOwnerId,
     );
 
@@ -135,29 +101,19 @@ describe('StaffService', () => {
       'mesero@cafeteria.cl',
       { data: { merchant_id: mockMerchantId } },
     );
-    // La membresía la crea el backend (no el trigger), siempre como STAFF y sin degradar a nadie
-    expect(prisma.merchantUser.upsert).toHaveBeenCalledWith({
-      where: { userId_merchantId: { userId: 'u0000000-0000-0000-0000-000000000002', merchantId: mockMerchantId } },
-      create: { userId: 'u0000000-0000-0000-0000-000000000002', merchantId: mockMerchantId, role: 'STAFF' },
+    expect(prisma.brandMember.upsert).toHaveBeenCalledWith({
+      where: { userId_brandId: { userId: 'u0000000-0000-0000-0000-000000000002', brandId: mockBrandId } },
+      create: {
+        userId: 'u0000000-0000-0000-0000-000000000002',
+        brandId: mockBrandId,
+        merchantId: mockMerchantId,
+        role: 'STAFF',
+      },
       update: {},
     });
   });
 
   it('should create staff with password using createUser', async () => {
-    vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({
-      id: 'mu-owner',
-      userId: mockOwnerId,
-      merchantId: mockMerchantId,
-      role: 'OWNER',
-      createdAt: new Date(),
-    } as any);
-
-    vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue({
-      id: mockMerchantId,
-      name: 'Cafeteria',
-      email: 'owner@test.com',
-    } as any);
-
     mockSupabaseAdmin.auth.admin.createUser.mockResolvedValue({
       data: {
         user: { id: 'u0000000-0000-0000-0000-000000000003', email: 'cajero@cafeteria.cl' },
@@ -166,11 +122,7 @@ describe('StaffService', () => {
     });
 
     const result = await service.inviteStaff(
-      {
-        merchantId: mockMerchantId,
-        email: 'cajero@cafeteria.cl',
-        password: 'ClaveSegura2026!',
-      },
+      { merchantId: mockMerchantId, email: 'cajero@cafeteria.cl', password: 'ClaveSegura2026!' },
       mockOwnerId,
     );
 
@@ -182,41 +134,26 @@ describe('StaffService', () => {
       email_confirm: true,
       user_metadata: { merchant_id: mockMerchantId },
     });
-    expect(prisma.merchantUser.upsert).toHaveBeenCalledWith(
+    expect(prisma.brandMember.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        create: { userId: 'u0000000-0000-0000-0000-000000000003', merchantId: mockMerchantId, role: 'STAFF' },
+        create: {
+          userId: 'u0000000-0000-0000-0000-000000000003',
+          brandId: mockBrandId,
+          merchantId: mockMerchantId,
+          role: 'STAFF',
+        },
       }),
     );
   });
 
   it('should throw BadRequestException if Supabase returns error', async () => {
-    vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({
-      id: 'mu-owner',
-      userId: mockOwnerId,
-      merchantId: mockMerchantId,
-      role: 'OWNER',
-      createdAt: new Date(),
-    } as any);
-
-    vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue({
-      id: mockMerchantId,
-      name: 'Cafeteria',
-      email: 'owner@test.com',
-    } as any);
-
     mockSupabaseAdmin.auth.admin.inviteUserByEmail.mockResolvedValue({
       data: null,
       error: { message: 'User already exists' },
     });
 
     await expect(
-      service.inviteStaff(
-        {
-          merchantId: mockMerchantId,
-          email: 'duplicate@test.com',
-        },
-        mockOwnerId,
-      ),
+      service.inviteStaff({ merchantId: mockMerchantId, email: 'duplicate@test.com' }, mockOwnerId),
     ).rejects.toThrow(BadRequestException);
   });
 });

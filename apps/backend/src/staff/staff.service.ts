@@ -1,13 +1,12 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   InternalServerErrorException,
-  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { resolveLocationAccess } from '../common/access/brand-access.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { InviteStaffDto, StaffResponseDto } from './dto/invite-staff.dto.js';
 
@@ -48,26 +47,12 @@ export class StaffService {
       throw new UnauthorizedException('Usuario no autenticado');
     }
 
-    const callerMembership = await this.prisma.merchantUser.findUnique({
-      where: {
-        userId_merchantId: {
-          userId: callerUserId,
-          merchantId: dto.merchantId,
-        },
-      },
+    const ownerOnlyMessage = 'Solo el dueño del comercio puede invitar personal';
+    const { merchant } = await resolveLocationAccess(this.prisma, callerUserId, dto.merchantId, {
+      ownerOnly: true,
+      forbiddenMessage: ownerOnlyMessage,
+      ownerMessage: ownerOnlyMessage,
     });
-
-    if (!callerMembership || callerMembership.role !== 'OWNER') {
-      throw new ForbiddenException('Solo el dueño del comercio puede invitar personal');
-    }
-
-    const merchant = await this.prisma.merchant.findUnique({
-      where: { id: dto.merchantId },
-    });
-
-    if (!merchant) {
-      throw new NotFoundException(`El comercio con ID ${dto.merchantId} no fue encontrado`);
-    }
 
     const supabase = this.getSupabaseAdmin();
 
@@ -89,7 +74,7 @@ export class StaffService {
         throw new BadRequestException('No se pudo crear el usuario de personal');
       }
 
-      await this.grantStaffMembership(data.user.id, dto.merchantId);
+      await this.grantStaffMembership(data.user.id, merchant.brandId, merchant.id);
 
       return {
         id: data.user.id,
@@ -113,7 +98,7 @@ export class StaffService {
       throw new BadRequestException('No se pudo enviar la invitación al personal');
     }
 
-    await this.grantStaffMembership(data.user.id, dto.merchantId);
+    await this.grantStaffMembership(data.user.id, merchant.brandId, merchant.id);
 
     return {
       id: data.user.id,
@@ -128,12 +113,13 @@ export class StaffService {
    * La membresía la crea el backend, y solo después de verificar que quien invita es OWNER.
    * Antes la creaba el trigger leyendo raw_user_meta_data, que el cliente puede escribir en
    * signUp con la anon key: cualquiera podía darse de alta como OWNER de cualquier local.
-   * El rol es siempre STAFF, y si el usuario ya era miembro no se toca (no degrada a un OWNER).
+   * El rol es siempre STAFF, y si el usuario ya era miembro de la marca no se toca: no degrada
+   * a un OWNER ni cambia de local a un mesero en silencio.
    */
-  private async grantStaffMembership(userId: string, merchantId: string): Promise<void> {
-    await this.prisma.merchantUser.upsert({
-      where: { userId_merchantId: { userId, merchantId } },
-      create: { userId, merchantId, role: 'STAFF' },
+  private async grantStaffMembership(userId: string, brandId: string, merchantId: string): Promise<void> {
+    await this.prisma.brandMember.upsert({
+      where: { userId_brandId: { userId, brandId } },
+      create: { userId, brandId, merchantId, role: 'STAFF' },
       update: {},
     });
   }

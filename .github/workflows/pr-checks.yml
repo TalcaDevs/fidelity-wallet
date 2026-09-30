@@ -56,3 +56,44 @@ jobs:
       - name: 🏗️ Dry Build
         # Intenta compilar Next.js y el backend de Node para asegurar que nada rompe en producción
         run: pnpm -r run build
+
+  db-tests:
+    name: DB (migraciones, RLS y triggers)
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres?schema=public
+
+    steps:
+      - name: 📥 Checkout del código
+        uses: actions/checkout@v4
+
+      - name: 📦 Instalar pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 11
+
+      - name: 🟢 Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'pnpm'
+
+      - name: 🧩 Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: 🐘 Configurar Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.118.0
+
+      - name: 🚀 Levantar Supabase local
+        # Postgres + Auth bastan: el trigger handle_new_user y auth.uid() necesitan el esquema auth.
+        run: supabase start -x studio,imgproxy,realtime,storage-api,edge-runtime,logflare,vector
+
+      - name: 🗄️ Aplicar migraciones desde cero
+        run: |
+          pnpm --filter backend exec prisma generate
+          pnpm --filter backend exec prisma migrate deploy
+
+      - name: 🧪 Pruebas contra la BD
+        run: pnpm --filter backend run test:db
