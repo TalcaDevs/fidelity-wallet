@@ -7,6 +7,10 @@ import {
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ReportsService } from './reports.service.js';
+import { ReportsOverviewService } from './services/reports-overview.service.js';
+import { RetentionAnalyticsService } from './services/retention-analytics.service.js';
+import { PromotionsAnalyticsService } from './services/promotions-analytics.service.js';
+import { StaffAuditService } from './services/staff-audit.service.js';
 
 describe('ReportsService', () => {
   let service: ReportsService;
@@ -57,7 +61,17 @@ describe('ReportsService', () => {
       },
     } as unknown as PrismaService;
 
-    service = new ReportsService(prisma);
+    const overviewService = new ReportsOverviewService(prisma);
+    const retentionService = new RetentionAnalyticsService(prisma);
+    const promotionsService = new PromotionsAnalyticsService(prisma);
+    const staffService = new StaffAuditService(prisma);
+    service = new ReportsService(
+      prisma,
+      overviewService,
+      retentionService,
+      promotionsService,
+      staffService,
+    );
   });
 
   describe('assertOwner', () => {
