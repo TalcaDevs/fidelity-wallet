@@ -20,7 +20,7 @@ const CSV_COLUMNS: CsvColumn<CustomerRow>[] = [
   { header: 'Última actividad', value: (row) => new Date(row.lastActivityAt).toISOString() },
 ];
 
-export function Customers({ merchantId }: { merchantId: string | null }) {
+export function Customers({ brandId, merchantId }: { brandId: string | null; merchantId: string | null }) {
   const { notifySuccess, notifyError } = useToast();
 
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
@@ -43,13 +43,13 @@ export function Customers({ merchantId }: { merchantId: string | null }) {
   }, []);
 
   const handleConfirmDelete = async () => {
-    if (!merchantId || !customerToDelete) return;
+    if (!brandId || !merchantId || !customerToDelete) return;
     setIsDeleting(true);
     try {
       await deleteCustomer(merchantId, customerToDelete.customerId);
       notifySuccess('Datos del cliente eliminados exitosamente (Ley 19.628).');
       setCustomerToDelete(null);
-      fetchCustomers(merchantId);
+      fetchCustomers(brandId);
     } catch (err: unknown) {
       notifyError(err instanceof Error ? err.message : 'No se pudo eliminar al cliente.');
     } finally {
@@ -58,8 +58,8 @@ export function Customers({ merchantId }: { merchantId: string | null }) {
   };
 
   useEffect(() => {
-    if (merchantId) fetchCustomers(merchantId);
-  }, [merchantId, fetchCustomers]);
+    if (brandId) fetchCustomers(brandId);
+  }, [brandId, fetchCustomers]);
 
   // Un único "ahora" para todo el render: si cada fila creara el suyo, dos filas
   // con la misma fecha podrían quedar con textos distintos al cruzar la medianoche.

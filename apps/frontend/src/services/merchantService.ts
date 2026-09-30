@@ -9,8 +9,7 @@ export interface Merchant {
   email: string;
   // Identificador público del link de registro: /join/<slug>.
   slug: string;
-  // Vigencia de los sellos en días. null = no vencen. Es una regla del local,
-  // no de cada promoción: se configura una sola vez acá.
+  // Vigencia de los sellos en días. null = no vencen. Vive en el programa de la marca.
   stampValidityDays: number | null;
   createdAt: string;
 }
@@ -91,14 +90,26 @@ export async function getMerchantWithActivePromo(merchantName: string): Promise<
 }
 
 export async function getMerchant(merchantId: string): Promise<Merchant | null> {
-  const { data, error } = await supabase
+  const { data: merchant, error } = await supabase
     .from('Merchant')
-    .select('id, name, email, slug, stampValidityDays, createdAt')
+    .select('id, name, email, slug, createdAt, brandId')
     .eq('id', merchantId)
     .maybeSingle();
 
   if (error) throw error;
-  return data;
+  if (!merchant) return null;
+
+  const { data: program, error: programError } = await supabase
+    .from('LoyaltyProgram')
+    .select('stampValidityDays')
+    .eq('brandId', merchant.brandId)
+    .eq('type', 'STAMPS')
+    .maybeSingle();
+
+  if (programError) throw programError;
+
+  const { brandId: _brandId, ...rest } = merchant;
+  return { ...rest, stampValidityDays: program?.stampValidityDays ?? null };
 }
 
 // El nombre del comercio viaja al pase de la billetera y al landing de
@@ -113,9 +124,9 @@ export async function updateMerchantSettings(merchantId: string, settings: Merch
 
   const { data, error } = await supabase
     .from('Merchant')
-    .update({ name: settings.name, stampValidityDays: settings.stampValidityDays })
+    .update({ name: settings.name })
     .eq('id', merchantId)
-    .select('id');
+    .select('id, brandId');
 
   if (error) throw error;
 
@@ -124,6 +135,18 @@ export async function updateMerchantSettings(merchantId: string, settings: Merch
   // "guardado" sobre una escritura que la base rechazó en silencio.
   if (!data || data.length === 0) {
     throw new Error('No se pudo guardar: tu cuenta no tiene permisos sobre este local.');
+  }
+
+  const { data: programs, error: programError } = await supabase
+    .from('LoyaltyProgram')
+    .update({ stampValidityDays: settings.stampValidityDays })
+    .eq('brandId', data[0].brandId)
+    .eq('type', 'STAMPS')
+    .select('id');
+
+  if (programError) throw programError;
+  if (!programs || programs.length === 0) {
+    throw new Error('No se pudo guardar la vigencia: tu cuenta no tiene permisos sobre esta marca.');
   }
 }
 

@@ -42,16 +42,36 @@ describe('ScanService', () => {
     createdAt: new Date(),
   };
 
+  const mockBrandId = mockMerchantId;
+  const mockProgramId = 'b0000000-0000-0000-0000-000000000001';
+  const mockOtherProgramId = 'b0000000-0000-0000-0000-000000000099';
+
+  const mockLocation = {
+    id: mockMerchantId,
+    brandId: mockBrandId,
+    name: 'Cafeteria Test',
+    isActive: true,
+    brand: { name: 'Cafeteria Test', status: 'ACTIVE' },
+  };
+
+  const mockProgram = {
+    id: mockProgramId,
+    brandId: mockBrandId,
+    type: 'STAMPS',
+    scope: 'BRAND',
+    name: 'Tarjeta de sellos',
+    stampValidityDays: 30 as number | null,
+    isActive: true,
+    createdAt: new Date(),
+  };
+
   const mockPass = {
     id: mockPassId,
     passToken: mockToken,
     merchantId: mockMerchantId,
+    brandId: mockBrandId,
+    programId: mockProgramId,
     customerId: 'c0000000-0000-0000-0000-000000000001',
-    merchant: {
-      id: mockMerchantId,
-      name: 'Cafeteria Test',
-      stampValidityDays: 30,
-    },
     customer: {
       id: 'c0000000-0000-0000-0000-000000000001',
       rut: '12345678-5',
@@ -61,13 +81,19 @@ describe('ScanService', () => {
 
   beforeEach(() => {
     prisma = {
-      merchantUser: {
+      merchant: {
+        findUnique: vi.fn().mockResolvedValue(mockLocation),
+      },
+      brandMember: {
         findUnique: vi.fn().mockResolvedValue({
-          id: 'mu-1',
           userId: mockUserId,
+          brandId: mockBrandId,
           merchantId: mockMerchantId,
           role: 'STAFF',
         }),
+      },
+      loyaltyProgram: {
+        findFirst: vi.fn().mockResolvedValue(mockProgram),
       },
       pass: {
         findUnique: vi.fn(),
@@ -112,7 +138,7 @@ describe('ScanService', () => {
   });
 
   it('should throw ForbiddenException if callerUserId is not member of merchant', async () => {
-    vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue(null);
+    vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue(null);
 
     await expect(
       service.processScan(
@@ -141,10 +167,95 @@ describe('ScanService', () => {
     ).rejects.toThrow(NotFoundException);
   });
 
-  it('should throw ForbiddenException if pass belongs to another merchant', async () => {
+  describe('Brand > Location (decisiones 5 y 7)', () => {
+    const otherLocationId = 'a0000000-0000-0000-0000-000000000002';
+
+    const stubSuccessfulStamp = () => {
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
+      vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
+      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-l' } as any);
+      vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-l' } as any);
+      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(1);
+      vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
+    };
+
+    it('forbids a STAFF from scanning at a location of the brand other than their own', async () => {
+      vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue({ ...mockLocation, id: otherLocationId } as any);
+
+      await expect(
+        service.processScan(
+          { passToken: mockToken, action: ScanActionType.STAMP, merchantId: otherLocationId },
+          mockUserId,
+        ),
+      ).rejects.toThrow('Tu usuario está asignado a otro local de la marca');
+      expect(prisma.pass.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('lets the OWNER stamp a brand pass at any location, recording that location', async () => {
+      vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue({ ...mockLocation, id: otherLocationId } as any);
+      vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue({
+        userId: mockUserId,
+        brandId: mockBrandId,
+        merchantId: null,
+        role: 'OWNER',
+      } as any);
+      stubSuccessfulStamp();
+
+      const result = await service.processScan(
+        { passToken: mockToken, action: ScanActionType.STAMP, merchantId: otherLocationId },
+        mockUserId,
+      );
+
+      expect(result.alreadyScanned).toBe(false);
+      expect(prisma.scan.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ merchantId: otherLocationId, programId: mockProgramId }),
+        }),
+      );
+    });
+
+    it('treats an unknown location like a foreign one (403, no enumeration)', async () => {
+      vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue(null);
+
+      await expect(
+        service.processScan(
+          { passToken: mockToken, action: ScanActionType.STAMP, merchantId: otherLocationId },
+          mockUserId,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.brandMember.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('rejects scans at an inactive location or a suspended brand', async () => {
+      vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValueOnce({ ...mockLocation, isActive: false } as any);
+      await expect(
+        service.processScan({ passToken: mockToken, action: ScanActionType.STAMP, merchantId: mockMerchantId }, mockUserId),
+      ).rejects.toThrow('Este local no está habilitado para operar');
+
+      vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValueOnce({
+        ...mockLocation,
+        brand: { name: 'Cafeteria Test', status: 'SUSPENDED' },
+      } as any);
+      await expect(
+        service.processScan({ passToken: mockToken, action: ScanActionType.STAMP, merchantId: mockMerchantId }, mockUserId),
+      ).rejects.toThrow('Este local no está habilitado para operar');
+    });
+
+    it('rejects scans when the brand program is inactive', async () => {
+      vi.spyOn(prisma.loyaltyProgram, 'findFirst').mockResolvedValue({ ...mockProgram, isActive: false } as any);
+
+      await expect(
+        service.processScan({ passToken: mockToken, action: ScanActionType.STAMP, merchantId: mockMerchantId }, mockUserId),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  it('should throw ForbiddenException if pass belongs to another brand', async () => {
     vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue({
       ...mockPass,
       merchantId: mockOtherMerchantId,
+      brandId: mockOtherMerchantId,
+      programId: mockOtherProgramId,
     } as any);
 
     await expect(
@@ -320,6 +431,8 @@ describe('ScanService', () => {
       data: {
         passId: mockPassId,
         merchantId: mockMerchantId,
+        brandId: mockBrandId,
+        programId: mockProgramId,
         type: ScanType.STAMP_ADDED,
         createdByUserId: mockUserId,
         method: ScanMethod.QR,
@@ -340,11 +453,11 @@ describe('ScanService', () => {
   });
 
   it('should handle stampValidityDays = null (stamps never expire)', async () => {
-    const passWithoutExpiry = {
-      ...mockPass,
-      merchant: { ...mockPass.merchant, stampValidityDays: null },
-    };
-    vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(passWithoutExpiry as any);
+    vi.spyOn(prisma.loyaltyProgram, 'findFirst').mockResolvedValue({
+      ...mockProgram,
+      stampValidityDays: null,
+    } as any);
+    vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
     vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
     vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-1' } as any);
     const stampCreateSpy = vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-1' } as any);
@@ -636,7 +749,7 @@ describe('ScanService', () => {
 
       expect(findFirstSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { merchantId: mockMerchantId, customer: { rut: '12345678-5' } },
+          where: { programId: mockProgramId, customer: { rut: '12345678-5' } },
         }),
       );
       expect(prisma.pass.findUnique).not.toHaveBeenCalled();
@@ -659,7 +772,7 @@ describe('ScanService', () => {
 
       expect(findFirstSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { merchantId: mockMerchantId, customer: { phone: '+56912345678' } },
+          where: { programId: mockProgramId, customer: { phone: '+56912345678' } },
         }),
       );
     });
@@ -694,7 +807,7 @@ describe('ScanService', () => {
     });
 
     it('should check membership before looking up the customer', async () => {
-      vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue(null);
+      vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue(null);
 
       await expect(
         service.processScan(
@@ -711,7 +824,7 @@ describe('ScanService', () => {
   });
 
   describe('review fixes (PR #11)', () => {
-    it('queries the cooldown against the last STAMP_ADDED of this pass in this merchant', async () => {
+    it('queries the cooldown against the last STAMP_ADDED of this pass in any location of the brand', async () => {
       vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
       vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
       vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-q' } as any);
@@ -725,7 +838,7 @@ describe('ScanService', () => {
       );
 
       expect(prisma.scan.findFirst).toHaveBeenCalledWith({
-        where: { passId: mockPassId, merchantId: mockMerchantId, type: ScanType.STAMP_ADDED },
+        where: { passId: mockPassId, type: ScanType.STAMP_ADDED },
         orderBy: { createdAt: 'desc' },
       });
       // Saldo: vigentes y no consumidos, sin filtrar por promoción
@@ -860,7 +973,7 @@ describe('ScanService', () => {
       );
 
       expect(prisma.pass.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { merchantId: mockMerchantId, customer: { phone: '+56912345678' } } }),
+        expect.objectContaining({ where: { programId: mockProgramId, customer: { phone: '+56912345678' } } }),
       );
       expect(result.consumedStampsCount).toBe(5);
     });

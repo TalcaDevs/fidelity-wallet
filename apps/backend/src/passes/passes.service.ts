@@ -7,7 +7,8 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { Customer, Merchant, Pass, Prisma } from '@prisma/client';
+import { Brand, Customer, Pass, Prisma } from '@prisma/client';
+import { findStampsProgram, resolveLocationAccess } from '../common/access/brand-access.js';
 import { maskPhone, maskRut } from '../common/utils/mask.util.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { GeneratePassDto, PassEmissionResponseDto } from './dto/generate-pass.dto.js';
@@ -15,10 +16,18 @@ import { PassData } from './interfaces/pass-data.interface.js';
 import { ApplePassService } from './services/apple-pass.service.js';
 import { GoogleWalletService } from './services/google-wallet.service.js';
 
-export type PassWithMerchantAndCustomer = Pass & {
-  merchant: Merchant;
+export type PassWithBrandAndCustomer = Pass & {
+  brand: Brand;
   customer: Customer | null;
 };
+
+export interface PassTarget {
+  programId: string;
+  brandId: string;
+  merchantId: string;
+}
+
+const passRelations = { brand: true, customer: true } as const;
 
 @Injectable()
 export class PassesService {
@@ -35,18 +44,12 @@ export class PassesService {
    */
   async findOrCreatePass(
     customerId: string,
-    merchantId: string,
+    target: PassTarget,
     tx?: Prisma.TransactionClient,
   ): Promise<{ pass: Pass; isNew: boolean }> {
     const prisma = tx ?? this.prisma;
-    let pass = await prisma.pass.findUnique({
-      where: {
-        customerId_merchantId: {
-          customerId,
-          merchantId,
-        },
-      },
-    });
+    const uniqueKey = { customerId_programId: { customerId, programId: target.programId } };
+    let pass = await prisma.pass.findUnique({ where: uniqueKey });
 
     if (pass) {
       return { pass, isNew: false };
@@ -55,9 +58,12 @@ export class PassesService {
     const passToken = randomBytes(32).toString('hex');
     try {
       pass = await prisma.pass.create({
+        // brandId lo vuelve a fijar el trigger pass_derive_brand desde el programa.
         data: {
           customerId,
-          merchantId,
+          programId: target.programId,
+          brandId: target.brandId,
+          merchantId: target.merchantId,
           passToken,
         },
       });
@@ -70,14 +76,7 @@ export class PassesService {
         if (tx) {
           throw err;
         }
-        pass = await prisma.pass.findUnique({
-          where: {
-            customerId_merchantId: {
-              customerId,
-              merchantId,
-            },
-          },
-        });
+        pass = await prisma.pass.findUnique({ where: uniqueKey });
         if (!pass) throw err;
         return { pass, isNew: false };
       }
@@ -93,20 +92,9 @@ export class PassesService {
       throw new UnauthorizedException('Usuario no autenticado');
     }
 
-    const membership = await this.prisma.merchantUser.findUnique({
-      where: {
-        userId_merchantId: {
-          userId: callerUserId,
-          merchantId: dto.merchantId,
-        },
-      },
+    const { merchant } = await resolveLocationAccess(this.prisma, callerUserId, dto.merchantId, {
+      forbiddenMessage: 'El usuario no está autorizado como miembro de este comercio',
     });
-
-    if (!membership) {
-      throw new ForbiddenException(
-        'El usuario no está autorizado como miembro de este comercio',
-      );
-    }
 
     const customer = await this.prisma.customer.findUnique({
       where: { id: dto.customerId },
@@ -115,18 +103,21 @@ export class PassesService {
       throw new NotFoundException(`Cliente con ID ${dto.customerId} no encontrado`);
     }
 
-    const merchant = await this.prisma.merchant.findUnique({
-      where: { id: dto.merchantId },
-    });
-    if (!merchant) {
-      throw new NotFoundException(`Comercio con ID ${dto.merchantId} no encontrado`);
+    const program = await findStampsProgram(this.prisma, merchant.brandId);
+    const brand = await this.prisma.brand.findUnique({ where: { id: merchant.brandId } });
+    if (!program || !brand) {
+      throw new BadRequestException('El comercio no tiene una promoción activa configurada');
     }
 
-    const { pass } = await this.findOrCreatePass(dto.customerId, dto.merchantId);
+    const { pass } = await this.findOrCreatePass(dto.customerId, {
+      programId: program.id,
+      brandId: merchant.brandId,
+      merchantId: merchant.id,
+    });
 
-    const fullPass: PassWithMerchantAndCustomer = {
+    const fullPass: PassWithBrandAndCustomer = {
       ...pass,
-      merchant,
+      brand,
       customer,
     };
 
@@ -155,7 +146,7 @@ export class PassesService {
    * Acepta el ID del pase o el pase completo pre-cargado para evitar queries redundantes.
    */
   async getWalletUrlsForPass(
-    passOrId: string | PassWithMerchantAndCustomer,
+    passOrId: string | PassWithBrandAndCustomer,
     tx?: Prisma.TransactionClient,
   ): Promise<{ appleWalletUrl: string; googleWalletUrl: string } | null> {
     const prisma = tx ?? this.prisma;
@@ -163,7 +154,7 @@ export class PassesService {
       typeof passOrId === 'string'
         ? await prisma.pass.findUnique({
             where: { id: passOrId },
-            include: { merchant: true, customer: true },
+            include: passRelations,
           })
         : passOrId;
 
@@ -181,10 +172,7 @@ export class PassesService {
   async getApplePassBuffer(passToken: string): Promise<Buffer> {
     const pass = await this.prisma.pass.findUnique({
       where: { passToken },
-      include: {
-        merchant: true,
-        customer: true,
-      },
+      include: passRelations,
     });
 
     if (!pass) {
@@ -203,7 +191,7 @@ export class PassesService {
     try {
       const pass = await this.prisma.pass.findUnique({
         where: { id: passId },
-        include: { merchant: true, customer: true },
+        include: passRelations,
       });
 
       if (!pass) return;
@@ -230,17 +218,17 @@ export class PassesService {
    * indicada en explicitPromotionId o, si no, la activa más reciente).
    */
   private async buildPassData(
-    pass: PassWithMerchantAndCustomer,
+    pass: PassWithBrandAndCustomer,
     explicitPromotionId?: string,
     tx?: Prisma.TransactionClient,
   ): Promise<PassData | null> {
     const prisma = tx ?? this.prisma;
     const promotion = explicitPromotionId
       ? await prisma.promotion.findFirst({
-          where: { id: explicitPromotionId, merchantId: pass.merchantId, isActive: true },
+          where: { id: explicitPromotionId, programId: pass.programId, isActive: true },
         })
       : await prisma.promotion.findFirst({
-          where: { merchantId: pass.merchantId, isActive: true },
+          where: { programId: pass.programId, isActive: true },
           orderBy: { createdAt: 'desc' },
         });
 
@@ -277,8 +265,8 @@ export class PassesService {
       passId: pass.id,
       serialNumber: pass.id,
       passToken: pass.passToken,
-      merchantId: pass.merchant.id,
-      merchantName: pass.merchant.name,
+      programId: pass.programId,
+      merchantName: pass.brand.name,
       customerLabel,
       activeStamps,
       targetStamps: promotion.targetStamps,

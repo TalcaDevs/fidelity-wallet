@@ -3,7 +3,7 @@ import { createPromotion, getPromotion, updatePromotion } from '../../services/p
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
 import { useToast } from '../../hooks/useToast';
 
-export function PromotionSettings({ onClose, merchantId, promoId }: { onClose: () => void, merchantId: string, promoId?: string | null }) {
+export function PromotionSettings({ onClose, programId, promoId }: { onClose: () => void, programId: string, promoId?: string | null }) {
   const { notifySuccess } = useToast();
   const [name, setName] = useState('');
   const [targetStamps, setTargetStamps] = useState(8);
@@ -27,10 +27,10 @@ export function PromotionSettings({ onClose, merchantId, promoId }: { onClose: (
   }, [promoId]);
 
   useEffect(() => {
-    if (merchantId && promoId) {
+    if (programId && promoId) {
       fetchPromotion();
     }
-  }, [merchantId, promoId, fetchPromotion]);
+  }, [programId, promoId, fetchPromotion]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,7 +44,7 @@ export function PromotionSettings({ onClose, merchantId, promoId }: { onClose: (
         await updatePromotion(promoId, values);
         notifySuccess('Promoción actualizada.');
       } else {
-        await createPromotion(merchantId, values);
+        await createPromotion(programId, values);
         notifySuccess('Promoción creada.');
       }
       onClose();

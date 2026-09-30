@@ -5,7 +5,9 @@ import { fetchMemberships, type MerchantRole } from '../services/membershipServi
 export type { MerchantRole };
 
 export interface MembershipState {
+  brandId: string | null;
   merchantId: string | null;
+  programId: string | null;
   role: MerchantRole | null;
   loading: boolean;
   error: string | null;
@@ -15,10 +17,12 @@ interface InternalState extends MembershipState {
   userId: string | null;
 }
 
+const EMPTY = { brandId: null, merchantId: null, programId: null, role: null, loading: false, error: null };
+
 function initialState(userId: string | null): InternalState {
   return userId
-    ? { userId, merchantId: null, role: null, loading: true, error: null }
-    : { userId: null, merchantId: null, role: null, loading: false, error: null };
+    ? { userId, ...EMPTY, loading: true }
+    : { userId: null, ...EMPTY };
 }
 
 export function useMembership(session: Session | null): MembershipState {
@@ -46,8 +50,8 @@ export function useMembership(session: Session | null): MembershipState {
         // "sin membresía" significa que algo está mal, no que sea el dueño.
         setState(
           membership
-            ? { userId, merchantId: membership.merchantId, role: membership.role, loading: false, error: null }
-            : { userId, merchantId: null, role: null, loading: false, error: 'Tu usuario no está asociado a ningún local.' }
+            ? { userId, ...membership, loading: false, error: null }
+            : { userId, ...EMPTY, error: 'Tu usuario no está asociado a ningún local.' }
         );
       })
       .catch((err: unknown) => {
@@ -58,9 +62,7 @@ export function useMembership(session: Session | null): MembershipState {
         console.error('Error fetching membership:', err);
         setState({
           userId,
-          merchantId: null,
-          role: null,
-          loading: false,
+          ...EMPTY,
           error: err instanceof Error ? err.message : 'No pudimos verificar tu acceso.',
         });
       });
@@ -70,5 +72,6 @@ export function useMembership(session: Session | null): MembershipState {
     };
   }, [userId]);
 
-  return { merchantId: state.merchantId, role: state.role, loading: state.loading, error: state.error };
+  const { userId: _userId, ...membership } = state;
+  return membership;
 }

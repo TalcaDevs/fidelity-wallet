@@ -30,11 +30,11 @@ export class GoogleWalletService {
       '3388000000022314567';
 
     const objectId = `${issuerId}.${data.passId}`;
-    // Clase de fidelidad multi-comercio. Permite override con GOOGLE_WALLET_CLASS_ID para entornos de desarrollo/sandbox
+    // Permite override con GOOGLE_WALLET_CLASS_ID para entornos de desarrollo/sandbox
     const classId =
       this.configService.get<string>('GOOGLE_WALLET_CLASS_ID') ||
       process.env.GOOGLE_WALLET_CLASS_ID ||
-      `${issuerId}.fidelity_${data.merchantId.replace(/-/g, '_')}`;
+      `${issuerId}.fidelity_${data.programId.replace(/-/g, '_')}`;
 
     const claims = {
       iss:

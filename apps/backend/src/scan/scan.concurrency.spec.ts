@@ -38,18 +38,44 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
     id: mockPassId,
     passToken: mockToken,
     merchantId: mockMerchantId,
+    brandId: mockMerchantId,
+    programId: 'b0000000-0000-0000-0000-000000000001',
     customerId: 'c0000000-0000-0000-0000-000000000001',
-    merchant: {
-      id: mockMerchantId,
-      name: 'Restaurante Concurrente',
-      stampValidityDays: 30,
-    },
     customer: {
       id: 'c0000000-0000-0000-0000-000000000001',
       rut: '12345678-5',
       phone: '+56912345678',
     },
   };
+
+  const mockProgramId = 'b0000000-0000-0000-0000-000000000001';
+  const accessMocks = () => ({
+    merchant: {
+      findUnique: vi.fn().mockResolvedValue({
+        id: mockMerchantId,
+        brandId: mockMerchantId,
+        name: 'Restaurante Concurrente',
+        isActive: true,
+        brand: { name: 'Restaurante Concurrente', status: 'ACTIVE' },
+      }),
+    },
+    brandMember: {
+      findUnique: vi.fn().mockResolvedValue({
+        userId: mockUserId1,
+        brandId: mockMerchantId,
+        merchantId: mockMerchantId,
+        role: 'STAFF',
+      }),
+    },
+    loyaltyProgram: {
+      findFirst: vi.fn().mockResolvedValue({
+        id: mockProgramId,
+        brandId: mockMerchantId,
+        stampValidityDays: 30,
+        isActive: true,
+      }),
+    },
+  });
 
   beforeEach(() => {
     passesService = {
@@ -73,9 +99,7 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
     };
 
     prisma = {
-      merchantUser: {
-        findUnique: vi.fn().mockResolvedValue({ id: 'mu-1', userId: mockUserId1, merchantId: mockMerchantId }),
-      },
+      ...accessMocks(),
       pass: {
         findUnique: vi.fn().mockResolvedValue(mockPass as any),
       },
@@ -163,9 +187,7 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
     };
 
     prisma = {
-      merchantUser: {
-        findUnique: vi.fn().mockResolvedValue({ id: 'mu-1', userId: mockUserId1, merchantId: mockMerchantId }),
-      },
+      ...accessMocks(),
       pass: {
         findUnique: vi.fn().mockResolvedValue(mockPass as any),
       },
@@ -260,9 +282,7 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
     });
 
     prisma = {
-      merchantUser: {
-        findUnique: vi.fn().mockResolvedValue({ id: 'mu-1', userId: mockUserId1, merchantId: mockMerchantId }),
-      },
+      ...accessMocks(),
       pass: {
         findUnique: vi.fn().mockResolvedValue(mockPass as any),
       },
