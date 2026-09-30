@@ -9,10 +9,16 @@ const STATUS_CLASSES: Record<TicketStatus, string> = {
   CLOSED: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
 };
 
-export function TicketStatusBadge({ status }: { status: TicketStatus }) {
+export function TicketStatusBadge({
+  status,
+  labels = TICKET_STATUS_LABELS,
+}: {
+  status: TicketStatus;
+  labels?: Record<TicketStatus, string>;
+}) {
   return (
     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap ${STATUS_CLASSES[status]}`}>
-      {TICKET_STATUS_LABELS[status]}
+      {labels[status]}
     </span>
   );
 }

@@ -46,18 +46,8 @@ import {
 @PlatformRoles('SUPERADMIN', 'SUPPORT')
 @ApiResponse({ status: 403, description: 'El usuario no es PlatformAdmin' })
 @Controller('internal')
-export class InternalController {
+export class InternalTicketsController {
   constructor(private readonly tickets: InternalTicketsService) {}
-
-  @Get('me')
-  @ApiOperation({ summary: 'Rol del admin interno de la sesión' })
-  me(@CurrentUser() user: PlatformAdminUser) {
-    return {
-      userId: user.id,
-      email: user.email ?? null,
-      role: user.platformRole,
-    };
-  }
 
   @Get('tickets')
   @ApiOperation({ summary: 'Bandeja de tickets de todas las marcas' })

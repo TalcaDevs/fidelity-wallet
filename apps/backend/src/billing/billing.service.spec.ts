@@ -15,7 +15,9 @@ describe('BillingService', () => {
       brandMember: {
         findUnique: vi.fn(({ where }: any) =>
           Promise.resolve(
-            where.userId_brandId.userId === ownerId ? { role: 'OWNER' } : { role: 'STAFF' },
+            where.userId_brandId.userId === ownerId
+              ? { role: 'OWNER' }
+              : { role: 'STAFF' },
           ),
         ),
         count: vi.fn().mockResolvedValue(2),
@@ -23,7 +25,10 @@ describe('BillingService', () => {
       brand: {
         findUniqueOrThrow: vi
           .fn()
-          .mockResolvedValue({ createdAt: new Date('2026-09-10T00:00:00Z') }),
+          .mockResolvedValue({
+            planId: 'TRIAL',
+            trialEndsAt: new Date('2026-10-10T00:00:00Z'),
+          }),
       },
       loyaltyProgram: { count: vi.fn().mockResolvedValue(1) },
       merchant: { count: vi.fn().mockResolvedValue(3) },
@@ -62,6 +67,24 @@ describe('BillingService', () => {
       new Date('2026-10-11T00:00:00Z'),
     );
     expect(result.status).toBe('PAST_DUE');
+  });
+
+  it('reports a plan assigned by the internal team as ACTIVE, without trial', async () => {
+    prisma.brand.findUniqueOrThrow.mockResolvedValue({
+      planId: 'PRO',
+      trialEndsAt: new Date('2026-10-10T00:00:00Z'),
+    });
+    const result = await service.getSubscription(
+      brandId,
+      ownerId,
+      new Date('2026-10-15T10:00:00Z'),
+    );
+    expect(result).toMatchObject({
+      planId: 'PRO',
+      status: 'ACTIVE',
+      trialEndsAt: null,
+      currentPeriodEnd: '2026-11-01T00:00:00.000Z',
+    });
   });
 
   it('is only for the OWNER', async () => {

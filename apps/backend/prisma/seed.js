@@ -23,8 +23,8 @@ const PLATFORM_ADMIN = { email: 'admin@example.com', fullName: 'Admin interno' }
 const BRAND = { name: 'Café Demo', stampValidityDays: 30 };
 
 const LOCATIONS = [
-  { key: 'centro', name: 'Café Demo', slug: 'cafe-demo', commune: 'Santiago', region: 'Metropolitana' },
-  { key: 'providencia', name: 'Café Demo — Providencia', slug: 'cafe-demo-providencia', commune: 'Providencia', region: 'Metropolitana' },
+  { key: 'centro', name: 'Café Demo', slug: 'cafe-demo', address: 'Merced 838', commune: 'Santiago', region: 'Metropolitana', latitude: -33.4372, longitude: -70.6454 },
+  { key: 'providencia', name: 'Café Demo — Providencia', slug: 'cafe-demo-providencia', address: 'Av. Providencia 2124', commune: 'Providencia', region: 'Metropolitana', latitude: -33.4213, longitude: -70.6088 },
 ];
 
 const PROMOTIONS = [
@@ -50,6 +50,8 @@ async function createUser(email, metadata) {
   return data.user;
 }
 
+const locationFields = ({ key: _key, ...fields }) => fields;
+
 async function check(promise) {
   const { data, error } = await promise;
   if (error) throw error;
@@ -69,13 +71,13 @@ async function main() {
   await check(
     supabase
       .from('Merchant')
-      .update({ name: main.name, slug: main.slug, commune: main.commune, region: main.region })
+      .update(locationFields(main))
       .eq('id', brandId),
   );
   const [secondLocation] = await check(
     supabase
       .from('Merchant')
-      .insert({ brandId, name: second.name, slug: second.slug, commune: second.commune, region: second.region })
+      .insert({ brandId, ...locationFields(second) })
       .select('id'),
   );
   const locationIds = { [main.key]: brandId, [second.key]: secondLocation.id };

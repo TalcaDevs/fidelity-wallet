@@ -6,6 +6,8 @@ import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { BillingModule } from './billing/billing.module.js';
 import { CustomersModule } from './customers/customers.module.js';
+import { InternalModule } from './internal/internal.module.js';
+import { LocationsModule } from './locations/locations.module.js';
 import { MerchantsModule } from './merchants/merchants.module.js';
 import { PassesModule } from './passes/passes.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
@@ -35,6 +37,8 @@ import { SupportModule } from './support/support.module.js';
     SupportModule,
     BillingModule,
     ReportsModule,
+    LocationsModule,
+    InternalModule,
   ],
   controllers: [AppController],
   providers: [

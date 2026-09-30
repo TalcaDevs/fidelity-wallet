@@ -126,3 +126,13 @@ export async function requireBrandOwner(db: Db, userId: string, brandId: string)
   }
   return membership;
 }
+
+/** OWNER de una marca que puede operar: una marca suspendida no ve ni edita nada (§8.12). */
+export async function requireActiveBrandOwner(db: Db, userId: string, brandId: string): Promise<BrandMember> {
+  const membership = await requireBrandOwner(db, userId, brandId);
+  const brand = await db.brand.findUnique({ where: { id: brandId }, select: { status: true } });
+  if (brand?.status !== BrandStatus.ACTIVE) {
+    throw new ForbiddenException('Tu cuenta está suspendida');
+  }
+  return membership;
+}

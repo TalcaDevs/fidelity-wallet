@@ -1,16 +1,20 @@
 import { useEffect, type ReactNode } from 'react';
 
+const SIZES = { md: 'max-w-md', lg: 'max-w-2xl', xl: 'max-w-4xl' } as const;
+
 /** Contenedor de diálogo: cierra con Escape y con el botón ✕ (igual que ConfirmDialog). */
 export function Modal({
   title,
   description,
   onClose,
   children,
+  size = 'md',
 }: {
   title: string;
   description?: string;
   onClose: () => void;
   children: ReactNode;
+  size?: keyof typeof SIZES;
 }) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -26,7 +30,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 max-w-md w-full max-h-[90dvh] overflow-y-auto shadow-2xl border border-slate-200 dark:border-slate-800 relative"
+        className={`bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 ${SIZES[size]} w-full max-h-[90dvh] overflow-y-auto shadow-2xl border border-slate-200 dark:border-slate-800 relative`}
       >
         <button
           type="button"
