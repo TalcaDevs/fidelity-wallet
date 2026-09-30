@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { PassesService } from './passes.service.js';
 import { ApplePassService } from './services/apple-pass.service.js';
@@ -198,6 +199,60 @@ describe('PassesService', () => {
       expect(res.isNew).toBe(true);
       expect(res.pass.id).toBe('new-pass');
     });
+
+    it('should use transaction client tx when provided', async () => {
+      const txMock: any = {
+        pass: {
+          findUnique: vi.fn().mockResolvedValue(null),
+          create: vi.fn().mockResolvedValue({ id: 'tx-pass-1' }),
+        },
+      };
+
+      const res = await service.findOrCreatePass(mockCustomerId, mockMerchantId, txMock);
+      expect(txMock.pass.findUnique).toHaveBeenCalled();
+      expect(txMock.pass.create).toHaveBeenCalled();
+      expect(res.pass.id).toBe('tx-pass-1');
+      expect(res.isNew).toBe(true);
+    });
+
+    it('rethrows P2002 error when tx is provided so outer transaction can abort and retry', async () => {
+      const p2002Error = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      });
+      const txMock: any = {
+        pass: {
+          findUnique: vi.fn().mockResolvedValue(null),
+          create: vi.fn().mockRejectedValue(p2002Error),
+        },
+      };
+
+      await expect(
+        service.findOrCreatePass(mockCustomerId, mockMerchantId, txMock),
+      ).rejects.toThrow(p2002Error);
+
+      expect(txMock.pass.findUnique).toHaveBeenCalledTimes(1);
+      expect(txMock.pass.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('catches P2002 and fetches existing pass when tx is not provided', async () => {
+      const p2002Error = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      });
+      const existing = { id: 'pass-concurrent', customerId: mockCustomerId, merchantId: mockMerchantId };
+
+      vi.spyOn(prisma.pass, 'findUnique')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(existing as any);
+      vi.spyOn(prisma.pass, 'create').mockRejectedValueOnce(p2002Error);
+
+      const res = await service.findOrCreatePass(mockCustomerId, mockMerchantId);
+
+      expect(res.isNew).toBe(false);
+      expect(res.pass.id).toBe('pass-concurrent');
+      expect(prisma.pass.findUnique).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('getWalletUrlsForPass', () => {
@@ -222,6 +277,36 @@ describe('PassesService', () => {
       expect(urls).not.toBeNull();
       expect(urls?.appleWalletUrl).toContain('/api/passes/token-123/apple');
       expect(urls?.googleWalletUrl).toBe('https://pay.google.com/gp/v/save/mock-jwt');
+    });
+
+    it('should use transaction client tx when provided', async () => {
+      const txMock: any = {
+        pass: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: mockPassId,
+            passToken: 'token-tx',
+            merchantId: mockMerchantId,
+            merchant: { id: mockMerchantId, name: 'Local' },
+            customer: { id: mockCustomerId, rut: '11111111-1' },
+          }),
+        },
+        promotion: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'promo-1',
+            targetStamps: 5,
+            rewardName: 'Café',
+          }),
+        },
+        stamp: {
+          count: vi.fn().mockResolvedValue(0),
+          findFirst: vi.fn().mockResolvedValue(null),
+        },
+      };
+
+      const urls = await service.getWalletUrlsForPass(mockPassId, txMock);
+      expect(txMock.pass.findUnique).toHaveBeenCalled();
+      expect(txMock.promotion.findFirst).toHaveBeenCalled();
+      expect(urls?.appleWalletUrl).toContain('/api/passes/token-tx/apple');
     });
 
     it('should return null if pass does not exist', async () => {

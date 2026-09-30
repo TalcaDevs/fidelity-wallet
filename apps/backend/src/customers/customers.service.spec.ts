@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
+import { Prisma } from '@prisma/client';
 import type { PassesService } from '../passes/passes.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import { CustomersService } from './customers.service.js';
@@ -24,7 +30,11 @@ describe('CustomersService', () => {
 
   beforeEach(() => {
     prismaMock = {
+      $transaction: vi.fn((callback: (tx: any) => Promise<any>) => callback(prismaMock)),
       merchant: {
+        findUnique: vi.fn(),
+      },
+      merchantUser: {
         findUnique: vi.fn(),
       },
       promotion: {
@@ -35,6 +45,12 @@ describe('CustomersService', () => {
         findFirst: vi.fn(),
         create: vi.fn(),
         update: vi.fn(),
+        delete: vi.fn(),
+      },
+      pass: {
+        findUnique: vi.fn(),
+        delete: vi.fn(),
+        count: vi.fn(),
       },
     };
 
@@ -47,6 +63,7 @@ describe('CustomersService', () => {
         appleWalletUrl: '/api/passes/p-1/apple',
         googleWalletUrl: '/api/passes/p-1/google',
       }),
+      notifyPassUpdate: vi.fn(),
     };
 
     service = new CustomersService(
@@ -141,8 +158,41 @@ describe('CustomersService', () => {
     expect(result.appleWalletUrl).toBe('/api/passes/p-1/apple');
     expect(result.googleWalletUrl).toBe('/api/passes/p-1/google');
     expect((result as any).passToken).toBeUndefined();
-    expect(passesServiceMock.findOrCreatePass).toHaveBeenCalledWith('c-1', 'm-1');
-    expect(passesServiceMock.getWalletUrlsForPass).toHaveBeenCalledWith('p-1');
+    expect(passesServiceMock.findOrCreatePass).toHaveBeenCalledWith('c-1', 'm-1', prismaMock);
+    expect(passesServiceMock.getWalletUrlsForPass).toHaveBeenCalledWith('p-1', prismaMock);
+    expect(prismaMock.$transaction).toHaveBeenCalled();
+  });
+
+  it('should throw InternalServerErrorException and abort transaction if wallet URLs generation returns null for a new pass', async () => {
+    prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
+    prismaMock.customer.findUnique.mockResolvedValue(null);
+    prismaMock.customer.create.mockResolvedValue({ id: 'c-1', rut: '11111111-1', phone: '+56912345678' });
+    passesServiceMock.findOrCreatePass.mockResolvedValue({
+      pass: { id: 'p-1', customerId: 'c-1', merchantId: 'm-1' },
+      isNew: true,
+    });
+    passesServiceMock.getWalletUrlsForPass.mockResolvedValue(null);
+
+    await expect(service.createOrFindCustomer(validDto())).rejects.toThrow(
+      InternalServerErrorException,
+    );
+    expect(prismaMock.$transaction).toHaveBeenCalled();
+  });
+
+  it('should throw InternalServerErrorException and abort transaction if wallet URLs generation throws an error for a new pass', async () => {
+    prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
+    prismaMock.customer.findUnique.mockResolvedValue(null);
+    prismaMock.customer.create.mockResolvedValue({ id: 'c-1', rut: '11111111-1', phone: '+56912345678' });
+    passesServiceMock.findOrCreatePass.mockResolvedValue({
+      pass: { id: 'p-1', customerId: 'c-1', merchantId: 'm-1' },
+      isNew: true,
+    });
+    passesServiceMock.getWalletUrlsForPass.mockRejectedValue(new Error('Signing key failure'));
+
+    await expect(service.createOrFindCustomer(validDto())).rejects.toThrow(
+      InternalServerErrorException,
+    );
+    expect(prismaMock.$transaction).toHaveBeenCalled();
   });
 
   it('should return existing customer and pass without wallet URLs to prevent credential leakage/impersonation', async () => {
@@ -165,6 +215,7 @@ describe('CustomersService', () => {
     expect((result as any).passToken).toBeUndefined();
     expect(prismaMock.customer.create).not.toHaveBeenCalled();
     expect(passesServiceMock.getWalletUrlsForPass).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).toHaveBeenCalled();
   });
 
   describe('identity of an existing customer (anti-impersonation)', () => {
@@ -217,6 +268,137 @@ describe('CustomersService', () => {
         where: { id: 'c-1' },
         data: { termsAcceptedAt: expect.any(Date), termsVersion: TERMS_VERSION },
       });
+    });
+  });
+
+  describe('concurrency and P2002 retry handling', () => {
+    const p2002Error = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+      clientVersion: 'test',
+    });
+
+    it('retries the entire transaction when P2002 collision occurs on customer creation and resolves concurrently created customer', async () => {
+      prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
+      prismaMock.promotion.findFirst.mockResolvedValue({ id: 'promo-1', isActive: true });
+
+      let transactionCount = 0;
+      prismaMock.$transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => {
+        transactionCount++;
+        return callback(prismaMock);
+      });
+
+      // On attempt 1, customer does not exist yet. On attempt 2, customer was created by concurrent request.
+      prismaMock.customer.findUnique.mockImplementation(({ where }: any) => {
+        if (transactionCount === 1) {
+          return Promise.resolve(null);
+        }
+        return Promise.resolve({
+          id: 'c-concurrent',
+          rut: '11111111-1',
+          phone: '+56912345678',
+          termsVersion: TERMS_VERSION,
+        });
+      });
+
+      prismaMock.customer.create.mockRejectedValueOnce(p2002Error);
+
+      passesServiceMock.findOrCreatePass.mockResolvedValue({
+        pass: { id: 'p-1', customerId: 'c-concurrent', merchantId: 'm-1' },
+        isNew: false,
+      });
+
+      const result = await service.createOrFindCustomer(validDto());
+
+      expect(transactionCount).toBe(2);
+      expect(result.customerId).toBe('c-concurrent');
+      expect(result.passId).toBe('p-1');
+      expect(result.isNew).toBe(false);
+    });
+
+    it('rethrows P2002 when the error persists on the retried transaction', async () => {
+      prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
+      prismaMock.promotion.findFirst.mockResolvedValue({ id: 'promo-1', isActive: true });
+
+      let transactionCount = 0;
+      prismaMock.$transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => {
+        transactionCount++;
+        return callback(prismaMock);
+      });
+
+      prismaMock.customer.findUnique.mockResolvedValue(null);
+      prismaMock.customer.create.mockRejectedValue(p2002Error);
+
+      await expect(service.createOrFindCustomer(validDto())).rejects.toThrow(p2002Error);
+      expect(transactionCount).toBe(2);
+    });
+  });
+
+  describe('deleteCustomerByMerchant (Ley 19.628)', () => {
+    it('throws ForbiddenException if caller is not authenticated', async () => {
+      await expect(
+        service.deleteCustomerByMerchant('m-1', 'c-1', ''),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('throws ForbiddenException if caller is not an OWNER', async () => {
+      prismaMock.merchantUser.findUnique.mockResolvedValue({ role: 'STAFF' });
+      await expect(
+        service.deleteCustomerByMerchant('m-1', 'c-1', 'user-staff'),
+      ).rejects.toThrow('Solo el dueño del comercio puede eliminar clientes');
+    });
+
+    it('throws NotFoundException if customer or pass does not exist in merchant', async () => {
+      prismaMock.merchantUser.findUnique.mockResolvedValue({ role: 'OWNER' });
+      prismaMock.pass.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.deleteCustomerByMerchant('m-1', 'c-1', 'user-owner'),
+      ).rejects.toThrow('Cliente o pase no encontrado en este comercio');
+    });
+
+    it('deletes pass without deleting customer when customer has other passes', async () => {
+      prismaMock.merchantUser.findUnique.mockResolvedValue({ role: 'OWNER' });
+      prismaMock.pass.findUnique.mockResolvedValue({ id: 'p-1', customerId: 'c-1', merchantId: 'm-1' });
+      prismaMock.pass.count.mockResolvedValue(1); // 1 remaining pass in another merchant
+
+      const result = await service.deleteCustomerByMerchant('m-1', 'c-1', 'user-owner');
+
+      expect(prismaMock.pass.delete).toHaveBeenCalledWith({ where: { id: 'p-1' } });
+      expect(prismaMock.customer.delete).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      expect(result.customerCompletelyDeleted).toBe(false);
+    });
+
+    it('deletes pass and customer completely when customer has no other passes', async () => {
+      prismaMock.merchantUser.findUnique.mockResolvedValue({ role: 'OWNER' });
+      prismaMock.pass.findUnique.mockResolvedValue({ id: 'p-1', customerId: 'c-1', merchantId: 'm-1' });
+      prismaMock.pass.count.mockResolvedValue(0); // 0 remaining passes
+
+      const result = await service.deleteCustomerByMerchant('m-1', 'c-1', 'user-owner');
+
+      expect(prismaMock.pass.delete).toHaveBeenCalledWith({ where: { id: 'p-1' } });
+      expect(prismaMock.customer.delete).toHaveBeenCalledWith({ where: { id: 'c-1' } });
+      expect(result.success).toBe(true);
+      expect(result.customerCompletelyDeleted).toBe(true);
+    });
+  });
+
+  describe('deleteCustomerGlobal (Ley 19.628)', () => {
+    it('throws NotFoundException if customer does not exist', async () => {
+      prismaMock.customer.findUnique.mockResolvedValue(null);
+      await expect(service.deleteCustomerGlobal('c-nonexistent')).rejects.toThrow('Cliente no encontrado');
+    });
+
+    it('deletes customer completely', async () => {
+      prismaMock.customer.findUnique.mockResolvedValue({
+        id: 'c-1',
+      });
+
+      const result = await service.deleteCustomerGlobal('c-1');
+
+      expect(prismaMock.customer.delete).toHaveBeenCalledWith({ where: { id: 'c-1' } });
+      expect(result.success).toBe(true);
+      expect(result.customerCompletelyDeleted).toBe(true);
     });
   });
 });

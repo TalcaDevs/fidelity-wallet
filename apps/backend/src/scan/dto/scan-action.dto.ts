@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ScanMethod } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsEnum,
@@ -119,6 +120,13 @@ export class ScanResultDto {
 
   @ApiProperty({ description: 'Acción ejecutada', enum: ScanActionType, example: ScanActionType.STAMP })
   action: ScanActionType;
+
+  @ApiPropertyOptional({
+    description: 'Método utilizado para resolver el pase: QR o MANUAL',
+    enum: ScanMethod,
+    example: ScanMethod.QR,
+  })
+  method?: ScanMethod;
 
   @ApiProperty({ description: 'ID del pase (UUID)' })
   passId: string;
