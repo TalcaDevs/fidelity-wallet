@@ -26,8 +26,7 @@ export class SupabaseAuthGuard implements CanActivate {
   private getSupabaseClient(): SupabaseClient {
     if (!this.supabase) {
       const url =
-        this.configService.get<string>('SUPABASE_URL') ||
-        process.env.SUPABASE_URL;
+        this.configService.get<string>('SUPABASE_URL') || process.env.SUPABASE_URL;
       const key =
         this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY') ||
         process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -55,9 +54,7 @@ export class SupabaseAuthGuard implements CanActivate {
     const authHeader = request.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedException(
-        'Missing or malformed Authorization header',
-      );
+      throw new UnauthorizedException('Missing or malformed Authorization header');
     }
 
     const token = authHeader.replace('Bearer ', '').trim();
