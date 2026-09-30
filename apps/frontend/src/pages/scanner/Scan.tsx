@@ -3,6 +3,7 @@ import { QRCam } from './QRCam';
 import { ManualFallback } from './ManualFallback';
 
 import { useScanFeedback } from '../../hooks/useScanFeedback';
+import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { supabase } from '../../lib/supabase';
 import { Session } from '@supabase/supabase-js';
 import { processScan, ScanResult, ScanTarget } from '../../services/scanService';
@@ -18,21 +19,8 @@ export function Scan({ merchantId, session }: { merchantId: string, session: Ses
   const [result, setResult] = useState<ScanResult | null>(null);
   const [target, setTarget] = useState<ScanTarget | null>(null);
   
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const isOnline = useOnlineStatus();
   const [isSessionExpired, setIsSessionExpired] = useState(false);
-
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   // Monitor Supabase auth state for unexpected session invalidation
   useEffect(() => {

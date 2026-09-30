@@ -1,17 +1,21 @@
 import path from 'path'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 
 import { VitePWA } from 'vite-plugin-pwa'
 import basicSsl from '@vitejs/plugin-basic-ssl'
 
 // https://vite.dev/config/
-export default defineConfig({
-  plugins: [
-    react(), 
-    tailwindcss(),
-    basicSsl(),
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  const enableHttps = env.VITE_ENABLE_HTTPS === 'true'
+
+  return {
+    plugins: [
+      react(), 
+      tailwindcss(),
+      ...(enableHttps ? [basicSsl()] : []),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'icons.svg', 'apple-wallet-es.svg', 'google-wallet-es.svg'],
@@ -40,8 +44,8 @@ export default defineConfig({
     })
   ],
   server: {
-    host: true,
-    allowedHosts: true,
+    host: enableHttps ? true : false,
+    allowedHosts: enableHttps ? true : false,
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:3000',
@@ -65,6 +69,6 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
-  },
+  }
 })
 

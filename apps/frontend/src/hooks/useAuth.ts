@@ -26,8 +26,11 @@ export function useAuth() {
         
         try {
           const { data: { session } } = await supabase.auth.getSession();
-          if (session) {
-            await supabase.auth.refreshSession();
+          if (session && session.expires_at) {
+            const timeToExpiry = session.expires_at * 1000 - Date.now();
+            if (timeToExpiry < 300000) { // 5 minutos
+              await supabase.auth.refreshSession();
+            }
           }
         } catch (error) {
           console.error('Error refreshing session:', error);
@@ -44,6 +47,7 @@ export function useAuth() {
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (refreshTimeout) window.clearTimeout(refreshTimeout);
       data?.subscription.unsubscribe();
     };
   }, []);

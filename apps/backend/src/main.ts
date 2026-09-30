@@ -23,7 +23,6 @@ async function bootstrap() {
         'http://127.0.0.1:5173',
         'http://localhost:3000',
         'http://127.0.0.1:3000',
-        'http://192.168.1.51:5173',
       ];
 
   app.enableCors({
@@ -72,7 +71,7 @@ async function bootstrap() {
   }
 
   const port = process.env.PORT ?? 3000;
-  await app.listen(port, '0.0.0.0');
+  await app.listen(port);
 
   logger.log(`🚀 API REST ejecutándose en: http://localhost:${port}/api`);
 }

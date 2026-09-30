@@ -1,3 +1,5 @@
+import { supabase } from './supabase';
+
 export function apiUrl(path: string): string {
   const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
   // Ensure we don't have double slashes if path starts with /
@@ -8,13 +10,25 @@ export function apiUrl(path: string): string {
   return `${cleanBaseUrl}${cleanPath}`;
 }
 
-import { supabase } from './supabase';
+let refreshSessionPromise: Promise<any> | null = null;
+
+async function getOrRefreshSession() {
+  if (!refreshSessionPromise) {
+    refreshSessionPromise = supabase.auth.refreshSession().finally(() => {
+      refreshSessionPromise = null;
+    });
+  }
+  return refreshSessionPromise;
+}
 
 export async function authenticatedFetch(path: string, init?: RequestInit): Promise<Response> {
   const { data: { session } } = await supabase.auth.getSession();
   
   if (!session) {
-    return new Response(JSON.stringify({ error: 'No hay sesión activa' }), { status: 401 });
+    return new Response(JSON.stringify({ error: 'No hay sesión activa' }), { 
+      status: 401,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 
   const headers = new Headers(init?.headers);
@@ -25,7 +39,7 @@ export async function authenticatedFetch(path: string, init?: RequestInit): Prom
   let response = await fetch(apiUrl(path), config);
   
   if (!response.ok && response.status === 401) {
-    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    const { data: refreshData, error: refreshError } = await getOrRefreshSession();
     if (!refreshError && refreshData.session) {
       headers.set('Authorization', `Bearer ${refreshData.session.access_token}`);
       response = await fetch(apiUrl(path), { ...config, headers });
