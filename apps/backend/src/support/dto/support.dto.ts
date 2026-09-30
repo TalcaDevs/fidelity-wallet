@@ -84,8 +84,11 @@ export class InternalReplyTicketDto extends ReplyTicketDto {
     default: false,
     description: 'Nota interna: el dueño no la ve',
   })
+  // Se lee el valor crudo (obj[key]): con enableImplicitConversion, `value` ya llega convertido
+  // con Boolean("false") === true, y toda respuesta del multipart quedaba como nota interna.
   @Transform(
-    ({ value }: { value: unknown }) => value === true || value === 'true',
+    ({ obj, key }: { obj: Record<string, unknown>; key: string }) =>
+      obj[key] === true || obj[key] === 'true',
   )
   @IsBoolean()
   isInternal: boolean = false;
