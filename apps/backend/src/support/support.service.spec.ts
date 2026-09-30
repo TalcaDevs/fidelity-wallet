@@ -5,6 +5,7 @@ import {
   HttpException,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import type { SupportStorageService } from './support-storage.service.js';
@@ -130,6 +131,27 @@ describe('SupportService', () => {
       expect((await statusAfterReply('IN_PROGRESS')).status).toBe(
         'IN_PROGRESS',
       );
+    });
+
+    it('only writes if the status is still the one it read, so a concurrent close is not undone', async () => {
+      prisma.ticket.findFirst.mockResolvedValue({
+        id: 't-1',
+        status: 'RESOLVED',
+      });
+      prisma.ticket.update.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('No record', {
+          code: 'P2025',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(
+        service.reply('b-1', 'owner', 't-1', { body: 'hola' }),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.ticket.update.mock.calls[0][0].where).toEqual({
+        id: 't-1',
+        status: 'RESOLVED',
+      });
     });
 
     it('refuses to reply to a CLOSED ticket', async () => {

@@ -31,6 +31,7 @@ import {
   ticketSummaryInclude,
   toTicketSummary,
 } from './ticket-mapper.js';
+import { failOnStaleStatus } from './stale-ticket.js';
 import { TicketPresenterService } from './ticket-presenter.service.js';
 
 export const TICKETS_PER_HOUR_LIMIT = 10;
@@ -198,38 +199,40 @@ export class SupportService {
         }
       : null;
 
-    const ticket = await this.storage.uploadThen(upload, () =>
-      this.prisma.ticket.update({
-        where: { id: ticketId },
-        data: {
-          status: nextStatus,
-          resolvedAt: nextStatus === TicketStatus.OPEN ? null : undefined,
-          lastMessageAt: now,
-          merchantReadAt: now,
-          messages: {
-            create: {
-              id: messageId,
-              authorUserId: userId,
-              authorType: 'MERCHANT',
-              body: dto.body,
-              attachments:
-                image && upload
-                  ? {
-                      create: {
-                        ticketId,
-                        storagePath: upload.path,
-                        fileName: image.fileName,
-                        mimeType: image.mimeType,
-                        sizeBytes: image.sizeBytes,
-                        uploadedByUserId: userId,
-                      },
-                    }
-                  : undefined,
+    const ticket = await failOnStaleStatus(
+      this.storage.uploadThen(upload, () =>
+        this.prisma.ticket.update({
+          where: { id: ticketId, status: current.status },
+          data: {
+            status: nextStatus,
+            resolvedAt: nextStatus === TicketStatus.OPEN ? null : undefined,
+            lastMessageAt: now,
+            merchantReadAt: now,
+            messages: {
+              create: {
+                id: messageId,
+                authorUserId: userId,
+                authorType: 'MERCHANT',
+                body: dto.body,
+                attachments:
+                  image && upload
+                    ? {
+                        create: {
+                          ticketId,
+                          storagePath: upload.path,
+                          fileName: image.fileName,
+                          mimeType: image.mimeType,
+                          sizeBytes: image.sizeBytes,
+                          uploadedByUserId: userId,
+                        },
+                      }
+                    : undefined,
+              },
             },
           },
-        },
-        include: ticketDetailInclude,
-      }),
+          include: ticketDetailInclude,
+        }),
+      ),
     );
 
     return this.presenter.forMerchant(ticket);

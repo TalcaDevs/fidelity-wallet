@@ -19,10 +19,12 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import type { InternalTicketDto, Paginated } from '@fidelity/shared';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import {
   PlatformAdminGuard,
+  PlatformRoles,
   type PlatformAdminUser,
 } from '../common/guards/platform-admin.guard.js';
 import { SupabaseAuthGuard } from '../common/guards/supabase-auth.guard.js';
@@ -41,6 +43,7 @@ import {
 @ApiTags('Internal')
 @ApiBearerAuth()
 @UseGuards(SupabaseAuthGuard, PlatformAdminGuard)
+@PlatformRoles('SUPERADMIN', 'SUPPORT')
 @ApiResponse({ status: 403, description: 'El usuario no es PlatformAdmin' })
 @Controller('internal')
 export class InternalController {
@@ -91,6 +94,7 @@ export class InternalController {
 
   @Post('tickets/:ticketId/messages')
   @HttpCode(HttpStatus.CREATED)
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @UseInterceptors(attachmentInterceptor)
   @ApiMultipartWithAttachment(InternalReplyTicketDto)
   @ApiOperation({ summary: 'Responder o dejar una nota interna' })

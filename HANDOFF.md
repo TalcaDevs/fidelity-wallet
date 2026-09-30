@@ -1027,6 +1027,11 @@ Pasos del plan original, con lo que cambió:
 > - Una captura de más de 10 MB responde **413**.
 > - Crear un ticket **no exige que la marca esté activa**: una marca suspendida tiene que poder escribir a soporte.
 > - Las transiciones válidas son las de `TICKET_TRANSITIONS` en `packages/shared`.
+>
+> Tras la revisión del PR #18:
+> - **`@PlatformRoles(...)`** es obligatorio en todo controller o handler interno: sin él, `PlatformAdminGuard` deniega. Los tickets admiten `SUPERADMIN` y `SUPPORT`.
+> - Las escrituras sobre un ticket exigen el estado leído (`failOnStaleStatus`) y responden 409 si otra operación lo cambió entremedio.
+> - Pendiente 🟡: quitar metadatos EXIF (GPS) de las capturas, y pasar los adjuntos de memoria a disco o streaming si el volumen crece.
 
 **Tipos** — `packages/shared/src/support.ts`:
 ```ts

@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import { InternalTicketsService } from './internal-tickets.service.js';
@@ -85,6 +86,25 @@ describe('InternalTicketsService', () => {
           },
         }),
       });
+    });
+
+    it('returns 409 instead of overwriting a status that changed concurrently', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(ticket('IN_PROGRESS'));
+      prisma.ticket.update.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('No record', {
+          code: 'P2025',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(
+        service.update('t-1', 'admin', { status: 'RESOLVED' }),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.ticket.update.mock.calls[0][0].where).toEqual({
+        id: 't-1',
+        status: 'IN_PROGRESS',
+      });
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
     });
 
     it('only assigns tickets to platform admins', async () => {

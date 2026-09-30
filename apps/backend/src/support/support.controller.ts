@@ -138,6 +138,7 @@ export class SupportController {
 
   @Post(':ticketId/messages')
   @HttpCode(HttpStatus.CREATED)
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @UseInterceptors(attachmentInterceptor)
   @ApiMultipartWithAttachment(ReplyTicketDto)
   @ApiOperation({

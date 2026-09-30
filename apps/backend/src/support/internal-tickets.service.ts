@@ -26,6 +26,7 @@ import type {
 } from './dto/support.dto.js';
 import { SupportStorageService } from './support-storage.service.js';
 import { ticketDetailInclude } from './ticket-mapper.js';
+import { failOnStaleStatus } from './stale-ticket.js';
 import { TicketPresenterService } from './ticket-presenter.service.js';
 
 /** Campos que dependen del estado al que llega el ticket. */
@@ -138,29 +139,31 @@ export class InternalTicketsService {
       priority: current.priority,
       assigneeUserId: current.assigneeUserId,
     };
-    const ticket = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.ticket.update({
-        where: { id: ticketId },
-        data,
-        include: ticketDetailInclude,
-      });
-      await tx.auditLog.create({
-        data: {
-          actorUserId,
-          actorType: 'PLATFORM',
-          action: 'ticket.update',
-          entity: 'Ticket',
-          entityId: ticketId,
-          before,
-          after: {
-            status: updated.status,
-            priority: updated.priority,
-            assigneeUserId: updated.assigneeUserId,
+    const ticket = await failOnStaleStatus(
+      this.prisma.$transaction(async (tx) => {
+        const updated = await tx.ticket.update({
+          where: { id: ticketId, status: current.status },
+          data,
+          include: ticketDetailInclude,
+        });
+        await tx.auditLog.create({
+          data: {
+            actorUserId,
+            actorType: 'PLATFORM',
+            action: 'ticket.update',
+            entity: 'Ticket',
+            entityId: ticketId,
+            before,
+            after: {
+              status: updated.status,
+              priority: updated.priority,
+              assigneeUserId: updated.assigneeUserId,
+            },
           },
-        },
-      });
-      return updated;
-    });
+        });
+        return updated;
+      }),
+    );
 
     return this.presenter.forPlatform(ticket);
   }
@@ -188,41 +191,43 @@ export class InternalTicketsService {
         }
       : null;
 
-    const ticket = await this.storage.uploadThen(upload, () =>
-      this.prisma.ticket.update({
-        where: { id: ticketId },
-        data: {
-          ...(nextStatus !== current.status
-            ? { status: nextStatus, ...statusTimestamps(nextStatus, now) }
-            : {}),
-          ...(dto.isInternal
-            ? {}
-            : { lastMessageAt: now, lastPublicReplyAt: now }),
-          messages: {
-            create: {
-              id: randomUUID(),
-              authorUserId: actorUserId,
-              authorType: 'PLATFORM',
-              body: dto.body,
-              isInternal: dto.isInternal,
-              attachments:
-                image && upload
-                  ? {
-                      create: {
-                        ticketId,
-                        storagePath: upload.path,
-                        fileName: image.fileName,
-                        mimeType: image.mimeType,
-                        sizeBytes: image.sizeBytes,
-                        uploadedByUserId: actorUserId,
-                      },
-                    }
-                  : undefined,
+    const ticket = await failOnStaleStatus(
+      this.storage.uploadThen(upload, () =>
+        this.prisma.ticket.update({
+          where: { id: ticketId, status: current.status },
+          data: {
+            ...(nextStatus !== current.status
+              ? { status: nextStatus, ...statusTimestamps(nextStatus, now) }
+              : {}),
+            ...(dto.isInternal
+              ? {}
+              : { lastMessageAt: now, lastPublicReplyAt: now }),
+            messages: {
+              create: {
+                id: randomUUID(),
+                authorUserId: actorUserId,
+                authorType: 'PLATFORM',
+                body: dto.body,
+                isInternal: dto.isInternal,
+                attachments:
+                  image && upload
+                    ? {
+                        create: {
+                          ticketId,
+                          storagePath: upload.path,
+                          fileName: image.fileName,
+                          mimeType: image.mimeType,
+                          sizeBytes: image.sizeBytes,
+                          uploadedByUserId: actorUserId,
+                        },
+                      }
+                    : undefined,
+              },
             },
           },
-        },
-        include: ticketDetailInclude,
-      }),
+          include: ticketDetailInclude,
+        }),
+      ),
     );
 
     return this.presenter.forPlatform(ticket);
