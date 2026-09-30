@@ -5,7 +5,7 @@ import type { Session } from '@supabase/supabase-js';
 import { useTheme } from '../hooks/useTheme';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import type { MerchantRole } from '../hooks/useMembership';
-
+import { isBillingEnabled } from '../config/features';
 const NAV_LINK_CLASSES = ({ isActive }: { isActive: boolean }) =>
   `flex items-center gap-3 px-5 py-3.5 rounded-2xl font-bold transition-all duration-300 ${
     isActive
@@ -58,7 +58,7 @@ const NAV_ITEMS = [
   },
 ] as const;
 
-const isBillingEnabled = import.meta.env.VITE_FEATURE_BILLING !== 'false';
+
 
 const VISIBLE_NAV_ITEMS = NAV_ITEMS.filter(item => {
   if (item.to === '/admin/billing' && !isBillingEnabled) return false;
@@ -203,7 +203,7 @@ export function Layout({ session, role }: { session: Session | null; role: Merch
           </div>
         )}
 
-        <div className="p-6 md:p-14 flex-1 relative">
+        <div className="p-6 pt-20 md:p-14 md:pt-14 lg:pt-14 flex-1 relative">
           {/* Decorative Background Elements for depth */}
           <div className="absolute top-0 right-0 w-[800px] h-[600px] bg-brand-blue/5 dark:bg-brand-blue/10 rounded-full blur-3xl pointer-events-none -z-10 translate-x-1/3 -translate-y-1/3" />
           <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-brand-yellow/5 dark:bg-brand-yellow/10 rounded-full blur-3xl pointer-events-none -z-10 -translate-x-1/3 translate-y-1/3" />

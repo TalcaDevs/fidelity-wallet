@@ -1,16 +1,16 @@
 import { useState } from 'react';
-import { CATALOG_PLANS } from '@fidelity/shared';
+import { CATALOG_PLANS } from '../../constants/plans';
 
 export function Billing() {
   const [isAnnual, setIsAnnual] = useState(false);
-  const currentPlan = CATALOG_PLANS.find(p => p.id === 'free')!;
+  const currentPlan = CATALOG_PLANS.find(p => p.id === 'TRIAL')!;
 
   // Mocked stats for progress bars
   const stats = [
-    { label: 'Programas de Lealtad', used: 1, limit: currentPlan.limits.loyaltyPrograms },
+    { label: 'Programas de Lealtad', used: 1, limit: currentPlan.limits.programs },
     { label: 'Clientes Registrados', used: 45, limit: currentPlan.limits.customers },
     { label: 'Sucursales', used: 1, limit: currentPlan.limits.locations },
-    { label: 'Usuarios de Equipo', used: 1, limit: currentPlan.limits.staffUsers },
+    { label: 'Usuarios de Equipo', used: 1, limit: currentPlan.limits.teamUsers },
   ];
 
   // Mocked payment history
@@ -53,7 +53,7 @@ export function Billing() {
                 <div className="flex justify-between items-center mb-3">
                   <span className="text-sm font-bold text-slate-600 dark:text-slate-400">{stat.label}</span>
                   <span className="text-sm font-black text-slate-900 dark:text-white">
-                    {stat.used} <span className="text-slate-400 font-medium">/ {stat.limit === 'unlimited' ? '∞' : stat.limit}</span>
+                    {stat.used} <span className="text-slate-400 font-medium">de {stat.limit === null ? '∞' : stat.limit}</span>
                   </span>
                 </div>
                 <div className="h-2.5 w-full bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
@@ -93,12 +93,12 @@ export function Billing() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {CATALOG_PLANS.filter(p => p.id !== 'free').map(plan => (
+          {CATALOG_PLANS.filter(p => p.id !== 'TRIAL').map(plan => (
             <div key={plan.id} className="bg-white dark:bg-slate-800/80 backdrop-blur-md rounded-3xl p-8 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-200/20 dark:shadow-none flex flex-col hover:-translate-y-2 transition-transform duration-300">
               <h3 className="text-xl font-black text-slate-900 dark:text-white mb-4">{plan.name}</h3>
               <div className="mb-6 flex items-baseline gap-1">
                 <span className="text-4xl font-black text-slate-900 dark:text-white">
-                  ${(isAnnual ? plan.priceAnnual : plan.priceMonthly).toLocaleString('es-CL')}
+                  ${(isAnnual ? plan.priceUsdMonthlyAnnual : plan.priceUsdMonthly)?.toLocaleString('es-CL')}
                 </span>
                 <span className="text-slate-500 font-medium text-sm">
                   /{isAnnual ? 'año' : 'mes'}
@@ -109,7 +109,7 @@ export function Billing() {
                 <li className="flex items-center gap-3">
                   <svg className="w-5 h-5 text-brand-blue shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" /></svg>
                   <span className="text-slate-600 dark:text-slate-300 font-medium">
-                    {plan.limits.loyaltyPrograms} Programas de lealtad
+                    {plan.limits.programs} Programas de lealtad
                   </span>
                 </li>
                 <li className="flex items-center gap-3">
@@ -121,13 +121,13 @@ export function Billing() {
                 <li className="flex items-center gap-3">
                   <svg className="w-5 h-5 text-brand-blue shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" /></svg>
                   <span className="text-slate-600 dark:text-slate-300 font-medium">
-                    {plan.limits.staffUsers} Usuarios de equipo
+                    {plan.limits.teamUsers} Usuarios de equipo
                   </span>
                 </li>
                 <li className="flex items-center gap-3">
                   <svg className="w-5 h-5 text-brand-blue shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" /></svg>
                   <span className="text-slate-600 dark:text-slate-300 font-medium">
-                    {plan.limits.customers === 'unlimited' ? 'Clientes ilimitados' : `${plan.limits.customers} Clientes`}
+                    {plan.limits.customers === null ? 'Clientes ilimitados' : `${plan.limits.customers} Clientes`}
                   </span>
                 </li>
               </ul>

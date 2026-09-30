@@ -21,6 +21,7 @@ import { ROUTES } from './components/routing/routePaths';
 import { useAuth } from './hooks/useAuth';
 import { useMembership } from './hooks/useMembership';
 import './index.css';
+import { isBillingEnabled } from './config/features';
 
 // El panel es sólo para el dueño; el personal de caja va al escáner.
 const ADMIN_ROLES = ['OWNER'] as const;
@@ -61,7 +62,7 @@ export default function App() {
               <Route path={ROUTES.admin} element={<Navigate to={ROUTES.dashboard} replace />} />
               <Route path={ROUTES.dashboard} element={<Dashboard session={session} merchantId={membership.merchantId} />} />
               <Route path={ROUTES.team} element={<Team />} />
-              <Route path={ROUTES.billing} element={<Billing />} />
+              {isBillingEnabled && <Route path={ROUTES.billing} element={<Billing />} />}
               <Route path={ROUTES.support} element={<Support />} />
               <Route path={ROUTES.promotions} element={<PromotionsModule merchantId={membership.merchantId} />} />
               <Route path={ROUTES.customers} element={<Customers merchantId={membership.merchantId} />} />

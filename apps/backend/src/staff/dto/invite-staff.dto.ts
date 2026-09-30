@@ -18,6 +18,14 @@ export class InviteStaffMemberDto {
   @IsString({ message: 'La contraseña debe ser una cadena de texto' })
   @MinLength(6, { message: 'La contraseña debe tener al menos 6 caracteres' })
   password?: string;
+
+  @ApiPropertyOptional({
+    description: 'ID de la sucursal (local) al que se asignará el usuario. Si no se envía, se asume el local único por ahora.',
+    example: 'b0000000-0000-0000-0000-000000000002',
+  })
+  @IsOptional()
+  @IsUUID('4', { message: 'locationId debe ser un UUID v4 válido' })
+  locationId?: string;
 }
 
 export class InviteStaffDto extends InviteStaffMemberDto {

@@ -1,4 +1,4 @@
-import { Ticket, TicketCategory } from '@fidelity/shared';
+import { Ticket, TicketCategory } from '../types/support';
 
 // Simulated in-memory database
 let tickets: Ticket[] = [];

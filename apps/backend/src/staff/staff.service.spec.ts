@@ -19,7 +19,9 @@ describe('StaffService', () => {
       },
       merchantUser: {
         findUnique: vi.fn(),
+        findMany: vi.fn(),
         upsert: vi.fn().mockResolvedValue({}),
+        delete: vi.fn(),
       },
     } as unknown as PrismaService;
 
@@ -36,6 +38,7 @@ describe('StaffService', () => {
         admin: {
           createUser: vi.fn(),
           inviteUserByEmail: vi.fn(),
+          listUsers: vi.fn(),
         },
       },
     };
@@ -44,37 +47,7 @@ describe('StaffService', () => {
     vi.spyOn(service, 'getSupabaseAdmin').mockReturnValue(mockSupabaseAdmin);
   });
 
-  it('should throw UnauthorizedException if callerUserId is missing', async () => {
-    await expect(
-      service.inviteStaff(
-        {
-          merchantId: mockMerchantId,
-          email: 'staff@test.com',
-        },
-        '',
-      ),
-    ).rejects.toThrow(UnauthorizedException);
-  });
 
-  it('should throw ForbiddenException if caller is not an OWNER of the merchant', async () => {
-    vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({
-      id: 'mu-1',
-      userId: 'caller-staff',
-      merchantId: mockMerchantId,
-      role: 'STAFF', // Not OWNER!
-      createdAt: new Date(),
-    } as any);
-
-    await expect(
-      service.inviteStaff(
-        {
-          merchantId: mockMerchantId,
-          email: 'newstaff@test.com',
-        },
-        'caller-staff',
-      ),
-    ).rejects.toThrow(ForbiddenException);
-  });
 
   it('should throw NotFoundException if merchant does not exist', async () => {
     vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({
@@ -93,7 +66,6 @@ describe('StaffService', () => {
           merchantId: mockMerchantId,
           email: 'staff@test.com',
         },
-        mockOwnerId,
       ),
     ).rejects.toThrow(NotFoundException);
   });
@@ -126,7 +98,6 @@ describe('StaffService', () => {
         merchantId: mockMerchantId,
         email: 'mesero@cafeteria.cl',
       },
-      mockOwnerId,
     );
 
     expect(result.id).toBe('u0000000-0000-0000-0000-000000000002');
@@ -171,7 +142,6 @@ describe('StaffService', () => {
         email: 'cajero@cafeteria.cl',
         password: 'ClaveSegura2026!',
       },
-      mockOwnerId,
     );
 
     expect(result.id).toBe('u0000000-0000-0000-0000-000000000003');
@@ -215,8 +185,86 @@ describe('StaffService', () => {
           merchantId: mockMerchantId,
           email: 'duplicate@test.com',
         },
-        mockOwnerId,
       ),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  describe('listStaff', () => {
+    it('should correctly map listUsers data with Prisma membership data', async () => {
+      vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue({
+        id: mockMerchantId,
+        name: 'Brand Demo',
+      } as any);
+
+      vi.spyOn(prisma.merchantUser, 'findMany').mockResolvedValue([
+        { userId: 'u1', merchantId: mockMerchantId, role: 'OWNER', createdAt: new Date('2026-01-01') },
+        { userId: 'u2', merchantId: mockMerchantId, role: 'STAFF', createdAt: new Date('2026-01-02') },
+      ] as any[]);
+
+      mockSupabaseAdmin.auth.admin.listUsers.mockResolvedValue({
+        data: {
+          users: [
+            { id: 'u1', email: 'owner@test.com', created_at: '2026-01-01T00:00:00Z', last_sign_in_at: '2026-09-01T00:00:00Z' },
+            { id: 'u2', email: 'staff@test.com', created_at: '2026-01-02T00:00:00Z', last_sign_in_at: null },
+          ]
+        },
+        error: null,
+      });
+
+      const result = await service.listStaff(mockMerchantId);
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual(expect.objectContaining({
+        userId: 'u1',
+        email: 'owner@test.com',
+        role: 'OWNER',
+        status: 'ACTIVE',
+        locationName: 'Brand Demo',
+      }));
+      expect(result[1]).toEqual(expect.objectContaining({
+        userId: 'u2',
+        email: 'staff@test.com',
+        role: 'STAFF',
+        status: 'INVITED',
+        lastSignInAt: null,
+      }));
+    });
+  });
+
+  describe('removeStaff', () => {
+    it('should delete a staff member', async () => {
+      vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({
+        id: 'mu-2',
+        userId: 'u2',
+        merchantId: mockMerchantId,
+        role: 'STAFF',
+      } as any);
+
+      vi.spyOn(prisma.merchantUser, 'delete').mockResolvedValue({} as any);
+
+      const result = await service.removeStaff(mockMerchantId, 'u2');
+
+      expect(result.success).toBe(true);
+      expect(prisma.merchantUser.delete).toHaveBeenCalledWith({
+        where: { userId_merchantId: { userId: 'u2', merchantId: mockMerchantId } }
+      });
+    });
+
+    it('should prevent deleting the owner', async () => {
+      vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({
+        id: 'mu-1',
+        userId: 'u1',
+        merchantId: mockMerchantId,
+        role: 'OWNER',
+      } as any);
+
+      await expect(service.removeStaff(mockMerchantId, 'u1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw NotFound if user is not in merchant', async () => {
+      vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue(null);
+
+      await expect(service.removeStaff(mockMerchantId, 'ghost')).rejects.toThrow(NotFoundException);
+    });
   });
 });

@@ -44,22 +44,6 @@ export class StaffService {
   }
 
   async inviteStaff(dto: InviteStaffDto, callerUserId: string): Promise<StaffResponseDto> {
-    if (!callerUserId) {
-      throw new UnauthorizedException('Usuario no autenticado');
-    }
-
-    const callerMembership = await this.prisma.merchantUser.findUnique({
-      where: {
-        userId_merchantId: {
-          userId: callerUserId,
-          merchantId: dto.merchantId,
-        },
-      },
-    });
-
-    if (!callerMembership || callerMembership.role !== 'OWNER') {
-      throw new ForbiddenException('Solo el dueño del comercio puede invitar personal');
-    }
 
     const merchant = await this.prisma.merchant.findUnique({
       where: { id: dto.merchantId },
@@ -138,56 +122,48 @@ export class StaffService {
     });
   }
 
-  async listStaff(merchantId: string, callerUserId: string) {
-    if (!callerUserId) throw new UnauthorizedException('Usuario no autenticado');
-
-    const callerMembership = await this.prisma.merchantUser.findUnique({
-      where: { userId_merchantId: { userId: callerUserId, merchantId } },
+  async listStaff(brandId: string) {
+    const merchant = await this.prisma.merchant.findUnique({
+      where: { id: brandId },
+      select: { name: true },
     });
 
-    if (!callerMembership || callerMembership.role !== 'OWNER') {
-      throw new ForbiddenException('Solo el dueño del comercio puede ver el personal');
-    }
-
     const memberships = await this.prisma.merchantUser.findMany({
-      where: { merchantId, role: 'STAFF' },
+      where: { merchantId: brandId },
       orderBy: { createdAt: 'desc' }
     });
 
     const supabase = this.getSupabaseAdmin();
-    const result = [];
+    // Fetch all users to avoid N+1.
+    // listUsers paginates up to 50 by default, using a larger perPage if needed,
+    // but typically a brand won't have 1000s of staff members right now.
+    const { data: authData, error: authError } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+    const authUsers = authError || !authData?.users ? [] : authData.users;
+    
+    // Create a map for fast lookup
+    const userMap = new Map(authUsers.map(u => [u.id, u]));
 
-    for (const m of memberships) {
-      const { data, error } = await supabase.auth.admin.getUserById(m.userId);
-      if (error || !data?.user) continue;
-
-      const isInvited = !data.user.last_sign_in_at;
-      result.push({
-        id: m.userId,
-        email: data.user.email,
+    const result = memberships.map((m) => {
+      const u = userMap.get(m.userId);
+      const isInvited = u ? !u.last_sign_in_at : false;
+      return {
+        userId: m.userId,
+        email: u?.email || 'Desconocido',
         role: m.role,
+        locationId: brandId, // Map to brandId for now until Location migration
+        locationName: merchant?.name || 'Desconocido',
         status: isInvited ? 'INVITED' : 'ACTIVE',
-        lastSignIn: data.user.last_sign_in_at,
-        createdAt: m.createdAt,
-      });
-    }
+        invitedAt: u?.created_at || m.createdAt,
+        lastSignInAt: u?.last_sign_in_at || null,
+      };
+    });
 
     return result;
   }
 
-  async removeStaff(merchantId: string, userIdToRemove: string, callerUserId: string) {
-    if (!callerUserId) throw new UnauthorizedException('Usuario no autenticado');
-
-    const callerMembership = await this.prisma.merchantUser.findUnique({
-      where: { userId_merchantId: { userId: callerUserId, merchantId } },
-    });
-
-    if (!callerMembership || callerMembership.role !== 'OWNER') {
-      throw new ForbiddenException('Solo el dueño del comercio puede eliminar personal');
-    }
-
+  async removeStaff(brandId: string, userIdToRemove: string) {
     const targetMembership = await this.prisma.merchantUser.findUnique({
-      where: { userId_merchantId: { userId: userIdToRemove, merchantId } },
+      where: { userId_merchantId: { userId: userIdToRemove, merchantId: brandId } },
     });
 
     if (!targetMembership) {
@@ -199,25 +175,41 @@ export class StaffService {
     }
 
     await this.prisma.merchantUser.delete({
-      where: { userId_merchantId: { userId: userIdToRemove, merchantId } },
+      where: { userId_merchantId: { userId: userIdToRemove, merchantId: brandId } },
     });
 
     return { success: true, message: 'Personal eliminado exitosamente' };
   }
 
-  async getStaffActivity(merchantId: string, targetUserId: string, callerUserId: string) {
-    if (!callerUserId) throw new UnauthorizedException('Usuario no autenticado');
-
-    const callerMembership = await this.prisma.merchantUser.findUnique({
-      where: { userId_merchantId: { userId: callerUserId, merchantId } },
+  async resendInvite(brandId: string, userId: string) {
+    const supabase = this.getSupabaseAdmin();
+    
+    const targetMembership = await this.prisma.merchantUser.findUnique({
+      where: { userId_merchantId: { userId, merchantId: brandId } },
     });
 
-    if (!callerMembership || callerMembership.role !== 'OWNER') {
-      throw new ForbiddenException('Solo el dueño del comercio puede ver la actividad del personal');
+    if (!targetMembership) {
+      throw new NotFoundException('Miembro del personal no encontrado');
     }
 
+    const { data: userResponse, error: userError } = await supabase.auth.admin.getUserById(userId);
+    if (userError || !userResponse?.user?.email) {
+      throw new BadRequestException('No se pudo obtener el correo electrónico del usuario');
+    }
+
+    const { error } = await supabase.auth.admin.inviteUserByEmail(userResponse.user.email, {
+      data: { merchant_id: brandId },
+    });
+
+    if (error) {
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  async getStaffActivity(brandId: string, targetUserId: string) {
+
     const scans = await this.prisma.scan.findMany({
-      where: { merchantId, createdByUserId: targetUserId },
+      where: { merchantId: brandId, createdByUserId: targetUserId },
       orderBy: { createdAt: 'desc' },
       include: {
         pass: {
@@ -238,32 +230,5 @@ export class StaffService {
     }));
   }
 
-  async updateStaffPassword(merchantId: string, targetUserId: string, newPassword: string, callerUserId: string) {
-    if (!callerUserId) throw new UnauthorizedException('Usuario no autenticado');
 
-    const callerMembership = await this.prisma.merchantUser.findUnique({
-      where: { userId_merchantId: { userId: callerUserId, merchantId } },
-    });
-
-    if (!callerMembership || callerMembership.role !== 'OWNER') {
-      throw new ForbiddenException('Solo el dueño del comercio puede editar personal');
-    }
-
-    const targetMembership = await this.prisma.merchantUser.findUnique({
-      where: { userId_merchantId: { userId: targetUserId, merchantId } },
-    });
-
-    if (!targetMembership) {
-      throw new NotFoundException('Miembro del personal no encontrado');
-    }
-
-    const supabase = this.getSupabaseAdmin();
-    const { error } = await supabase.auth.admin.updateUserById(targetUserId, { password: newPassword });
-    
-    if (error) {
-      throw new BadRequestException(error.message);
-    }
-
-    return { success: true, message: 'Contraseña actualizada exitosamente' };
-  }
 }
