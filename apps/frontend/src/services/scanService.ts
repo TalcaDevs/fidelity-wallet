@@ -1,5 +1,4 @@
-import { supabase } from '../lib/supabase';
-import { apiUrl } from '../lib/api';
+import { authenticatedFetch } from '../lib/api';
 import { extractApiError } from '../lib/apiError';
 
 // Promoción activa del local y si el saldo del cliente alcanza para canjearla.
@@ -26,6 +25,7 @@ export interface ScanResult {
   // Mensaje del backend; en un sello bloqueado dice cuántos minutos faltan.
   message?: string;
   error?: string;
+  errorCode?: string;
 }
 
 const MOCK_PROMOTIONS = (stamps: number): PromotionOption[] => [
@@ -89,11 +89,6 @@ export const processScan = async (params: ScanParams): Promise<ScanResult> => {
   }
 
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      return { ok: false, error: 'No hay sesión activa' };
-    }
-
     const body = {
       merchantId: params.merchantId,
       action: params.action,
@@ -101,19 +96,18 @@ export const processScan = async (params: ScanParams): Promise<ScanResult> => {
       ...(params.promotionId ? { promotionId: params.promotionId } : {})
     };
 
-    const response = await fetch(apiUrl('/api/scan'), {
+    const response = await authenticatedFetch('/api/scan', {
       method: 'POST',
       headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify(body)
     });
-    
+
     if (!response.ok) {
       const errorData: unknown = await response.json().catch(() => null);
       if (response.status === 401) {
-        return { ok: false, error: 'Tu sesión venció. Vuelve a iniciar sesión.' };
+        return { ok: false, error: 'Tu sesión venció. Vuelve a iniciar sesión.', errorCode: 'UNAUTHORIZED' };
       }
       if ([400, 403, 404, 409, 429].includes(response.status)) {
         return { ok: false, error: extractApiError(errorData) ?? 'Pase inválido o de otro local' };
