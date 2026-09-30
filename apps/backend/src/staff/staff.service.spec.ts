@@ -139,6 +139,7 @@ describe('StaffService', () => {
         email: 'cajero@cafeteria.cl',
         password: 'ClaveSegura2026!',
       },
+      mockOwnerId,
     );
 
     expect(result.id).toBe('u0000000-0000-0000-0000-000000000003');
