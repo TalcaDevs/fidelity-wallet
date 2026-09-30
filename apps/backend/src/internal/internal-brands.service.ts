@@ -2,8 +2,6 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type {
   InternalBrandDetailDto,
   InternalBrandSummaryDto,
-  InternalLocationPinDto,
-  LocationDto,
   Paginated,
 } from '@fidelity/shared';
 import { MerchantRole, Prisma, TicketStatus } from '@prisma/client';
@@ -11,15 +9,9 @@ import { toSubscription, BillingService } from '../billing/billing.service.js';
 import { diffFields, recordAudit } from '../common/audit/audit.js';
 import { UserDirectoryService } from '../common/users/user-directory.service.js';
 import { maskPhone, maskRut } from '../common/utils/mask.util.js';
-import { locationChanges } from '../locations/locations.service.js';
 import { toLocationDto } from '../locations/location-mapper.js';
-import type { UpdateLocationDto } from '../locations/dto/location.dto.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import type {
-  ListBrandsQueryDto,
-  ListLocationPinsQueryDto,
-  UpdateBrandDto,
-} from './dto/internal.dto.js';
+import type { ListBrandsQueryDto, UpdateBrandDto } from './dto/internal.dto.js';
 
 const OPEN_TICKET_STATUSES = [
   TicketStatus.OPEN,
@@ -199,9 +191,10 @@ export class InternalBrandsService {
       recordAudit(this.prisma, {
         actorUserId,
         actorType: 'PLATFORM',
-        action: diff.after.status
-          ? `brand.${String(diff.after.status).toLowerCase()}`
-          : 'brand.update',
+        action:
+          'status' in diff.after && fields.status
+            ? `brand.${fields.status.toLowerCase()}`
+            : 'brand.update',
         entity: 'Brand',
         entityId: brandId,
         before: diff.before as Prisma.InputJsonObject,
@@ -210,74 +203,6 @@ export class InternalBrandsService {
       }),
     ]);
     return this.get(brandId);
-  }
-
-  async updateLocation(
-    locationId: string,
-    actorUserId: string,
-    dto: UpdateLocationDto,
-  ): Promise<LocationDto> {
-    const current = await this.prisma.merchant.findUnique({
-      where: { id: locationId },
-    });
-    if (!current) throw new NotFoundException('El local no existe');
-
-    const changes = locationChanges(dto);
-    const diff = diffFields(current, changes as Partial<typeof current>);
-    if (!diff) return toLocationDto(current);
-
-    const [updated] = await this.prisma.$transaction([
-      this.prisma.merchant.update({ where: { id: locationId }, data: changes }),
-      recordAudit(this.prisma, {
-        actorUserId,
-        actorType: 'PLATFORM',
-        action: 'location.update',
-        entity: 'Merchant',
-        entityId: locationId,
-        before: diff.before as Prisma.InputJsonObject,
-        after: diff.after as Prisma.InputJsonObject,
-      }),
-    ]);
-    return toLocationDto(updated);
-  }
-
-  /** Solo locales con coordenadas: los demás no se pueden dibujar. */
-  async pins(
-    query: ListLocationPinsQueryDto,
-  ): Promise<InternalLocationPinDto[]> {
-    const locations = await this.prisma.merchant.findMany({
-      where: {
-        latitude: { not: null },
-        longitude: { not: null },
-        ...(query.brandId ? { brandId: query.brandId } : {}),
-        ...(query.region ? { region: query.region } : {}),
-      },
-      select: {
-        id: true,
-        brandId: true,
-        name: true,
-        commune: true,
-        region: true,
-        latitude: true,
-        longitude: true,
-        isActive: true,
-        brand: { select: { name: true, status: true } },
-      },
-      take: 2000,
-    });
-
-    return locations.map((l) => ({
-      id: l.id,
-      brandId: l.brandId,
-      brandName: l.brand.name,
-      brandStatus: l.brand.status,
-      name: l.name,
-      commune: l.commune,
-      region: l.region,
-      latitude: l.latitude as number,
-      longitude: l.longitude as number,
-      isActive: l.isActive,
-    }));
   }
 
   private async summaries(

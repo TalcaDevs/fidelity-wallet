@@ -10,6 +10,8 @@ const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
 const MIN_INTERVAL_MS = 1100;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 500;
+/** Con 1 req/s, más de esto en espera ya supera lo que un usuario aguanta en un autocompletado. */
+export const MAX_PENDING_REQUESTS = 5;
 
 interface NominatimResult {
   display_name: string;
@@ -53,7 +55,9 @@ export function toGeocodeResult(r: NominatimResult): GeocodeResultDto {
 /**
  * Proxy a Nominatim (OpenStreetMap). Su política exige a lo más 1 request por segundo y un
  * User-Agent identificable: las consultas se serializan acá, se cachean, y el navegador nunca
- * llama a Nominatim directo (HANDOFF §11.3).
+ * llama a Nominatim directo (HANDOFF §11.3). La cola tiene tope: pasado MAX_PENDING_REQUESTS se
+ * responde 503 de inmediato en vez de dejar esperando al cliente, y búsquedas iguales en vuelo
+ * comparten la misma consulta.
  */
 @Injectable()
 export class GeocodingService {
@@ -62,7 +66,9 @@ export class GeocodingService {
     string,
     { at: number; results: GeocodeResultDto[] }
   >();
+  private readonly inFlight = new Map<string, Promise<GeocodeResultDto[]>>();
   private queue: Promise<unknown> = Promise.resolve();
+  private pending = 0;
   private lastRequestAt = 0;
 
   constructor(private readonly config: ConfigService) {}
@@ -72,15 +78,31 @@ export class GeocodingService {
     const cached = this.cache.get(key);
     if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.results;
 
-    const results = await this.enqueue(() => this.fetchNominatim(key));
-    if (this.cache.size >= MAX_CACHE_ENTRIES) {
-      this.cache.delete(this.cache.keys().next().value as string);
-    }
-    this.cache.set(key, { at: Date.now(), results });
-    return results;
+    const running = this.inFlight.get(key);
+    if (running) return running;
+
+    const request = this.enqueue(() => this.fetchNominatim(key))
+      .then((results) => {
+        if (this.cache.size >= MAX_CACHE_ENTRIES) {
+          this.cache.delete(this.cache.keys().next().value as string);
+        }
+        this.cache.set(key, { at: Date.now(), results });
+        return results;
+      })
+      .finally(() => this.inFlight.delete(key));
+    this.inFlight.set(key, request);
+    return request;
   }
 
   private enqueue<T>(task: () => Promise<T>): Promise<T> {
+    if (this.pending >= MAX_PENDING_REQUESTS) {
+      return Promise.reject(
+        new ServiceUnavailableException(
+          'Hay muchas búsquedas de direcciones en curso. Intenta en unos segundos.',
+        ),
+      );
+    }
+    this.pending++;
     const run = this.queue.then(async () => {
       const wait = this.lastRequestAt + MIN_INTERVAL_MS - Date.now();
       if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
@@ -88,7 +110,7 @@ export class GeocodingService {
       return task();
     });
     this.queue = run.catch(() => undefined);
-    return run;
+    return run.finally(() => this.pending--);
   }
 
   private async fetchNominatim(query: string): Promise<GeocodeResultDto[]> {

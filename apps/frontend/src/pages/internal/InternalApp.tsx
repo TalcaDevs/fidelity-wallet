@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { NavLink, Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import type { PlatformRole } from '@fidelity/shared';
@@ -5,11 +6,15 @@ import { useSignOut } from '../../hooks/useSignOut';
 import { useTheme } from '../../hooks/useTheme';
 import { InternalRoleContext } from './internalRole';
 import { InternalAudit } from './InternalAudit';
-import { InternalBrandDetail } from './InternalBrandDetail';
 import { InternalBrands } from './InternalBrands';
 import { InternalCustomers } from './InternalCustomers';
-import { InternalMap } from './InternalMap';
 import { InternalTickets } from './InternalTickets';
+
+// Las pantallas con mapa traen Leaflet: se descargan al abrirlas, no con la bandeja de tickets.
+const InternalMap = lazy(() => import('./InternalMap').then((m) => ({ default: m.InternalMap })));
+const InternalBrandDetail = lazy(() =>
+  import('./InternalBrandDetail').then((m) => ({ default: m.InternalBrandDetail })),
+);
 
 const NAV = [
   { to: 'tickets', label: 'Tickets' },
@@ -64,7 +69,9 @@ function InternalLayout({ session, role }: { session: Session; role: PlatformRol
         </div>
       </aside>
       <main className="flex-1 min-w-0 p-4 sm:p-8 lg:p-10">
-        <Outlet />
+        <Suspense fallback={<div className="h-96 rounded-2xl bg-slate-100 dark:bg-slate-800/60 animate-pulse" />}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   );

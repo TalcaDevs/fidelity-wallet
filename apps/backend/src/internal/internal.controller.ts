@@ -47,6 +47,7 @@ import {
 } from './dto/internal.dto.js';
 import { InternalBrandsService } from './internal-brands.service.js';
 import { InternalCustomersService } from './internal-customers.service.js';
+import { InternalLocationsService } from './internal-locations.service.js';
 
 /** Lectura para todo el equipo interno; escrituras, datos completos y auditoría solo SUPERADMIN. */
 @ApiTags('Internal')
@@ -62,6 +63,7 @@ export class InternalController {
   constructor(
     private readonly brands: InternalBrandsService,
     private readonly customers: InternalCustomersService,
+    private readonly locations: InternalLocationsService,
   ) {}
 
   @Get('me')
@@ -114,7 +116,7 @@ export class InternalController {
     @Body() dto: UpdateLocationDto,
     @CurrentUser() user: PlatformAdminUser,
   ): Promise<LocationDto> {
-    return this.brands.updateLocation(locationId, user.id, dto);
+    return this.locations.update(locationId, user.id, dto);
   }
 
   @Get('locations')
@@ -122,7 +124,7 @@ export class InternalController {
   locationPins(
     @Query() query: ListLocationPinsQueryDto,
   ): Promise<InternalLocationPinDto[]> {
-    return this.brands.pins(query);
+    return this.locations.pins(query);
   }
 
   @Get('customers')

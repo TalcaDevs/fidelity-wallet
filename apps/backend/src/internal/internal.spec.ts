@@ -37,14 +37,12 @@ describe('InternalBrandsService.update', () => {
   beforeEach(() => {
     prisma = {
       brand: {
-        findUnique: vi
-          .fn()
-          .mockResolvedValue({
-            id: 'b-1',
-            name: 'Café',
-            status: 'ACTIVE',
-            planId: 'TRIAL',
-          }),
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'b-1',
+          name: 'Café',
+          status: 'ACTIVE',
+          planId: 'TRIAL',
+        }),
         update: vi.fn().mockReturnValue('brand-update'),
       },
       auditLog: { create: vi.fn().mockReturnValue('audit-create') },
@@ -103,13 +101,11 @@ describe('InternalCustomersService', () => {
   beforeEach(() => {
     prisma = {
       customer: {
-        findUnique: vi
-          .fn()
-          .mockResolvedValue({
-            id: 'c-1',
-            rut: '12345678-5',
-            phone: '+56912345678',
-          }),
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'c-1',
+          rut: '12345678-5',
+          phone: '+56912345678',
+        }),
         findMany: vi.fn().mockResolvedValue([
           {
             id: 'c-1',

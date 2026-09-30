@@ -6,6 +6,7 @@ import { AccessController } from './access.controller.js';
 import { InternalBrandsService } from './internal-brands.service.js';
 import { InternalController } from './internal.controller.js';
 import { InternalCustomersService } from './internal-customers.service.js';
+import { InternalLocationsService } from './internal-locations.service.js';
 
 @Module({
   imports: [BillingModule],
@@ -13,6 +14,7 @@ import { InternalCustomersService } from './internal-customers.service.js';
   providers: [
     InternalBrandsService,
     InternalCustomersService,
+    InternalLocationsService,
     UserDirectoryService,
     PlatformAdminGuard,
   ],

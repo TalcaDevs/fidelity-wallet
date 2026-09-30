@@ -1144,6 +1144,12 @@ export interface Paginated<T> { items: T[]; page: number; pageSize: number; tota
 > - `GET /api/internal/audit`.
 >
 > Las escrituras usan `recordAudit`/`diffFields` (`common/audit`), que guardan solo los campos que cambian, con su valor antes y después. Tipos en `packages/shared/src/internal.ts`. La ruta del mapa quedó en `/internal/map` y no en `/internal/locations/map`.
+>
+> Tras la revisión del PR #20:
+> - El geocoding tiene un tope de 5 búsquedas en espera (503 inmediato al pasarlo) y comparte las búsquedas iguales en vuelo.
+> - Las pantallas con mapa de `/internal` también se cargan de forma diferida.
+> - `InternalLocationsService` se separó de `InternalBrandsService`.
+> - Pendiente 🟡: filtrar los pines por bbox del viewport cuando haya miles de locales. Hoy hay un tope de 2.000 más el filtro por región.
 **Acceso:** login con la misma pantalla de Supabase Auth. Tras el login, `GET /api/internal/me` dice si el usuario es `PlatformAdmin` y con qué rol; si no lo es, cae a `/admin` o `/scan` según su membresía. Páginas con `React.lazy` (§7.10).
 
 | Pantalla | Qué muestra / hace | `SUPPORT` | `SUPERADMIN` |

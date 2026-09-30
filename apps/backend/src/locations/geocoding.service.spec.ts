@@ -3,6 +3,7 @@ import type { ConfigService } from '@nestjs/config';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   GeocodingService,
+  MAX_PENDING_REQUESTS,
   matchRegion,
   toGeocodeResult,
 } from './geocoding.service.js';
@@ -44,12 +45,10 @@ describe('geocoding', () => {
   });
 
   it('identifies itself, limits the search to Chile and caches repeated queries', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve([providencia]),
-      });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([providencia]),
+    });
     vi.stubGlobal('fetch', fetchMock);
     const service = new GeocodingService(config);
 
@@ -70,5 +69,37 @@ describe('geocoding', () => {
     await expect(new GeocodingService(config).search('algo')).rejects.toThrow(
       ServiceUnavailableException,
     );
+  });
+
+  it('rejects right away once too many searches are waiting, instead of queueing forever', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise(() => {})),
+    );
+    const service = new GeocodingService(config);
+
+    for (let i = 0; i < MAX_PENDING_REQUESTS; i++)
+      void service.search(`calle ${i}`);
+    await expect(service.search('una mas')).rejects.toThrow(
+      ServiceUnavailableException,
+    );
+  });
+
+  it('shares one upstream request between identical searches in flight', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve([providencia]),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+    const service = new GeocodingService(config);
+
+    const [a, b] = await Promise.all([
+      service.search('Merced 838'),
+      service.search('merced 838'),
+    ]);
+    expect(a).toEqual(b);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
