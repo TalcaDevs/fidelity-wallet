@@ -18,8 +18,8 @@ export class RolesGuard implements CanActivate {
     const merchantId = request.params.brandId || request.params.merchantId;
     if (!merchantId) return false;
 
-    const membership = await this.prisma.merchantUser.findUnique({
-      where: { userId_merchantId: { userId: user.id, merchantId } },
+    const membership = await this.prisma.brandMember.findUnique({
+      where: { userId_brandId: { userId: user.id, brandId: merchantId } },
     });
 
     if (!membership || !roles.includes(membership.role)) {

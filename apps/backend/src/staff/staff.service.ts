@@ -163,8 +163,8 @@ export class StaffService {
       select: { name: true },
     });
 
-    const memberships = await this.prisma.merchantUser.findMany({
-      where: { merchantId: brandId },
+    const memberships = await this.prisma.brandMember.findMany({
+      where: { brandId: brandId },
       orderBy: { createdAt: 'desc' }
     });
 
@@ -197,8 +197,8 @@ export class StaffService {
   }
 
   async removeStaff(brandId: string, userIdToRemove: string) {
-    const targetMembership = await this.prisma.merchantUser.findUnique({
-      where: { userId_merchantId: { userId: userIdToRemove, merchantId: brandId } },
+    const targetMembership = await this.prisma.brandMember.findUnique({
+      where: { userId_brandId: { userId: userIdToRemove, brandId: brandId } },
     });
 
     if (!targetMembership) {
@@ -209,8 +209,8 @@ export class StaffService {
       throw new BadRequestException('No puedes eliminar al dueño del comercio');
     }
 
-    await this.prisma.merchantUser.delete({
-      where: { userId_merchantId: { userId: userIdToRemove, merchantId: brandId } },
+    await this.prisma.brandMember.delete({
+      where: { userId_brandId: { userId: userIdToRemove, brandId: brandId } },
     });
 
     return { success: true, message: 'Personal eliminado exitosamente' };
@@ -219,8 +219,8 @@ export class StaffService {
   async resendInvite(brandId: string, userId: string) {
     const supabase = this.getSupabaseAdmin();
     
-    const targetMembership = await this.prisma.merchantUser.findUnique({
-      where: { userId_merchantId: { userId, merchantId: brandId } },
+    const targetMembership = await this.prisma.brandMember.findUnique({
+      where: { userId_brandId: { userId, brandId: brandId } },
     });
 
     if (!targetMembership) {
@@ -244,7 +244,7 @@ export class StaffService {
   async getStaffActivity(brandId: string, targetUserId: string) {
 
     const scans = await this.prisma.scan.findMany({
-      where: { merchantId: brandId, createdByUserId: targetUserId },
+      where: { brandId: brandId, createdByUserId: targetUserId },
       orderBy: { createdAt: 'desc' },
       include: {
         pass: {

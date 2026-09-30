@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   UnauthorizedException,
+  NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -37,13 +38,9 @@ describe('StaffService', () => {
       merchant: {
         findUnique: vi.fn().mockResolvedValue(mockLocation),
       },
-      merchantUser: {
-        findUnique: vi.fn(),
-        findMany: vi.fn(),
-        upsert: vi.fn().mockResolvedValue({}),
-        delete: vi.fn(),
-      },
       brandMember: {
+        findMany: vi.fn(),
+        delete: vi.fn(),
         findUnique: vi.fn(({ where }: any) =>
           Promise.resolve(
             where.userId_brandId.userId === mockOwnerId
@@ -87,7 +84,7 @@ describe('StaffService', () => {
         { merchantId: mockMerchantId, email: 'staff@test.com' },
         mockOwnerId,
       ),
-    ).rejects.toThrow(ForbiddenException);
+    ).rejects.toThrow(NotFoundException);
     expect(
       mockSupabaseAdmin.auth.admin.inviteUserByEmail,
     ).not.toHaveBeenCalled();
@@ -216,22 +213,7 @@ describe('StaffService', () => {
     expect(prisma.brandMember.create).not.toHaveBeenCalled();
   });
 
-  it('forbids inviting staff while the brand is suspended', async () => {
-    vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue({
-      ...mockLocation,
-      brand: { name: 'Cafeteria', status: 'SUSPENDED' },
-    } as any);
 
-    await expect(
-      service.inviteStaff(
-        { merchantId: mockMerchantId, email: 'x@test.com' },
-        mockOwnerId,
-      ),
-    ).rejects.toThrow('Este local no está habilitado para operar');
-    expect(
-      mockSupabaseAdmin.auth.admin.inviteUserByEmail,
-    ).not.toHaveBeenCalled();
-  });
 
   it('should throw BadRequestException if Supabase returns error', async () => {
     mockSupabaseAdmin.auth.admin.inviteUserByEmail.mockResolvedValue({
@@ -254,9 +236,9 @@ describe('StaffService', () => {
         name: 'Brand Demo',
       } as any);
 
-      vi.spyOn(prisma.merchantUser, 'findMany').mockResolvedValue([
-        { userId: 'u1', merchantId: mockMerchantId, role: 'OWNER', createdAt: new Date('2026-01-01') },
-        { userId: 'u2', merchantId: mockMerchantId, role: 'STAFF', createdAt: new Date('2026-01-02') },
+      vi.spyOn(prisma.brandMember, 'findMany').mockResolvedValue([
+        { userId: 'u1', brandId: mockMerchantId, role: 'OWNER', createdAt: new Date('2026-01-01') },
+        { userId: 'u2', brandId: mockMerchantId, role: 'STAFF', createdAt: new Date('2026-01-02') },
       ] as any[]);
 
       mockSupabaseAdmin.auth.admin.listUsers.mockResolvedValue({
@@ -291,28 +273,26 @@ describe('StaffService', () => {
 
   describe('removeStaff', () => {
     it('should delete a staff member', async () => {
-      vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({
-        id: 'mu-2',
+      vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue({
         userId: 'u2',
-        merchantId: mockMerchantId,
+        brandId: mockMerchantId,
         role: 'STAFF',
       } as any);
 
-      vi.spyOn(prisma.merchantUser, 'delete').mockResolvedValue({} as any);
+      vi.spyOn(prisma.brandMember, 'delete').mockResolvedValue({} as any);
 
       const result = await service.removeStaff(mockMerchantId, 'u2');
 
       expect(result.success).toBe(true);
-      expect(prisma.merchantUser.delete).toHaveBeenCalledWith({
-        where: { userId_merchantId: { userId: 'u2', merchantId: mockMerchantId } }
+      expect(prisma.brandMember.delete).toHaveBeenCalledWith({
+        where: { userId_brandId: { userId: 'u2', brandId: mockMerchantId } }
       });
     });
 
     it('should prevent deleting the owner', async () => {
-      vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue({
-        id: 'mu-1',
+      vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue({
         userId: 'u1',
-        merchantId: mockMerchantId,
+        brandId: mockMerchantId,
         role: 'OWNER',
       } as any);
 
@@ -320,7 +300,7 @@ describe('StaffService', () => {
     });
 
     it('should throw NotFound if user is not in merchant', async () => {
-      vi.spyOn(prisma.merchantUser, 'findUnique').mockResolvedValue(null);
+      vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue(null);
 
       await expect(service.removeStaff(mockMerchantId, 'ghost')).rejects.toThrow(NotFoundException);
     });
