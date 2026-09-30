@@ -4,6 +4,7 @@ export const ROUTES = {
   resetPassword: '/admin/reset',
   admin: '/admin',
   dashboard: '/admin/dashboard',
+  analytics: '/admin/analytics',
   promotions: '/admin/promotions',
   customers: '/admin/customers',
   settings: '/admin/settings',
