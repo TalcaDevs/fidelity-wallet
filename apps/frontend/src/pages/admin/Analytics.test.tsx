@@ -253,5 +253,58 @@ describe('Analytics Page', () => {
       resolveRetention!(mockRetention);
     });
   });
+
+  it('displays retry button on error and reloads data upon clicking it', async () => {
+    const fetchOverviewSpy = vi
+      .spyOn(reportsService, 'fetchOverviewReport')
+      .mockRejectedValueOnce(new Error('Fallo de conexión'))
+      .mockResolvedValueOnce(mockOverview as any);
+
+    render(<Analytics merchantId={merchantId} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Fallo de conexión')).toBeInTheDocument();
+    });
+
+    const retryBtn = screen.getByRole('button', { name: /reintentar/i });
+    expect(retryBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(retryBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Clientes Nuevos')).toBeInTheDocument();
+    });
+
+    expect(fetchOverviewSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('renders accessible empty state message when timeSeries is empty', async () => {
+    const emptyOverview = {
+      ...mockOverview,
+      timeSeries: [],
+    };
+    vi.spyOn(reportsService, 'fetchOverviewReport').mockResolvedValue(emptyOverview as any);
+
+    render(<Analytics merchantId={merchantId} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Sin datos registrados para el período seleccionado')).toBeInTheDocument();
+    });
+  });
+
+  it('loads data successfully using brandId or locationId when merchantId is null', async () => {
+    render(<Analytics merchantId={null} brandId="brand-custom-123" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Clientes Nuevos')).toBeInTheDocument();
+    });
+
+    expect(reportsService.fetchOverviewReport).toHaveBeenCalledWith(
+      'brand-custom-123',
+      expect.any(Object),
+    );
+  });
 });
 
