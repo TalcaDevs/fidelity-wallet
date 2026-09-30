@@ -587,6 +587,10 @@ Cada alerta trae mesero, cliente enmascarado, conteo y el rango, pero **no acusa
   - Login propio en `/scan` y **sesión persistente**: el cajero no puede escribir contraseñas en hora punta.
   - **Manejo de refresh de token y de expiración en un celular que vive con la pantalla abierta todo el turno.** Un token vencido a las nueve de la noche no puede traducirse en "se cayó el sistema".
   - Un `OWNER` también puede usar `/scan`; un `STAFF` que intente entrar a `/admin/*` se redirige acá.
+  - *(2026-09-30, PR #15)* Arreglos para que el `OWNER` no quede atrapado en el escáner:
+    - El escáner muestra el botón **"Panel"** cuando entra un `OWNER`.
+    - El manifiesto fija `start_url: '/admin'`. Sin eso, la PWA instalada desde `/scan` siempre abría ahí.
+    - Un logout explícito (`useSignOut`) lleva al login **sin** `?redirect`, así que el próximo ingreso lo decide el rol. El `?redirect` queda solo para cuando la sesión vence.
 - El `STAFF` tiene **solo lectura** sobre los datos del comercio: puede ver el saldo de sellos del cliente, no editar promociones ni configuración. **Ese permiso se aplica en RLS**, no escondiendo botones.
 - Estados en pantalla, con contraste altísimo y feedback sonoro/háptico:
   - ✅ **Sello agregado** — mostrar `4 / 5` en grande.
@@ -630,33 +634,41 @@ Si el comercio tiene `stampValidityDays`, **decirlo acá** en lenguaje humano ("
 
 Dev 2 hace **el backend y la UI** dentro del módulo `staff` que ya existe (`apps/backend/src/staff`). Dev 1 revisa el PR. Todo es solo para el `OWNER`, y la `service_role key` sigue viviendo **solo en el backend** (§7.5).
 
-**Contrato** (rutas por marca; hasta la migración de Dev 3, `brandId` = `merchantId` y `locationId` es opcional):
+**Contrato** (rutas por marca; tipos en `packages/shared/src/staff.ts`). *Estado 2026-09-30: implementado en el PR #15.* Con la migración `Brand > Location` ya aplicada, `locationId` es **obligatorio** en la invitación:
 
 ```jsonc
 // GET /api/brands/:brandId/staff
 [{ "userId": "uuid", "email": "cajero1@example.com", "role": "STAFF",
    "locationId": "uuid", "locationName": "Café Demo — Providencia",
    "status": "INVITED" | "ACTIVE",          // ACTIVE = ya entró alguna vez (last_sign_in_at)
-   "invitedAt": "…", "lastSignInAt": "…" | null }]
+   "canResendInvite": true,                 // STAFF que no confirmó su correo
+   "invitedAt": "…", "lastSignInAt": "…" | null }]   // OWNER: locationId/locationName = null
 
 // POST /api/brands/:brandId/staff/invite        (el endpoint actual, más locationId)
 { "email": "…", "locationId": "uuid", "password": "…" /* opcional, igual que hoy */ }
 
-// POST /api/brands/:brandId/staff/:userId/resend-invite   → 204 (solo si status = INVITED)
-// PATCH /api/brands/:brandId/staff/:userId      { "locationId": "uuid" }   → reasignar de local
+// POST /api/brands/:brandId/staff/:userId/resend-invite   → 204; 409 si ya confirmó el correo
+//                                                  (o se creó con contraseña: no hay invitación)
+// PATCH /api/brands/:brandId/staff/:userId      { "locationId": "uuid" }   → StaffMemberDto
 // DELETE /api/brands/:brandId/staff/:userId     → 204
+// GET /api/brands/:brandId/staff/:userId/scans  → últimos 50 escaneos del miembro,
+//     [{ id, type, method, createdAt, locationName, customerPhone /* enmascarado */, promotionName }]
 ```
+
+La autorización es la misma del resto del backend: `requireBrandOwner` / `resolveLocationAccess` dentro del servicio (no hay guard de roles). La invitación valida además que el local sea de la marca de la URL y que marca y local estén operativos. El correo y el último ingreso salen de `auth.users` con una sola consulta acotada a los miembros (`common/users/UserDirectoryService`), nunca con `listUsers` de la Admin API.
 
 **Reglas:**
 - El `OWNER` aparece en la lista, pero **no se puede dar de baja ni reasignar**, y nadie puede darse de baja a sí mismo (400).
 - **Dar de baja borra la membresía.** Si el usuario no tiene otra membresía, además se **banea** en Supabase Auth (`ban_duration`) para invalidar sus refresh tokens. Como el access token vive hasta ~1 h, el corte inmediato lo dan el guard del backend (que ya valida la membresía en cada `/api/scan`) y el RLS. **Verificar con un test** que un mesero dado de baja recibe 403 en el siguiente escaneo.
-- La baja queda en `AuditLog` cuando exista (§4.1).
+- La baja y la reasignación quedan en `AuditLog` (`staff.remove`, `staff.reassign`, `actorType = OWNER`). Si banear falla, se registra en el log y la baja sigue siendo efectiva. Reinvitar a alguien dado de baja le levanta el baneo. El test de 403 está en `test/db/staff-removal.db-spec.ts`.
 - Límite del plan (§6.5): la UI muestra "N de M usuarios" y avisa al llegar al límite. **El backend no lo bloquea todavía** (§8.11).
 
 **UI:** tabla con correo, local, estado y último ingreso; modal de invitación (correo + local); acciones con `ConfirmDialog`. En móvil se ve como tarjetas.
 
 ### 6.5 Mockup de Facturación — `/admin/billing` (tarea nueva, **Dev 2**)
 *(Nueva 2026-09-30.)*
+
+*Estado 2026-09-30: implementado en el PR #15.* El catálogo vive en `packages/shared/src/plans.ts` y el backend expone `GET /api/brands/:brandId/billing/subscription` (solo OWNER), que devuelve un `SubscriptionMock`: plan `TRIAL`, `trialEndsAt = Brand.createdAt + 30 días` (`PAST_DUE` al vencer) y el **uso real** (programas activos, locales, pases de la marca como clientes, y meseros: `teamUsers` cuenta solo STAFF, el OWNER no ocupa cupo). El banner y Equipo ("N de M usuarios") leen de ahí.
 
 **Es un mockup:** datos simulados, sin proveedor de pago ni boletas reales. Vive detrás de **`VITE_FEATURE_BILLING=true`**: sin la variable la ruta y el ítem del menú no existen, para que nadie lo vea en producción como si fuera real.
 
@@ -711,7 +723,7 @@ export interface SubscriptionMock {
 - **"Otras formas de contacto"**: correo (`VITE_SUPPORT_EMAIL`, `mailto:`) y WhatsApp (`VITE_SUPPORT_WHATSAPP`, `https://wa.me/<número>`).
 - **"Mis solicitudes"**: lista con `#número`, categoría, estado (badge de color), fecha y última respuesta. El detalle muestra el hilo, **sin las notas internas**, y una caja para responder. Responder un ticket `RESOLVED` lo reabre.
 
-**Cómo se conecta después:** Dev 2 escribe `services/supportService.ts` con **la misma firma que los endpoints de §11.4**, pero con un adaptador en memoria que simula latencia y la numeración de tickets. Cuando Dev 3 publique la API, se cambia solo el adaptador, sin tocar componentes. Se testea como el resto del frontend: sin `vi.fn`, con el adaptador en memoria.
+**Cómo se conecta:** *(2026-09-30: la API de §11.4 entró con el PR #18, así que el PR #15 la consume directamente, sin adaptador en memoria.)* `services/supportService.ts` llama a `/api/brands/:brandId/support/tickets` con los tipos de `@fidelity/shared`: el alta y la respuesta van como `multipart/form-data`. Las validaciones del formulario (20–5000 caracteres, E.164 y captura PNG/JPG de 10 MB) están en `lib/supportForm.ts` y usan las constantes del contrato. Así, el backend y la UI rechazan exactamente lo mismo.
 
 ---
 

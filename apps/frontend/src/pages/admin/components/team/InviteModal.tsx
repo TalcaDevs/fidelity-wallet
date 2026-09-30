@@ -1,92 +1,87 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
+import { STAFF_PASSWORD_MIN } from '@fidelity/shared';
+import { Modal } from '../../../../components/ui/Modal';
+import { ErrorAlert } from '../../../../components/ui/ErrorAlert';
+import { errorMessage } from '../../../../hooks/useAsyncData';
+import type { LocationOption } from '../../../../services/locationsService';
+import { LocationSelect } from './LocationSelect';
 
+const INPUT_CLASSES =
+  'w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-brand-blue/50 focus:border-brand-blue';
+
+/** Se monta solo mientras está abierto: al cerrarlo el formulario se descarta. */
 export function InviteModal({
-  isOpen,
+  locations,
   onClose,
   onInvite,
 }: {
-  isOpen: boolean;
+  locations: LocationOption[];
   onClose: () => void;
-  onInvite: (email: string, password?: string) => Promise<boolean>;
+  onInvite: (input: { email: string; locationId: string; password?: string }) => Promise<void>;
 }) {
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [invitePassword, setInvitePassword] = useState('');
+  const activeLocations = locations.filter((l) => l.isActive);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  // Con un solo local no hay nada que elegir.
+  const [locationId, setLocationId] = useState(activeLocations.length === 1 ? activeLocations[0].id : '');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [inviteError, setInviteError] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
-  if (!isOpen) return null;
+  const passwordTooShort = password.length > 0 && password.length < STAFF_PASSWORD_MIN;
+  const canSubmit = email.trim() !== '' && locationId !== '' && !passwordTooShort && !isSubmitting;
 
-  async function handleInvite(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!inviteEmail) return;
-
+    if (!canSubmit) return;
     setIsSubmitting(true);
-    setInviteError('');
+    setError(null);
     try {
-      const success = await onInvite(inviteEmail, invitePassword);
-      if (success) {
-        setInviteEmail('');
-        setInvitePassword('');
-        onClose();
-      }
-    } catch (err: any) {
-      setInviteError(err.message || 'Error al invitar personal');
-    } finally {
+      await onInvite({ email: email.trim(), locationId, password: password || undefined });
+      onClose();
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo invitar al usuario'));
       setIsSubmitting(false);
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-      <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-200 dark:border-slate-800 relative animate-in fade-in zoom-in-95 duration-200">
-        <button 
-          onClick={onClose}
-          className="absolute top-6 right-6 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+    <Modal
+      title="Agregar usuario"
+      description="Ingresa el correo del mesero y el local donde trabajará. Si le asignas una contraseña, no recibe correo de invitación."
+      onClose={onClose}
+    >
+      {error && <div className="mb-5"><ErrorAlert message={error} /></div>}
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div>
+          <label htmlFor="invite-email" className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Correo electrónico</label>
+          <input id="invite-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className={INPUT_CLASSES} />
+        </div>
+        <div>
+          <label htmlFor="invite-location" className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Local</label>
+          <LocationSelect id="invite-location" locations={locations} value={locationId} onChange={setLocationId} />
+        </div>
+        <div>
+          <label htmlFor="invite-password" className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Contraseña (opcional)</label>
+          <input
+            id="invite-password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Déjala vacía para enviar una invitación"
+            className={INPUT_CLASSES}
+          />
+          {passwordTooShort && (
+            <p className="text-xs text-red-600 mt-1">Mínimo {STAFF_PASSWORD_MIN} caracteres.</p>
+          )}
+        </div>
+        <button
+          type="submit"
+          disabled={!canSubmit}
+          className="w-full py-3.5 rounded-xl bg-brand-blue hover:bg-blue-600 text-white font-bold transition-all disabled:opacity-50"
         >
-          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+          {isSubmitting ? 'Procesando...' : password ? 'Crear cuenta' : 'Enviar invitación'}
         </button>
-        
-        <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2">Agregar Usuario</h2>
-        <p className="text-slate-500 mb-6">Ingresa el correo del operador. Puedes asignarle una contraseña inicial temporal.</p>
-
-        {inviteError && (
-          <div className="mb-6 p-4 rounded-xl bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-sm font-medium">
-            {inviteError}
-          </div>
-        )}
-
-        <form onSubmit={handleInvite} className="space-y-5">
-          <div>
-            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Correo electrónico</label>
-            <input 
-              type="email"
-              value={inviteEmail}
-              onChange={e => setInviteEmail(e.target.value)}
-              required
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-brand-blue/50 focus:border-brand-blue"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Contraseña (Opcional)</label>
-            <input 
-              type="password"
-              value={invitePassword}
-              onChange={e => setInvitePassword(e.target.value)}
-              placeholder="Dejar en blanco para enviar invitación"
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-brand-blue/50 focus:border-brand-blue"
-            />
-          </div>
-          <div className="pt-2">
-            <button 
-              type="submit"
-              disabled={isSubmitting || !inviteEmail}
-              className="w-full py-3.5 rounded-xl bg-brand-blue hover:bg-blue-600 text-white font-bold transition-all disabled:opacity-50"
-            >
-              {isSubmitting ? 'Procesando...' : (invitePassword ? 'Crear Cuenta' : 'Enviar Invitación')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </Modal>
   );
 }

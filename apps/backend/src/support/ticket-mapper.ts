@@ -7,7 +7,7 @@ import type {
   TicketSummaryDto,
 } from '@fidelity/shared';
 import type { Prisma, TicketAttachment } from '@prisma/client';
-import type { UserInfo } from './user-directory.service.js';
+import type { UserInfo } from '../common/users/user-directory.service.js';
 
 export const SUPPORT_TEAM_NAME = 'Equipo de soporte';
 const EXCERPT_LENGTH = 120;

@@ -4,118 +4,120 @@ import {
   Delete,
   Get,
   HttpCode,
-  Patch,
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
-  UnauthorizedException,
-  BadRequestException,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import type { StaffActivityDto, StaffMemberDto } from '@fidelity/shared';
 import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
 import { SupabaseAuthGuard } from '../common/guards/supabase-auth.guard.js';
-import { RolesGuard } from '../common/guards/roles.guard.js';
-import { Roles } from '../common/decorators/roles.decorator.js';
-import { InviteStaffMemberDto, StaffResponseDto } from './dto/invite-staff.dto.js';
+import {
+  InviteStaffMemberDto,
+  ReassignStaffDto,
+  StaffActivityResponseDto,
+  StaffMemberResponseDto,
+  StaffResponseDto,
+} from './dto/staff.dto.js';
 import { StaffService } from './staff.service.js';
 
+/** Todo el módulo es solo para el OWNER de la marca (HANDOFF §6.4). */
 @ApiTags('Brands & Staff')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard, RolesGuard)
-@Controller('brands')
+@ApiResponse({ status: 401, description: 'Usuario no autenticado' })
+@ApiResponse({ status: 403, description: 'No es OWNER de la marca' })
+@UseGuards(SupabaseAuthGuard)
+@Controller('brands/:brandId/staff')
 export class StaffController {
   constructor(private readonly staffService: StaffService) {}
 
-  @Post(':brandId/staff/invite')
-  @Roles('OWNER')
+  @Get()
+  @ApiOperation({ summary: 'Listar el equipo de la marca (el OWNER incluido)' })
+  @ApiResponse({ status: 200, type: StaffMemberResponseDto, isArray: true })
+  listStaff(
+    @Param('brandId', new ParseUUIDPipe()) brandId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<StaffMemberDto[]> {
+    return this.staffService.listStaff(brandId, user.id);
+  }
+
+  @Post('invite')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: 'Invitar o registrar a un miembro del personal (mesero/cajero)',
+    summary: 'Invitar o registrar a un mesero en un local de la marca',
     description:
-      'Crea un usuario STAFF mediante la Supabase Admin API vinculando brand_id en metadata. Requiere que el llamador sea OWNER de la marca.',
+      'Crea un usuario STAFF con la Supabase Admin API. Sin contraseña, Supabase envía un correo de invitación.',
   })
-  @ApiResponse({
-    status: 201,
-    description: 'Miembro del personal invitado o creado exitosamente',
-    type: StaffResponseDto,
-  })
+  @ApiResponse({ status: 201, type: StaffResponseDto })
   @ApiResponse({ status: 400, description: 'Validación fallida o error de Supabase' })
-  @ApiResponse({ status: 401, description: 'Usuario no autenticado' })
-  @ApiResponse({ status: 403, description: 'Solo el dueño de la marca puede invitar personal' })
-  @ApiResponse({ status: 404, description: 'Marca no encontrada' })
-  async inviteStaff(
-    @Param('brandId', new ParseUUIDPipe({ version: '4' })) brandId: string,
+  @ApiResponse({ status: 403, description: 'No es OWNER, el local es de otra marca o la marca está suspendida' })
+  @ApiResponse({ status: 409, description: 'El usuario ya es miembro de la marca' })
+  inviteStaff(
+    @Param('brandId', new ParseUUIDPipe()) brandId: string,
     @Body() dto: InviteStaffMemberDto,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<StaffResponseDto> {
-    return this.staffService.inviteStaff(
-      {
-        email: dto.email,
-        password: dto.password,
-        locationId: dto.locationId,
-        merchantId: brandId, // mapped to merchantId for now
-      },
-      user.id,
-    );
+    return this.staffService.inviteStaff(brandId, user.id, dto);
   }
 
-  @Get(':brandId/staff')
-  @Roles('OWNER')
-  @ApiOperation({
-    summary: 'Listar personal de una marca',
-    description: 'Devuelve la lista de usuarios STAFF con su estado y último acceso. Requiere rol OWNER.',
-  })
-  @ApiResponse({ status: 200, description: 'Lista de personal' })
-  async listStaff(
-    @Param('brandId', new ParseUUIDPipe({ version: '4' })) brandId: string,
-  ) {
-    return this.staffService.listStaff(brandId);
-  }
-
-  @Delete(':brandId/staff/:userId')
-  @Roles('OWNER')
+  @Post(':userId/resend-invite')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({
-    summary: 'Dar de baja a un miembro del personal',
-    description: 'Elimina el acceso del usuario a la marca. Requiere rol OWNER.',
-  })
-  @ApiResponse({ status: 204, description: 'Personal eliminado exitosamente' })
-  async removeStaff(
-    @Param('brandId', new ParseUUIDPipe({ version: '4' })) brandId: string,
-    @Param('userId', new ParseUUIDPipe({ version: '4' })) userIdToRemove: string,
-  ) {
-    return this.staffService.removeStaff(brandId, userIdToRemove);
-  }
-
-  @Post(':brandId/staff/:userId/resend-invite')
-  @Roles('OWNER')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({
-    summary: 'Reenviar invitación a un miembro del personal',
-    description: 'Reenvía el correo de invitación. Requiere rol OWNER.',
-  })
+  @ApiOperation({ summary: 'Reenviar la invitación a un mesero que no ha confirmado su correo' })
   @ApiResponse({ status: 204, description: 'Invitación reenviada' })
-  async resendInvite(
-    @Param('brandId', new ParseUUIDPipe({ version: '4' })) brandId: string,
-    @Param('userId', new ParseUUIDPipe({ version: '4' })) userIdToResend: string,
-  ) {
-    return this.staffService.resendInvite(brandId, userIdToResend);
+  @ApiResponse({ status: 400, description: 'El usuario es el OWNER' })
+  @ApiResponse({ status: 404, description: 'No es miembro de la marca' })
+  @ApiResponse({ status: 409, description: 'La cuenta ya está activada o se creó con contraseña' })
+  resendInvite(
+    @Param('brandId', new ParseUUIDPipe()) brandId: string,
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    return this.staffService.resendInvite(brandId, user.id, userId);
   }
 
-  @Get(':brandId/staff/:userId/scans')
-  @Roles('OWNER')
+  @Patch(':userId')
+  @ApiOperation({ summary: 'Reasignar a un mesero a otro local de la marca' })
+  @ApiResponse({ status: 200, type: StaffMemberResponseDto })
+  @ApiResponse({ status: 400, description: 'El usuario es el OWNER, o el local es ajeno o está inactivo' })
+  @ApiResponse({ status: 404, description: 'No es miembro de la marca' })
+  reassignStaff(
+    @Param('brandId', new ParseUUIDPipe()) brandId: string,
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+    @Body() dto: ReassignStaffDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<StaffMemberDto> {
+    return this.staffService.reassignStaff(brandId, user.id, userId, dto.locationId);
+  }
+
+  @Delete(':userId')
+  @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
-    summary: 'Ver actividad del personal',
-    description: 'Devuelve los últimos escaneos realizados por un usuario STAFF.',
+    summary: 'Dar de baja a un mesero',
+    description:
+      'Borra la membresía y, si el usuario no tiene otra, lo banea en Supabase Auth para invalidar sus refresh tokens.',
   })
-  @ApiResponse({ status: 200, description: 'Lista de escaneos' })
-  async getStaffActivity(
-    @Param('brandId', new ParseUUIDPipe({ version: '4' })) brandId: string,
-    @Param('userId', new ParseUUIDPipe({ version: '4' })) targetUserId: string,
-  ) {
-    return this.staffService.getStaffActivity(brandId, targetUserId);
+  @ApiResponse({ status: 204, description: 'Baja realizada' })
+  @ApiResponse({ status: 400, description: 'El usuario es el OWNER o es uno mismo' })
+  @ApiResponse({ status: 404, description: 'No es miembro de la marca' })
+  removeStaff(
+    @Param('brandId', new ParseUUIDPipe()) brandId: string,
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    return this.staffService.removeStaff(brandId, user.id, userId);
   }
 
+  @Get(':userId/scans')
+  @ApiOperation({ summary: 'Últimos escaneos hechos por un miembro (teléfono enmascarado)' })
+  @ApiResponse({ status: 200, type: StaffActivityResponseDto, isArray: true })
+  getStaffActivity(
+    @Param('brandId', new ParseUUIDPipe()) brandId: string,
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<StaffActivityDto[]> {
+    return this.staffService.getStaffActivity(brandId, user.id, userId);
+  }
 }

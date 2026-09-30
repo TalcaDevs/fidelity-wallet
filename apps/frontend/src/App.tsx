@@ -21,8 +21,8 @@ import { PasswordResetRoute } from './components/routing/PasswordResetRoute';
 import { ROUTES } from './components/routing/routePaths';
 import { useAuth } from './hooks/useAuth';
 import { useMembership } from './hooks/useMembership';
-import './index.css';
 import { isBillingEnabled } from './config/features';
+import './index.css';
 
 // El panel es sólo para el dueño; el personal de caja va al escáner.
 const ADMIN_ROLES = ['OWNER'] as const;
@@ -54,18 +54,18 @@ export default function App() {
 
           {/* Scanner: requiere sesión y rol OWNER o STAFF */}
           <Route element={<RequireRole session={session} membership={membership} allow={['OWNER', 'STAFF']} />}>
-            <Route path={ROUTES.scan} element={session && membership.merchantId ? <Scan merchantId={membership.merchantId} session={session} /> : null} />
+            <Route path={ROUTES.scan} element={session && membership.merchantId ? <Scan merchantId={membership.merchantId} session={session} role={membership.role} /> : null} />
           </Route>
 
           {/* Panel: requiere sesión y rol OWNER */}
           <Route element={<RequireRole session={session} membership={membership} allow={ADMIN_ROLES} />}>
-            <Route element={<Layout session={session} role={membership.role} />}>
+            <Route element={<Layout session={session} role={membership.role} brandId={membership.brandId} />}>
               <Route path={ROUTES.admin} element={<Navigate to={ROUTES.dashboard} replace />} />
               <Route path={ROUTES.dashboard} element={<Dashboard session={session} brandId={membership.brandId} />} />
               <Route path={ROUTES.analytics} element={<Analytics merchantId={membership.merchantId} />} />
-              <Route path={ROUTES.team} element={<Team />} />
-              {isBillingEnabled && <Route path={ROUTES.billing} element={<Billing />} />}
-              <Route path={ROUTES.support} element={<Support />} />
+              <Route path={ROUTES.team} element={<Team brandId={membership.brandId} />} />
+              {isBillingEnabled && <Route path={ROUTES.billing} element={<Billing brandId={membership.brandId} />} />}
+              <Route path={ROUTES.support} element={<Support brandId={membership.brandId} />} />
               <Route path={ROUTES.promotions} element={<PromotionsModule programId={membership.programId} />} />
               <Route path={ROUTES.customers} element={<Customers brandId={membership.brandId} merchantId={membership.merchantId} />} />
               <Route path={ROUTES.settings} element={<Settings session={session} merchantId={membership.merchantId} />} />

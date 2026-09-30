@@ -23,6 +23,12 @@ export default defineConfig(({ mode }) => {
         name: 'Fidelity Wallet',
         short_name: 'Fidelity Wallet',
         description: 'Fidelity Wallet',
+        // Sin start_url el navegador usa la página donde se instaló: si el dueño instalaba la PWA
+        // desde /scan, la app siempre abría el escáner. /admin decide por rol: el OWNER va al
+        // panel y el STAFF lo redirige RequireRole a /scan.
+        id: '/',
+        start_url: '/admin',
+        scope: '/',
         theme_color: '#0f172a',
         background_color: '#0f172a',
         display: 'standalone',

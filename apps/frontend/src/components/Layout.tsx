@@ -1,76 +1,74 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import { useTheme } from '../hooks/useTheme';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import type { MerchantRole } from '../hooks/useMembership';
 import { isBillingEnabled } from '../config/features';
+import { useSignOut } from '../hooks/useSignOut';
+import { ROUTES } from './routing/routePaths';
+import { TrialBanner } from './TrialBanner';
+
 const NAV_LINK_CLASSES = ({ isActive }: { isActive: boolean }) =>
-  `flex items-center gap-3 px-5 py-3.5 rounded-2xl font-bold transition-all duration-300 ${
-    isActive
-      ? 'bg-brand-blue text-white shadow-lg shadow-brand-blue/30 translate-x-1'
-      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent hover:border-slate-200 dark:hover:border-slate-700'
+  `flex items-center gap-3 px-5 py-3.5 rounded-2xl font-bold transition-all duration-300 ${isActive
+    ? 'bg-brand-blue text-white shadow-lg shadow-brand-blue/30 translate-x-1'
+    : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent hover:border-slate-200 dark:hover:border-slate-700'
   }`;
 
 const NAV_ITEMS = [
   {
-    to: '/admin/dashboard',
+    to: ROUTES.dashboard,
     label: 'Métricas Principales',
     icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6',
     strokeWidth: '2.5',
   },
   {
-    to: '/admin/analytics',
+    to: ROUTES.analytics,
     label: 'Analítica',
     icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z',
     strokeWidth: '2',
   },
   {
-    to: '/admin/promotions',
+    to: ROUTES.promotions,
     label: 'Promociones',
     icon: 'M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4',
     strokeWidth: '2',
   },
   {
-    to: '/admin/customers',
+    to: ROUTES.customers,
     label: 'Clientes',
     icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z',
     strokeWidth: '2',
   },
   {
-    to: '/admin/team',
+    to: ROUTES.team,
     label: 'Equipo',
-    icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z', // Reuse customers icon since it implies users
+    icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z',
     strokeWidth: '2',
   },
   {
-    to: '/admin/billing',
+    to: ROUTES.billing,
     label: 'Facturación',
+    billingOnly: true,
     icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z',
     strokeWidth: '2',
   },
   {
-    to: '/admin/support',
+    to: ROUTES.support,
     label: 'Soporte',
     icon: 'M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z',
     strokeWidth: '2',
   },
   {
-    to: '/admin/settings',
+    to: ROUTES.settings,
     label: 'Configuración',
     icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z',
     strokeWidth: '2',
   },
 ] as const;
 
-
-
-const VISIBLE_NAV_ITEMS = NAV_ITEMS.filter(item => {
-  if (item.to === '/admin/billing' && !isBillingEnabled) return false;
-  return true;
-});
-
+// Facturación es un mockup: sin VITE_FEATURE_BILLING=true ni el ítem ni la ruta existen (§6.5).
+const VISIBLE_NAV_ITEMS = NAV_ITEMS.filter((item) => !('billingOnly' in item) || isBillingEnabled);
 
 // El sidebar es un drawer solo bajo el breakpoint md; en escritorio está siempre visible.
 const MOBILE_QUERY = '(max-width: 767px)';
@@ -80,7 +78,15 @@ const ROLE_LABELS: Record<MerchantRole, string> = {
   STAFF: 'Cajero',
 };
 
-export function Layout({ session, role }: { session: Session | null; role: MerchantRole | null }) {
+export function Layout({
+  session,
+  role,
+  brandId,
+}: {
+  session: Session | null;
+  role: MerchantRole | null;
+  brandId: string | null;
+}) {
   const { isDarkMode, toggleDarkMode } = useTheme();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const isMobile = useMediaQuery(MOBILE_QUERY);
@@ -91,11 +97,6 @@ export function Layout({ session, role }: { session: Session | null; role: Merch
 
   const closeSidebar = () => setIsSidebarOpen(false);
 
-  // Calcula días de prueba basados en creación del owner (asumiendo 30 días de prueba)
-  const createdAt = new Date(session?.user?.created_at || Date.now());
-  const expiresAt = new Date(createdAt.getTime() + 30 * 24 * 60 * 60 * 1000);
-  const remainingDays = Math.max(0, Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
-
   useEffect(() => {
     if (!isSidebarOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -105,9 +106,7 @@ export function Layout({ session, role }: { session: Session | null; role: Merch
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isSidebarOpen]);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-  };
+  const handleLogout = useSignOut();
 
   return (
     <div className="h-screen w-full flex bg-slate-100/50 dark:bg-[#0f172a] text-slate-900 dark:text-slate-100 transition-colors duration-300 relative overflow-hidden">
@@ -142,9 +141,8 @@ export function Layout({ session, role }: { session: Session | null; role: Merch
       <aside
         aria-hidden={isSidebarHidden}
         inert={isSidebarHidden}
-        className={`w-72 bg-white/95 dark:bg-slate-900/95 md:bg-white/80 md:dark:bg-slate-900/80 backdrop-blur-xl border-r border-slate-200/80 dark:border-slate-800/80 p-6 flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-40 fixed inset-y-0 left-0 transform transition-transform duration-300 md:relative md:translate-x-0 md:h-full md:flex-shrink-0 ${
-          isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
+        className={`w-72 bg-white/95 dark:bg-slate-900/95 md:bg-white/80 md:dark:bg-slate-900/80 backdrop-blur-xl border-r border-slate-200/80 dark:border-slate-800/80 p-6 flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-40 fixed inset-y-0 left-0 transform transition-transform duration-300 md:relative md:translate-x-0 md:h-full md:flex-shrink-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
       >
         <div className="flex items-center justify-between mb-12">
           <div className="flex items-center gap-3">
@@ -175,13 +173,13 @@ export function Layout({ session, role }: { session: Session | null; role: Merch
 
         <div className="mt-auto">
           <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50 mb-4 flex items-center gap-3">
-             <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-500 font-bold border border-white dark:border-slate-600 shadow-sm">
-                L
-             </div>
-             <div className="overflow-hidden text-ellipsis">
-               <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{session?.user?.email}</p>
-               <p className="text-xs text-slate-500">{role ? ROLE_LABELS[role] : 'Sin rol asignado'}</p>
-             </div>
+            <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-500 font-bold border border-white dark:border-slate-600 shadow-sm">
+              L
+            </div>
+            <div className="overflow-hidden text-ellipsis">
+              <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{session?.user?.email}</p>
+              <p className="text-xs text-slate-500">{role ? ROLE_LABELS[role] : 'Sin rol asignado'}</p>
+            </div>
           </div>
           <button
             onClick={handleLogout}
@@ -195,25 +193,13 @@ export function Layout({ session, role }: { session: Session | null; role: Merch
 
       {/* Main Content Area */}
       <main className="flex-1 h-full min-w-0 flex flex-col overflow-y-auto overflow-x-hidden relative z-10 bg-slate-50 dark:bg-[#0f172a]">
-        
-        {/* Banner de Trial */}
-        {role === 'OWNER' && remainingDays > 0 && isBillingEnabled && (
-          <div className="bg-gradient-to-r from-brand-blue to-blue-600 text-white px-4 py-3 text-sm font-medium flex items-center justify-between sticky top-0 z-20 shadow-lg shadow-brand-blue/20 border-b border-white/10">
-            <div className="flex items-center gap-2 w-full flex-wrap">
-              <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-              <span>Estás en periodo de prueba — te quedan {remainingDays} días para validar si somos lo que buscas para tu negocio.</span>
-              <NavLink to="/admin/billing" className="ml-auto bg-white/20 hover:bg-white/30 text-white px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors whitespace-nowrap">
-                Suscribirme
-              </NavLink>
-            </div>
-          </div>
-        )}
 
         <div className="p-6 pt-20 md:p-14 md:pt-14 lg:pt-14 flex-1 relative">
           {/* Decorative Background Elements for depth */}
           <div className="absolute top-0 right-0 w-[800px] h-[600px] bg-brand-blue/5 dark:bg-brand-blue/10 rounded-full blur-3xl pointer-events-none -z-10 translate-x-1/3 -translate-y-1/3" />
           <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-brand-yellow/5 dark:bg-brand-yellow/10 rounded-full blur-3xl pointer-events-none -z-10 -translate-x-1/3 translate-y-1/3" />
-          
+
+          {role === 'OWNER' && isBillingEnabled && <TrialBanner brandId={brandId} />}
           <Outlet />
         </div>
       </main>
