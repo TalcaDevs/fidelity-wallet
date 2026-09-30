@@ -9,6 +9,7 @@ import { CustomersModule } from './customers/customers.module.js';
 import { MerchantsModule } from './merchants/merchants.module.js';
 import { PassesModule } from './passes/passes.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { ReportsModule } from './reports/reports.module.js';
 import { ScanModule } from './scan/scan.module.js';
 import { StaffModule } from './staff/staff.module.js';
 import { SupportModule } from './support/support.module.js';
@@ -33,6 +34,7 @@ import { SupportModule } from './support/support.module.js';
     PassesModule,
     SupportModule,
     BillingModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [
