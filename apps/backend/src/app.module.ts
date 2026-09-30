@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { BillingModule } from './billing/billing.module.js';
 import { CustomersModule } from './customers/customers.module.js';
 import { MerchantsModule } from './merchants/merchants.module.js';
 import { PassesModule } from './passes/passes.module.js';
@@ -31,6 +32,7 @@ import { SupportModule } from './support/support.module.js';
     ScanModule,
     PassesModule,
     SupportModule,
+    BillingModule,
   ],
   controllers: [AppController],
   providers: [

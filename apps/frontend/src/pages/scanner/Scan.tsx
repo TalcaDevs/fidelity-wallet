@@ -1,19 +1,24 @@
 import { useState, useCallback, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { QRCam } from './QRCam';
 import { ManualFallback } from './ManualFallback';
 
 import { useScanFeedback } from '../../hooks/useScanFeedback';
+import { useSignOut } from '../../hooks/useSignOut';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { supabase } from '../../lib/supabase';
 import { Session } from '@supabase/supabase-js';
 import { processScan, ScanResult, ScanTarget } from '../../services/scanService';
 import { IdentifierValue } from '../../components/ui/IdentifierInput';
+import { ROUTES } from '../../components/routing/routePaths';
+import type { MerchantRole } from '../../hooks/useMembership';
 import { ScanLoading, ScanSuccess, ScanAlreadyScanned, ScanReward, ScanError, ScanRedeemSuccess, ScanOffline, ScanSessionExpired } from './ScanViews';
 
 type ScanState = 'camera' | 'manual' | 'loading' | 'success' | 'alreadyScanned' | 'reward' | 'error' | 'redeemSuccess';
 
-export function Scan({ merchantId, session }: { merchantId: string, session: Session }) {
+export function Scan({ merchantId, session, role }: { merchantId: string, session: Session, role: MerchantRole | null }) {
   const { triggerFeedback, resumeAudio } = useScanFeedback();
+  const signOut = useSignOut();
   const [isStarted, setIsStarted] = useState(false);
   const [state, setState] = useState<ScanState>('camera');
   const [result, setResult] = useState<ScanResult | null>(null);
@@ -110,7 +115,13 @@ export function Scan({ merchantId, session }: { merchantId: string, session: Ses
               Manual
             </button>
           )}
-          <button onClick={() => supabase.auth.signOut()} className="px-4 py-2 bg-red-950/40 text-red-400 hover:bg-red-900/60 hover:text-red-300 transition-colors rounded-full text-sm font-bold shadow-sm">
+          {/* El dueño también escanea, pero su casa es el panel: sin esto quedaba atrapado acá. */}
+          {role === 'OWNER' && (
+            <Link to={ROUTES.dashboard} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 transition-colors rounded-full text-sm font-bold shadow-sm">
+              Panel
+            </Link>
+          )}
+          <button onClick={() => void signOut()} className="px-4 py-2 bg-red-950/40 text-red-400 hover:bg-red-900/60 hover:text-red-300 transition-colors rounded-full text-sm font-bold shadow-sm">
             Salir
           </button>
         </div>

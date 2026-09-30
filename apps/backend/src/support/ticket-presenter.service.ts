@@ -10,7 +10,7 @@ import {
   type TicketWithDetail,
   type Viewer,
 } from './ticket-mapper.js';
-import { UserDirectoryService } from './user-directory.service.js';
+import { UserDirectoryService } from '../common/users/user-directory.service.js';
 
 @Injectable()
 export class TicketPresenterService {

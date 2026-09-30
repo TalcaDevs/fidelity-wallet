@@ -24,6 +24,23 @@ describe('api', () => {
     vi.clearAllMocks();
   });
 
+  describe('apiUrl', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('in dev without VITE_API_URL, uses the same origin so the Vite proxy forwards /api', () => {
+      vi.stubEnv('VITE_API_URL', '');
+      expect(apiUrl('/api/scan')).toBe(`${window.location.origin}/api/scan`);
+    });
+
+    it('with VITE_API_URL, prefixes it without doubling slashes', () => {
+      vi.stubEnv('VITE_API_URL', 'https://api.example.com/');
+      expect(apiUrl('/api/brands/b1/staff')).toBe('https://api.example.com/api/brands/b1/staff');
+      expect(apiUrl('api/scan')).toBe('https://api.example.com/api/scan');
+    });
+  });
+
   describe('authenticatedFetch', () => {
     it('returns 401 JSON if no session is active', async () => {
       vi.mocked(supabase.auth.getSession).mockResolvedValueOnce({ data: { session: null }, error: null } as any);

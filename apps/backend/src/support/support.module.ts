@@ -7,7 +7,7 @@ import { SupportController } from './support.controller.js';
 import { SupportService } from './support.service.js';
 import { TicketAutoCloseService } from './ticket-autoclose.service.js';
 import { TicketPresenterService } from './ticket-presenter.service.js';
-import { UserDirectoryService } from './user-directory.service.js';
+import { UserDirectoryService } from '../common/users/user-directory.service.js';
 
 @Module({
   controllers: [SupportController, InternalController],
