@@ -162,7 +162,7 @@ export function Settings({ session, merchantId }: { session: Session | null; mer
                 {stampValidityDays === null
                   ? 'Los sellos de tu local no vencen: tus clientes pueden juntarlos sin apuro.'
                   : `Cada sello vence ${stampValidityDays} días después de que el cliente lo gana.`}
-                {' '}Aplica a todas tus promociones. Los sellos ya entregados no cambian si después
+                {' '}Aplica a todas tus promociones y a todos los locales de tu marca. Los sellos ya entregados no cambian si después
                 modificas este valor: su vencimiento queda fijado en el momento en que se dan.
               </p>
             </div>

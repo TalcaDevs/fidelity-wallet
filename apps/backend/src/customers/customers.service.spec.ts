@@ -23,6 +23,15 @@ const validDto = (overrides: Partial<CreateCustomerDto> = {}): CreateCustomerDto
   ...overrides,
 });
 
+const activeLocation = {
+  id: 'm-1',
+  brandId: 'm-1',
+  name: 'Café Demo',
+  isActive: true,
+  brand: { name: 'Café Demo', status: 'ACTIVE' },
+};
+const stampsProgram = { id: 'prog-1', brandId: 'm-1', isActive: true, stampValidityDays: 30 };
+
 describe('CustomersService', () => {
   let service: CustomersService;
   let prismaMock: any;
@@ -34,8 +43,11 @@ describe('CustomersService', () => {
       merchant: {
         findUnique: vi.fn(),
       },
-      merchantUser: {
+      brandMember: {
         findUnique: vi.fn(),
+      },
+      loyaltyProgram: {
+        findFirst: vi.fn().mockResolvedValue(stampsProgram),
       },
       promotion: {
         findFirst: vi.fn().mockResolvedValue({ id: 'promo-1', isActive: true }),
@@ -104,7 +116,7 @@ describe('CustomersService', () => {
   });
 
   it('should throw BadRequestException with sanitized message if RUT and phone belong to different customers (user enumeration prevention)', async () => {
-    prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
+    prismaMock.merchant.findUnique.mockResolvedValue(activeLocation);
     prismaMock.customer.findUnique.mockImplementation(({ where }: any) => {
       if (where.rut) return Promise.resolve({ id: 'cust-1', rut: '11111111-1' });
       if (where.phone) return Promise.resolve({ id: 'cust-2', phone: '+56912345678' });
@@ -125,7 +137,7 @@ describe('CustomersService', () => {
   });
 
   it('should throw BadRequestException if merchant has no active promotion', async () => {
-    prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
+    prismaMock.merchant.findUnique.mockResolvedValue(activeLocation);
     prismaMock.promotion.findFirst.mockResolvedValue(null);
 
     await expect(service.createOrFindCustomer(validDto())).rejects.toThrow(
@@ -133,8 +145,47 @@ describe('CustomersService', () => {
     );
   });
 
+  it('answers an inactive location or a suspended brand like a missing one', async () => {
+    prismaMock.merchant.findUnique.mockResolvedValueOnce({ ...activeLocation, isActive: false });
+    await expect(service.createOrFindCustomer(validDto())).rejects.toThrow(NotFoundException);
+
+    prismaMock.merchant.findUnique.mockResolvedValueOnce({
+      ...activeLocation,
+      brand: { name: 'Café Demo', status: 'SUSPENDED' },
+    });
+    await expect(service.createOrFindCustomer(validDto())).rejects.toThrow(NotFoundException);
+    expect(prismaMock.customer.create).not.toHaveBeenCalled();
+  });
+
+  it('still deletes customer data while the brand is suspended (Ley 19.628)', async () => {
+    prismaMock.merchant.findUnique.mockResolvedValue({
+      ...activeLocation,
+      brand: { name: 'Café Demo', status: 'SUSPENDED' },
+    });
+    prismaMock.brandMember.findUnique.mockResolvedValue({ role: 'OWNER', merchantId: null });
+    prismaMock.pass.findUnique.mockResolvedValue({ id: 'p-1', customerId: 'c-1' });
+    prismaMock.pass.count.mockResolvedValue(0);
+
+    await expect(service.deleteCustomerByMerchant('m-1', 'c-1', 'user-owner')).resolves.toMatchObject({
+      success: true,
+    });
+  });
+
+  it('looks up the pass to delete by the brand program, not by location', async () => {
+    prismaMock.merchant.findUnique.mockResolvedValue(activeLocation);
+    prismaMock.brandMember.findUnique.mockResolvedValue({ role: 'OWNER', merchantId: null });
+    prismaMock.pass.findUnique.mockResolvedValue({ id: 'p-1', customerId: 'c-1' });
+    prismaMock.pass.count.mockResolvedValue(0);
+
+    await service.deleteCustomerByMerchant('m-1', 'c-1', 'user-owner');
+
+    expect(prismaMock.pass.findUnique).toHaveBeenCalledWith({
+      where: { customerId_programId: { customerId: 'c-1', programId: 'prog-1' } },
+    });
+  });
+
   it('should create the customer with RUT, phone and the terms acceptance, returning wallet URLs only when the pass is new', async () => {
-    prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
+    prismaMock.merchant.findUnique.mockResolvedValue(activeLocation);
     prismaMock.customer.findUnique.mockResolvedValue(null);
     prismaMock.customer.create.mockResolvedValue({ id: 'c-1', rut: '11111111-1', phone: '+56912345678' });
     passesServiceMock.findOrCreatePass.mockResolvedValue({
@@ -158,13 +209,17 @@ describe('CustomersService', () => {
     expect(result.appleWalletUrl).toBe('/api/passes/p-1/apple');
     expect(result.googleWalletUrl).toBe('/api/passes/p-1/google');
     expect((result as any).passToken).toBeUndefined();
-    expect(passesServiceMock.findOrCreatePass).toHaveBeenCalledWith('c-1', 'm-1', prismaMock);
+    expect(passesServiceMock.findOrCreatePass).toHaveBeenCalledWith(
+      'c-1',
+      { programId: 'prog-1', merchantId: 'm-1', brandId: 'm-1' },
+      prismaMock,
+    );
     expect(passesServiceMock.getWalletUrlsForPass).toHaveBeenCalledWith('p-1', prismaMock);
     expect(prismaMock.$transaction).toHaveBeenCalled();
   });
 
   it('should throw InternalServerErrorException and abort transaction if wallet URLs generation returns null for a new pass', async () => {
-    prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
+    prismaMock.merchant.findUnique.mockResolvedValue(activeLocation);
     prismaMock.customer.findUnique.mockResolvedValue(null);
     prismaMock.customer.create.mockResolvedValue({ id: 'c-1', rut: '11111111-1', phone: '+56912345678' });
     passesServiceMock.findOrCreatePass.mockResolvedValue({
@@ -180,7 +235,7 @@ describe('CustomersService', () => {
   });
 
   it('should throw InternalServerErrorException and abort transaction if wallet URLs generation throws an error for a new pass', async () => {
-    prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
+    prismaMock.merchant.findUnique.mockResolvedValue(activeLocation);
     prismaMock.customer.findUnique.mockResolvedValue(null);
     prismaMock.customer.create.mockResolvedValue({ id: 'c-1', rut: '11111111-1', phone: '+56912345678' });
     passesServiceMock.findOrCreatePass.mockResolvedValue({
@@ -196,7 +251,7 @@ describe('CustomersService', () => {
   });
 
   it('should return existing customer and pass without wallet URLs to prevent credential leakage/impersonation', async () => {
-    prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
+    prismaMock.merchant.findUnique.mockResolvedValue(activeLocation);
     prismaMock.customer.findUnique.mockImplementation(({ where }: any) =>
       Promise.resolve(where.rut ? { id: 'c-1', rut: '11111111-1', phone: '+56912345678' } : null),
     );
@@ -225,7 +280,7 @@ describe('CustomersService', () => {
       );
 
     beforeEach(() => {
-      prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
+      prismaMock.merchant.findUnique.mockResolvedValue(activeLocation);
       prismaMock.customer.update.mockResolvedValue({ id: 'c-1' });
     });
 
@@ -278,7 +333,7 @@ describe('CustomersService', () => {
     });
 
     it('retries the entire transaction when P2002 collision occurs on customer creation and resolves concurrently created customer', async () => {
-      prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
+      prismaMock.merchant.findUnique.mockResolvedValue(activeLocation);
       prismaMock.promotion.findFirst.mockResolvedValue({ id: 'promo-1', isActive: true });
 
       let transactionCount = 0;
@@ -316,7 +371,7 @@ describe('CustomersService', () => {
     });
 
     it('rethrows P2002 when the error persists on the retried transaction', async () => {
-      prismaMock.merchant.findUnique.mockResolvedValue({ id: 'm-1' });
+      prismaMock.merchant.findUnique.mockResolvedValue(activeLocation);
       prismaMock.promotion.findFirst.mockResolvedValue({ id: 'promo-1', isActive: true });
 
       let transactionCount = 0;
@@ -341,14 +396,16 @@ describe('CustomersService', () => {
     });
 
     it('throws ForbiddenException if caller is not an OWNER', async () => {
-      prismaMock.merchantUser.findUnique.mockResolvedValue({ role: 'STAFF' });
+      prismaMock.merchant.findUnique.mockResolvedValue(activeLocation);
+      prismaMock.brandMember.findUnique.mockResolvedValue({ role: 'STAFF', merchantId: 'm-1' });
       await expect(
         service.deleteCustomerByMerchant('m-1', 'c-1', 'user-staff'),
       ).rejects.toThrow('Solo el dueño del comercio puede eliminar clientes');
     });
 
     it('throws NotFoundException if customer or pass does not exist in merchant', async () => {
-      prismaMock.merchantUser.findUnique.mockResolvedValue({ role: 'OWNER' });
+      prismaMock.merchant.findUnique.mockResolvedValue(activeLocation);
+      prismaMock.brandMember.findUnique.mockResolvedValue({ role: 'OWNER', merchantId: null });
       prismaMock.pass.findUnique.mockResolvedValue(null);
 
       await expect(
@@ -357,7 +414,8 @@ describe('CustomersService', () => {
     });
 
     it('deletes pass without deleting customer when customer has other passes', async () => {
-      prismaMock.merchantUser.findUnique.mockResolvedValue({ role: 'OWNER' });
+      prismaMock.merchant.findUnique.mockResolvedValue(activeLocation);
+      prismaMock.brandMember.findUnique.mockResolvedValue({ role: 'OWNER', merchantId: null });
       prismaMock.pass.findUnique.mockResolvedValue({ id: 'p-1', customerId: 'c-1', merchantId: 'm-1' });
       prismaMock.pass.count.mockResolvedValue(1); // 1 remaining pass in another merchant
 
@@ -370,7 +428,8 @@ describe('CustomersService', () => {
     });
 
     it('deletes pass and customer completely when customer has no other passes', async () => {
-      prismaMock.merchantUser.findUnique.mockResolvedValue({ role: 'OWNER' });
+      prismaMock.merchant.findUnique.mockResolvedValue(activeLocation);
+      prismaMock.brandMember.findUnique.mockResolvedValue({ role: 'OWNER', merchantId: null });
       prismaMock.pass.findUnique.mockResolvedValue({ id: 'p-1', customerId: 'c-1', merchantId: 'm-1' });
       prismaMock.pass.count.mockResolvedValue(0); // 0 remaining passes
 

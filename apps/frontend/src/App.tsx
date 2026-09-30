@@ -57,10 +57,9 @@ export default function App() {
           <Route element={<RequireRole session={session} membership={membership} allow={ADMIN_ROLES} />}>
             <Route element={<Layout session={session} role={membership.role} />}>
               <Route path={ROUTES.admin} element={<Navigate to={ROUTES.dashboard} replace />} />
-              <Route path={ROUTES.dashboard} element={<Dashboard session={session} merchantId={membership.merchantId} />} />
-              <Route path={ROUTES.analytics} element={<Analytics merchantId={membership.merchantId} />} />
-              <Route path={ROUTES.promotions} element={<PromotionsModule merchantId={membership.merchantId} />} />
-              <Route path={ROUTES.customers} element={<Customers merchantId={membership.merchantId} />} />
+              <Route path={ROUTES.dashboard} element={<Dashboard session={session} brandId={membership.brandId} />} />
+              <Route path={ROUTES.promotions} element={<PromotionsModule programId={membership.programId} />} />
+              <Route path={ROUTES.customers} element={<Customers brandId={membership.brandId} merchantId={membership.merchantId} />} />
               <Route path={ROUTES.settings} element={<Settings session={session} merchantId={membership.merchantId} />} />
               {/* Un 404 dentro del panel conserva la navegación lateral */}
               <Route path="/admin/*" element={<NotFound />} />
