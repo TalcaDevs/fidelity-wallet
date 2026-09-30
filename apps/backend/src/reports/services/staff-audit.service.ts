@@ -8,7 +8,7 @@ import type {
   StaffMemberMetricDto,
 } from '../dto/reports-response.dto.js';
 import { resolveDateRange } from '../utils/reports-date.util.js';
-import type { ReportScope } from './reports-overview.service.js';
+import { type ReportScope, scopeWhere } from '../reports.types.js';
 
 @Injectable()
 export class StaffAuditService {
@@ -21,10 +21,8 @@ export class StaffAuditService {
     scope: ReportScope,
     query: ReportPeriodQueryDto,
   ): Promise<StaffActivityDto> {
-    const scopeFilter = scope.merchantId
-      ? { merchantId: scope.merchantId }
-      : { brandId: scope.brandId };
-    const { from, to } = resolveDateRange(query);
+    const filter = scopeWhere(scope);
+    const { from, toExclusive } = resolveDateRange(query);
 
     const [brandMembers, scans]: [
       Array<{ userId: string; role: MerchantRole }>,
@@ -52,7 +50,7 @@ export class StaffAuditService {
         select: { userId: true, role: true },
       }),
       this.prisma.scan.findMany({
-        where: { ...scopeFilter, createdAt: { gte: from, lte: to } },
+        where: { ...filter, createdAt: { gte: from, lt: toExclusive } },
         select: {
           id: true,
           type: true,
@@ -88,63 +86,12 @@ export class StaffAuditService {
       const alerts: StaffAlertDto[] = [];
 
       // Heurística 1: Mismo miembro del equipo da >= 4 sellos al mismo cliente/pase en 7 días
-      const passStampTimes: Record<string, number[]> = {};
-      for (const s of userScans) {
-        if (s.type === 'STAMP_ADDED') {
-          if (!passStampTimes[s.passId]) passStampTimes[s.passId] = [];
-          passStampTimes[s.passId].push(s.createdAt.getTime());
-        }
-      }
-      for (const times of Object.values(passStampTimes)) {
-        if (times.length >= 4) {
-          // Ya ordenados cronológicamente por query
-          for (let i = 0; i <= times.length - 4; i++) {
-            if (times[i + 3] - times[i] <= 7 * 24 * 60 * 60 * 1000) {
-              alerts.push({
-                type: 'EXCESSIVE_STAMPS_SAME_CUSTOMER',
-                severity: 'high',
-                description: 'Se registraron 4 o más sellos otorgados al mismo cliente en menos de 7 días.',
-              });
-              break;
-            }
-          }
-        }
-      }
+      alerts.push(...this.detectExcessiveStamps(userScans));
 
       // Heurística 2: Miembro del equipo con > 50% de sellos MANUAL con al menos 20 operaciones
-      if (totalOps >= 20 && manualPercentage > 50) {
-        alerts.push({
-          type: 'HIGH_MANUAL_RATIO',
-          severity: 'medium',
-          description: `Más del 50% de los registros fueron mediante búsqueda manual (${manualOps} de ${totalOps}).`,
-        });
-      }
-
-      // Heurística 3: Miembro del equipo sella y canjea el mismo pase en menos de 24 horas
-      const passOps: Record<string, { stamps: number[]; redeems: number[] }> = {};
-      for (const s of userScans) {
-        if (!passOps[s.passId]) passOps[s.passId] = { stamps: [], redeems: [] };
-        if (s.type === 'STAMP_ADDED') passOps[s.passId].stamps.push(s.createdAt.getTime());
-        if (s.type === 'REWARD_REDEEMED') passOps[s.passId].redeems.push(s.createdAt.getTime());
-      }
-      for (const op of Object.values(passOps)) {
-        if (op.stamps.length > 0 && op.redeems.length > 0) {
-          let flagged = false;
-          for (const stTime of op.stamps) {
-            for (const redTime of op.redeems) {
-              if (Math.abs(redTime - stTime) <= 24 * 60 * 60 * 1000) {
-                alerts.push({
-                  type: 'STAMP_AND_REDEEM_SAME_DAY',
-                  severity: 'medium',
-                  description: 'Sello y canje realizados sobre el mismo pase en un lapso menor a 24 horas.',
-                });
-                flagged = true;
-                break;
-              }
-            }
-            if (flagged) break;
-          }
-        }
+      const highManualAlert = this.detectHighManualScanRatio(totalOps, manualOps, manualPercentage);
+      if (highManualAlert) {
+        alerts.push(highManualAlert);
       }
 
       staffMetrics.push({
@@ -161,5 +108,57 @@ export class StaffAuditService {
     staffMetrics.sort((a, b) => b.stampsCount + b.redeemsCount - (a.stampsCount + a.redeemsCount));
 
     return { staff: staffMetrics };
+  }
+
+  /**
+   * Detecta si un miembro del equipo otorgó 4 o más sellos al mismo pase en menos de 7 días.
+   */
+  private detectExcessiveStamps(
+    userScans: Array<{ type: string; passId: string; createdAt: Date }>,
+  ): StaffAlertDto[] {
+    const alerts: StaffAlertDto[] = [];
+    const passStampTimes: Record<string, number[]> = {};
+
+    for (const s of userScans) {
+      if (s.type === 'STAMP_ADDED') {
+        if (!passStampTimes[s.passId]) passStampTimes[s.passId] = [];
+        passStampTimes[s.passId].push(s.createdAt.getTime());
+      }
+    }
+
+    for (const times of Object.values(passStampTimes)) {
+      if (times.length >= 4) {
+        for (let i = 0; i <= times.length - 4; i++) {
+          if (times[i + 3] - times[i] <= 7 * 24 * 60 * 60 * 1000) {
+            alerts.push({
+              type: 'EXCESSIVE_STAMPS_SAME_CUSTOMER',
+              severity: 'high',
+              description: 'Se registraron 4 o más sellos otorgados al mismo cliente en menos de 7 días.',
+            });
+            break;
+          }
+        }
+      }
+    }
+
+    return alerts;
+  }
+
+  /**
+   * Detecta si más del 50% de operaciones fueron manuales cuando hay un volumen representativo (>= 20).
+   */
+  private detectHighManualScanRatio(
+    totalOps: number,
+    manualOps: number,
+    manualPercentage: number,
+  ): StaffAlertDto | null {
+    if (totalOps >= 20 && manualPercentage > 50) {
+      return {
+        type: 'HIGH_MANUAL_SCAN_RATIO',
+        severity: 'medium',
+        description: `Más del 50% de los registros fueron mediante búsqueda manual (${manualOps} de ${totalOps}).`,
+      };
+    }
+    return null;
   }
 }

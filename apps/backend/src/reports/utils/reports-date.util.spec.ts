@@ -4,6 +4,7 @@ import {
   calcChangePercentage,
   formatDateInTz,
   getMondayOfWeek,
+  getMondayOfWeekStr,
   resolveDateRange,
 } from './reports-date.util.js';
 
@@ -21,8 +22,8 @@ describe('reports-date.util', () => {
       expect(calcChangePercentage(0, 0)).toBe(0);
     });
 
-    it('retorna 100 si el previo es 0 y el actual es mayor a 0', () => {
-      expect(calcChangePercentage(10, 0)).toBe(100);
+    it('retorna null (N/A) si el previo es 0 y el actual es mayor a 0', () => {
+      expect(calcChangePercentage(10, 0)).toBeNull();
     });
 
     it('redondea a un decimal', () => {
@@ -68,15 +69,32 @@ describe('reports-date.util', () => {
       const result = getMondayOfWeek(sun);
       expect(result.getDate()).toBe(14);
     });
+
+    it('getMondayOfWeekStr formatea correctamente en la zona horaria indicada', () => {
+      const sundayNightUtc = new Date('2026-09-28T01:00:00Z'); // Domingo 22:00 en Santiago
+      expect(getMondayOfWeekStr(sundayNightUtc, 'America/Santiago')).toBe('2026-09-21');
+      expect(getMondayOfWeekStr(sundayNightUtc, 'UTC')).toBe('2026-09-28');
+    });
   });
 
   describe('resolveDateRange', () => {
     it('resuelve fechas válidas por defecto a 30 días', () => {
-      const { from, to, prevFrom, prevTo, timeZone } = resolveDateRange({});
+      const { from, toExclusive, prevFrom, prevToExclusive, timeZone } = resolveDateRange({});
       expect(timeZone).toBe('America/Santiago');
-      expect(to.getTime()).toBeGreaterThan(from.getTime());
-      expect(prevTo.getTime()).toBe(from.getTime());
-      expect(prevFrom.getTime()).toBeLessThan(prevTo.getTime());
+      expect(toExclusive.getTime()).toBeGreaterThan(from.getTime());
+      expect(prevToExclusive.getTime()).toBe(from.getTime());
+      expect(prevFrom.getTime()).toBeLessThan(prevToExclusive.getTime());
+    });
+
+    it('incluye un scan a las 20:00 del día final en hora local (toExclusive)', () => {
+      const { from, toExclusive } = resolveDateRange({
+        from: '2026-09-24',
+        to: '2026-09-30',
+        tz: 'America/Santiago',
+      });
+      const scanAt8pm = new Date('2026-09-30T20:00:00-03:00');
+      expect(scanAt8pm.getTime()).toBeGreaterThanOrEqual(from.getTime());
+      expect(scanAt8pm.getTime()).toBeLessThan(toExclusive.getTime());
     });
 
     it('rechaza zona horaria inválida', () => {

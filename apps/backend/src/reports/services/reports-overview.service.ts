@@ -4,6 +4,7 @@ import type { ReportPeriodQueryDto } from '../dto/reports-query.dto.js';
 import type {
   KpiMetricDto,
   MethodDistributionDto,
+  OverviewKpisDto,
   OverviewReportDto,
   TimeSeriesPointDto,
 } from '../dto/reports-response.dto.js';
@@ -11,12 +12,11 @@ import {
   calcChangePercentage,
   formatDateInTz,
   resolveDateRange,
+  type ResolvedDateRange,
 } from '../utils/reports-date.util.js';
+import { type ReportScope, scopeWhere } from '../reports.types.js';
 
-export interface ReportScope {
-  brandId: string;
-  merchantId: string | null;
-}
+export type { ReportScope };
 
 @Injectable()
 export class ReportsOverviewService {
@@ -26,12 +26,41 @@ export class ReportsOverviewService {
    * Reporte General (Overview): KPIs comparativos, series temporales y distribución QR vs Manual.
    */
   async getOverview(scope: ReportScope, query: ReportPeriodQueryDto): Promise<OverviewReportDto> {
-    const scopeFilter = scope.merchantId
-      ? { merchantId: scope.merchantId }
-      : { brandId: scope.brandId };
-    const { from, to, prevFrom, prevTo, timeZone } = resolveDateRange(query);
+    const range = resolveDateRange(query);
+    const filter = scopeWhere(scope);
 
-    // Consultas del período actual y período anterior en paralelo
+    // Ejecución paralela de submódulos desacoplados en métodos privados
+    const [kpis, timeSeries, methodDistribution] = await Promise.all([
+      this.computeOverviewKpis(filter, range),
+      this.computeDailyTimeSeries(filter, range),
+      this.computeMethodDistribution(filter, range),
+    ]);
+
+    // Metadata del período para alinear contratos con el frontend
+    const periodFrom = formatDateInTz(range.from, range.timeZone);
+    const periodTo = formatDateInTz(new Date(range.toExclusive.getTime() - 1), range.timeZone);
+
+    return {
+      period: {
+        from: periodFrom,
+        to: periodTo,
+        timeZone: range.timeZone,
+      },
+      kpis,
+      timeSeries,
+      methodDistribution,
+    };
+  }
+
+  /**
+   * Calcula los KPIs comparativos entre el período actual y el anterior equivalente.
+   */
+  private async computeOverviewKpis(
+    filter: { merchantId: string } | { brandId: string },
+    range: ResolvedDateRange,
+  ): Promise<OverviewKpisDto> {
+    const { from, toExclusive, prevFrom, prevToExclusive } = range;
+
     const [
       currScans,
       currPassesCount,
@@ -41,35 +70,32 @@ export class ReportsOverviewService {
       prevExpiredStamps,
     ] = await Promise.all([
       this.prisma.scan.findMany({
-        where: { ...scopeFilter, createdAt: { gte: from, lte: to } },
+        where: { ...filter, createdAt: { gte: from, lt: toExclusive } },
         select: {
-          id: true,
           type: true,
-          method: true,
           createdAt: true,
           pass: { select: { customerId: true } },
         },
       }),
       this.prisma.pass.count({
-        where: { ...scopeFilter, createdAt: { gte: from, lte: to } },
+        where: { ...filter, createdAt: { gte: from, lt: toExclusive } },
       }),
       this.prisma.stamp.count({
-        where: { ...scopeFilter, expiresAt: { gte: from, lte: to }, consumedAt: null },
+        where: { ...filter, expiresAt: { gte: from, lt: toExclusive }, consumedAt: null },
       }),
       this.prisma.scan.findMany({
-        where: { ...scopeFilter, createdAt: { gte: prevFrom, lte: prevTo } },
+        where: { ...filter, createdAt: { gte: prevFrom, lt: prevToExclusive } },
         select: {
-          id: true,
           type: true,
           createdAt: true,
           pass: { select: { customerId: true } },
         },
       }),
       this.prisma.pass.count({
-        where: { ...scopeFilter, createdAt: { gte: prevFrom, lte: prevTo } },
+        where: { ...filter, createdAt: { gte: prevFrom, lt: prevToExclusive } },
       }),
       this.prisma.stamp.count({
-        where: { ...scopeFilter, expiresAt: { gte: prevFrom, lte: prevTo }, consumedAt: null },
+        where: { ...filter, expiresAt: { gte: prevFrom, lt: prevToExclusive }, consumedAt: null },
       }),
     ]);
 
@@ -77,46 +103,76 @@ export class ReportsOverviewService {
     const currStamps = currScans.filter((s) => s.type === 'STAMP_ADDED').length;
     const currRewards = currScans.filter((s) => s.type === 'REWARD_REDEEMED').length;
     const currActiveCustomers = new Set(currScans.map((s) => s.pass.customerId)).size;
-
-    const currCustomerScanCounts: Record<string, number> = {};
-    for (const s of currScans) {
-      const cid = s.pass.customerId;
-      currCustomerScanCounts[cid] = (currCustomerScanCounts[cid] || 0) + 1;
-    }
-    const currRecurringCount = Object.values(currCustomerScanCounts).filter((c) => c >= 2).length;
-    const currRecurrenceRate =
-      currActiveCustomers > 0
-        ? Math.round((currRecurringCount / currActiveCustomers) * 1000) / 10
-        : 0;
+    const currRecurrenceRate = this.calculateRecurrenceRate(currScans, range.timeZone);
 
     // Métricas período anterior
     const prevStamps = prevScans.filter((s) => s.type === 'STAMP_ADDED').length;
     const prevRewards = prevScans.filter((s) => s.type === 'REWARD_REDEEMED').length;
     const prevActiveCustomers = new Set(prevScans.map((s) => s.pass.customerId)).size;
+    const prevRecurrenceRate = this.calculateRecurrenceRate(prevScans, range.timeZone);
 
-    const prevCustomerScanCounts: Record<string, number> = {};
-    for (const s of prevScans) {
+    return {
+      newCustomers: this.buildKpiMetric(currPassesCount, prevPassesCount),
+      activeCustomers: this.buildKpiMetric(currActiveCustomers, prevActiveCustomers),
+      stampsDelivered: this.buildKpiMetric(currStamps, prevStamps),
+      rewardsRedeemed: this.buildKpiMetric(currRewards, prevRewards),
+      recurrenceRate: this.buildKpiMetric(currRecurrenceRate, prevRecurrenceRate),
+      expiredStamps: this.buildKpiMetric(currExpiredStamps, prevExpiredStamps),
+    };
+  }
+
+  /**
+   * Calcula la tasa de recurrencia deduplicando visitas por cliente y día.
+   */
+  private calculateRecurrenceRate(
+    scans: Array<{ createdAt: Date; pass: { customerId: string } }>,
+    timeZone: string,
+  ): number {
+    const customerVisitDays: Record<string, Set<string>> = {};
+    for (const s of scans) {
       const cid = s.pass.customerId;
-      prevCustomerScanCounts[cid] = (prevCustomerScanCounts[cid] || 0) + 1;
+      const day = formatDateInTz(s.createdAt, timeZone);
+      if (!customerVisitDays[cid]) customerVisitDays[cid] = new Set();
+      customerVisitDays[cid].add(day);
     }
-    const prevRecurringCount = Object.values(prevCustomerScanCounts).filter((c) => c >= 2).length;
-    const prevRecurrenceRate =
-      prevActiveCustomers > 0
-        ? Math.round((prevRecurringCount / prevActiveCustomers) * 1000) / 10
-        : 0;
 
-    // Distribución QR vs Manual
-    const qrCount = currScans.filter((s) => s.method === 'QR').length;
-    const manualCount = currScans.filter((s) => s.method === 'MANUAL').length;
-    const totalScans = qrCount + manualCount;
-    const qrPercentage = totalScans > 0 ? Math.round((qrCount / totalScans) * 1000) / 10 : 0;
-    const manualPercentage = totalScans > 0 ? Math.round((manualCount / totalScans) * 1000) / 10 : 0;
+    const totalActive = Object.keys(customerVisitDays).length;
+    if (totalActive === 0) return 0;
 
-    // Evolución diaria (TimeSeries)
+    const recurrentCount = Object.values(customerVisitDays).filter((days) => days.size >= 2).length;
+    return Math.round((recurrentCount / totalActive) * 1000) / 10;
+  }
+
+  /**
+   * Calcula la evolución temporal diaria de sellos, canjes y clientes únicos.
+   */
+  private async computeDailyTimeSeries(
+    filter: { merchantId: string } | { brandId: string },
+    range: ResolvedDateRange,
+  ): Promise<TimeSeriesPointDto[]> {
+    const scans = await this.prisma.scan.findMany({
+      where: { ...filter, createdAt: { gte: range.from, lt: range.toExclusive } },
+      select: {
+        type: true,
+        createdAt: true,
+        pass: { select: { customerId: true } },
+      },
+    });
+
     const dailyMap: Record<string, { stamps: number; rewards: number; customerIds: Set<string> }> = {};
 
-    for (const scan of currScans) {
-      const dateKey = formatDateInTz(scan.createdAt, timeZone);
+    // Inicializar todos los días del rango en timeZone para que no falten fechas en el gráfico
+    let cursor = new Date(range.from.getTime());
+    while (cursor.getTime() < range.toExclusive.getTime()) {
+      const dateKey = formatDateInTz(cursor, range.timeZone);
+      if (!dailyMap[dateKey]) {
+        dailyMap[dateKey] = { stamps: 0, rewards: 0, customerIds: new Set() };
+      }
+      cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000);
+    }
+
+    for (const scan of scans) {
+      const dateKey = formatDateInTz(scan.createdAt, range.timeZone);
       if (!dailyMap[dateKey]) {
         dailyMap[dateKey] = { stamps: 0, rewards: 0, customerIds: new Set() };
       }
@@ -128,7 +184,7 @@ export class ReportsOverviewService {
       dailyMap[dateKey].customerIds.add(scan.pass.customerId);
     }
 
-    const timeSeries: TimeSeriesPointDto[] = Object.keys(dailyMap)
+    return Object.keys(dailyMap)
       .sort()
       .map((date) => ({
         date,
@@ -136,29 +192,58 @@ export class ReportsOverviewService {
         rewards: dailyMap[date].rewards,
         uniqueCustomers: dailyMap[date].customerIds.size,
       }));
+  }
 
-    const kpi = (current: number, previous: number): KpiMetricDto => ({
+  /**
+   * Calcula la distribución de métodos de escaneo (QR vs Manual en caja).
+   */
+  private async computeMethodDistribution(
+    filter: { merchantId: string } | { brandId: string },
+    range: ResolvedDateRange,
+  ): Promise<MethodDistributionDto> {
+    let qrCount = 0;
+    let manualCount = 0;
+
+    if (typeof this.prisma.scan.groupBy === 'function') {
+      const groups = await this.prisma.scan.groupBy({
+        by: ['method'],
+        where: { ...filter, createdAt: { gte: range.from, lt: range.toExclusive } },
+        _count: { _all: true },
+      });
+
+      for (const g of groups) {
+        if (g.method === 'QR') qrCount = g._count._all;
+        else if (g.method === 'MANUAL') manualCount = g._count._all;
+      }
+    } else {
+      const scans = await this.prisma.scan.findMany({
+        where: { ...filter, createdAt: { gte: range.from, lt: range.toExclusive } },
+        select: { method: true },
+      });
+      qrCount = scans.filter((s) => s.method === 'QR').length;
+      manualCount = scans.filter((s) => s.method === 'MANUAL').length;
+    }
+
+    const totalScans = qrCount + manualCount;
+    const qrPercentage = totalScans > 0 ? Math.round((qrCount / totalScans) * 1000) / 10 : 0;
+    const manualPercentage = totalScans > 0 ? Math.round((manualCount / totalScans) * 1000) / 10 : 0;
+
+    return {
+      qrCount,
+      manualCount,
+      qrPercentage,
+      manualPercentage,
+    };
+  }
+
+  /**
+   * Helper puro para construir un objeto KpiMetricDto.
+   */
+  private buildKpiMetric(current: number, previous: number): KpiMetricDto {
+    return {
       current,
       previous,
       changePercentage: calcChangePercentage(current, previous),
-    });
-
-    return {
-      kpis: {
-        newCustomers: kpi(currPassesCount, prevPassesCount),
-        activeCustomers: kpi(currActiveCustomers, prevActiveCustomers),
-        stampsDelivered: kpi(currStamps, prevStamps),
-        rewardsRedeemed: kpi(currRewards, prevRewards),
-        recurrenceRate: kpi(currRecurrenceRate, prevRecurrenceRate),
-        expiredStamps: kpi(currExpiredStamps, prevExpiredStamps),
-      },
-      timeSeries,
-      methodDistribution: {
-        qrCount,
-        manualCount,
-        qrPercentage,
-        manualPercentage,
-      },
     };
   }
 }

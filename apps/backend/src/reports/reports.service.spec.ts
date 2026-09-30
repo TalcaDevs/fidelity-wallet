@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   ForbiddenException,
-  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +10,7 @@ import { ReportsOverviewService } from './services/reports-overview.service.js';
 import { RetentionAnalyticsService } from './services/retention-analytics.service.js';
 import { PromotionsAnalyticsService } from './services/promotions-analytics.service.js';
 import { StaffAuditService } from './services/staff-audit.service.js';
+import { resolveDateRange } from './utils/reports-date.util.js';
 
 describe('ReportsService', () => {
   let service: ReportsService;
@@ -26,6 +26,8 @@ describe('ReportsService', () => {
     brandId,
     name: 'Café Del Sol',
     slug: 'cafe-del-sol',
+    isActive: true,
+    brand: { name: 'Café Del Sol Marca', status: 'ACTIVE' },
   };
 
   const mockBrand = {
@@ -55,6 +57,7 @@ describe('ReportsService', () => {
       },
       scan: {
         findMany: vi.fn(),
+        groupBy: vi.fn(),
       },
       promotion: {
         findMany: vi.fn(),
@@ -81,12 +84,12 @@ describe('ReportsService', () => {
       );
     });
 
-    it('throws NotFoundException if neither merchant nor brand exists', async () => {
+    it('throws ForbiddenException if neither merchant nor brand exists (prevents UUID enumeration)', async () => {
       (prisma.merchant.findUnique as any).mockResolvedValue(null);
-      (prisma.brand.findUnique as any).mockResolvedValue(null);
+      (prisma.brandMember.findUnique as any).mockResolvedValue(null);
 
       await expect(service.assertOwner(merchantId, ownerId)).rejects.toThrow(
-        NotFoundException,
+        ForbiddenException,
       );
     });
 
@@ -141,42 +144,42 @@ describe('ReportsService', () => {
   describe('resolveDateRange', () => {
     it('throws BadRequestException on invalid timezone', () => {
       expect(() =>
-        service.resolveDateRange({ tz: 'Invalid/Timezone_Name_XYZ' }),
+        resolveDateRange({ tz: 'Invalid/Timezone_Name_XYZ' }),
       ).toThrow(BadRequestException);
     });
 
     it('throws BadRequestException on invalid date strings', () => {
       expect(() =>
-        service.resolveDateRange({ from: 'not-a-date' }),
+        resolveDateRange({ from: 'not-a-date' }),
       ).toThrow(BadRequestException);
       expect(() =>
-        service.resolveDateRange({ to: 'invalid-date' }),
+        resolveDateRange({ to: 'invalid-date' }),
       ).toThrow(BadRequestException);
     });
 
     it('throws BadRequestException if from > to', () => {
       expect(() =>
-        service.resolveDateRange({
-          from: '2026-09-30T00:00:00Z',
-          to: '2026-09-01T00:00:00Z',
+        resolveDateRange({
+          from: '2026-09-30',
+          to: '2026-09-01',
         }),
       ).toThrow(BadRequestException);
     });
 
     it('throws BadRequestException if range exceeds 366 days', () => {
       expect(() =>
-        service.resolveDateRange({
-          from: '2024-01-01T00:00:00Z',
-          to: '2026-01-01T00:00:00Z',
+        resolveDateRange({
+          from: '2024-01-01',
+          to: '2026-01-01',
         }),
       ).toThrow(BadRequestException);
     });
 
     it('defaults to 30 days and America/Santiago if no dates provided', () => {
-      const range = service.resolveDateRange({});
+      const range = resolveDateRange({});
       expect(range.timeZone).toBe('America/Santiago');
-      expect(range.to.getTime()).toBeGreaterThan(range.from.getTime());
-      const diffDays = Math.round((range.to.getTime() - range.from.getTime()) / (24 * 3600 * 1000));
+      expect(range.toExclusive.getTime()).toBeGreaterThan(range.from.getTime());
+      const diffDays = Math.round((range.toExclusive.getTime() - range.from.getTime()) / (24 * 3600 * 1000));
       expect(diffDays).toBe(30);
     });
   });
@@ -192,27 +195,29 @@ describe('ReportsService', () => {
     });
 
     it('calculates KPIs, time series, and QR/Manual method distribution', async () => {
+      // 15 passes in current, 10 in previous
       (prisma.pass.count as any)
-        .mockResolvedValueOnce(15) // current new customers
-        .mockResolvedValueOnce(10); // previous new customers
+        .mockResolvedValueOnce(15)
+        .mockResolvedValueOnce(10);
 
+      // 0 expired in current, 0 in previous
       (prisma.stamp.count as any)
-        .mockResolvedValueOnce(2) // curr expired stamps
-        .mockResolvedValueOnce(1); // prev expired stamps
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0);
 
       const mockCurrentScans = [
         {
           id: 'scan-1',
           type: 'STAMP_ADDED',
           method: 'QR',
-          createdAt: new Date('2026-09-10T15:00:00Z'),
+          createdAt: new Date('2026-09-10T10:00:00Z'),
           pass: { customerId: 'cust-1' },
         },
         {
           id: 'scan-2',
           type: 'REWARD_REDEEMED',
           method: 'MANUAL',
-          createdAt: new Date('2026-09-10T16:00:00Z'),
+          createdAt: new Date('2026-09-10T10:30:00Z'),
           pass: { customerId: 'cust-1' },
         },
         {
@@ -236,19 +241,30 @@ describe('ReportsService', () => {
 
       (prisma.scan.findMany as any)
         .mockResolvedValueOnce(mockCurrentScans)
-        .mockResolvedValueOnce(mockPrevScans);
+        .mockResolvedValueOnce(mockPrevScans)
+        .mockResolvedValueOnce(mockCurrentScans); // for computeDailyTimeSeries
+
+      (prisma.scan.groupBy as any).mockResolvedValue([
+        { method: 'QR', _count: { _all: 2 } },
+        { method: 'MANUAL', _count: { _all: 1 } },
+      ]);
 
       const overview = await service.getOverview(
         merchantId,
         {
-          from: '2026-09-01T00:00:00Z',
-          to: '2026-09-20T00:00:00Z',
+          from: '2026-09-01',
+          to: '2026-09-20',
           tz: 'America/Santiago',
         },
         ownerId,
       );
 
       expect(overview).toBeDefined();
+      expect(overview.period).toEqual({
+        from: '2026-09-01',
+        to: '2026-09-20',
+        timeZone: 'America/Santiago',
+      });
       expect(overview.kpis.newCustomers.current).toBe(15);
       expect(overview.kpis.newCustomers.previous).toBe(10);
       expect(overview.kpis.newCustomers.changePercentage).toBe(50);
@@ -426,13 +442,11 @@ describe('ReportsService', () => {
 
       // Antifraud heuristics:
       // 1. >=4 stamps to same pass in 7 days
-      // 2. >50% manual ratio with >=20 ops
-      // 3. Stamp & redeem on same day
-      expect(staffMember.alerts.length).toBe(3);
+      // 2. >50% manual ratio with >=20 ops (HIGH_MANUAL_SCAN_RATIO)
+      expect(staffMember.alerts.length).toBe(2);
       const types = staffMember.alerts.map((a) => a.type);
       expect(types).toContain('EXCESSIVE_STAMPS_SAME_CUSTOMER');
-      expect(types).toContain('HIGH_MANUAL_RATIO');
-      expect(types).toContain('STAMP_AND_REDEEM_SAME_DAY');
+      expect(types).toContain('HIGH_MANUAL_SCAN_RATIO');
     });
   });
 });

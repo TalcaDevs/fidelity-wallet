@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class KpiMetricDto {
   @ApiProperty({ description: 'Valor en el período actual', example: 125 })
@@ -8,7 +8,7 @@ export class KpiMetricDto {
   previous: number;
 
   @ApiProperty({
-    description: 'Porcentaje de cambio respecto al período anterior (null si no se puede calcular)',
+    description: 'Porcentaje de cambio respecto al período anterior (null si no se puede calcular o el período previo fue 0)',
     example: 25.0,
     nullable: true,
   })
@@ -66,7 +66,21 @@ export class MethodDistributionDto {
   manualPercentage: number;
 }
 
+export class ReportPeriodMetaDto {
+  @ApiProperty({ description: 'Fecha inicial del período en formato YYYY-MM-DD', example: '2026-09-01' })
+  from: string;
+
+  @ApiProperty({ description: 'Fecha final del período en formato YYYY-MM-DD', example: '2026-09-30' })
+  to: string;
+
+  @ApiProperty({ description: 'Zona horaria aplicada para la agregación', example: 'America/Santiago' })
+  timeZone: string;
+}
+
 export class OverviewReportDto {
+  @ApiProperty({ description: 'Metadatos del período consultado', type: ReportPeriodMetaDto })
+  period: ReportPeriodMetaDto;
+
   @ApiProperty({ description: 'Resumen de KPIs con comparación al período anterior', type: OverviewKpisDto })
   kpis: OverviewKpisDto;
 
@@ -172,26 +186,32 @@ export class PromotionMetricDto {
   redeemedCount: number;
 
   @ApiProperty({
-    description: 'Promedio de días desde el primer sello hasta el canje (null si no hay canjes)',
+    description: 'Promedio de días desde el primer sello consumido hasta el canje (null si no hay canjes)',
     example: 14.5,
     nullable: true,
   })
   averageDaysToRedeem: number | null;
 
-  @ApiProperty({
-    description: 'Sellos vencidos asociados a esta promoción o local sin haber sido canjeados (Breakage)',
+  @ApiPropertyOptional({
+    description: 'Sellos vencidos asociados específicamente a esta promoción',
     example: 6,
   })
-  breakageCount: number;
+  breakageCount?: number;
 }
 
 export class PromotionPerformanceDto {
   @ApiProperty({ description: 'Rendimiento y canjes desglosados por promoción', type: [PromotionMetricDto] })
   promotions: PromotionMetricDto[];
+
+  @ApiPropertyOptional({
+    description: 'Total de sellos vencidos sin utilizar a nivel de programa en el período',
+    example: 15,
+  })
+  programBreakage?: number;
 }
 
 export class StaffAlertDto {
-  @ApiProperty({ description: 'Identificador del tipo de alerta', example: 'HIGH_MANUAL_RATIO' })
+  @ApiProperty({ description: 'Identificador del tipo de alerta', example: 'HIGH_MANUAL_SCAN_RATIO' })
   type: string;
 
   @ApiProperty({ description: 'Severidad de la alerta', enum: ['low', 'medium', 'high'], example: 'medium' })
