@@ -5,11 +5,8 @@ export function apiUrl(path: string): string {
 
   if (!baseUrl) {
     if (import.meta.env.DEV) {
-      const hostname =
-        typeof window !== 'undefined' && window.location.hostname
-          ? window.location.hostname
-          : 'localhost';
-      baseUrl = `http://${hostname}:3000`;
+      // Usar proxy de Vite
+      baseUrl = typeof window !== 'undefined' ? window.location.origin + '/api' : 'http://127.0.0.1:3000/api';
     } else {
       throw new Error('VITE_API_URL no está configurada para el entorno de producción.');
     }

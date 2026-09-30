@@ -33,12 +33,38 @@ const NAV_ITEMS = [
     strokeWidth: '2',
   },
   {
+    to: '/admin/team',
+    label: 'Equipo',
+    icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z', // Reuse customers icon since it implies users
+    strokeWidth: '2',
+  },
+  {
+    to: '/admin/billing',
+    label: 'Facturación',
+    icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z',
+    strokeWidth: '2',
+  },
+  {
+    to: '/admin/support',
+    label: 'Soporte',
+    icon: 'M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z',
+    strokeWidth: '2',
+  },
+  {
     to: '/admin/settings',
     label: 'Configuración',
     icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z',
     strokeWidth: '2',
   },
 ] as const;
+
+const isBillingEnabled = import.meta.env.VITE_FEATURE_BILLING !== 'false';
+
+const VISIBLE_NAV_ITEMS = NAV_ITEMS.filter(item => {
+  if (item.to === '/admin/billing' && !isBillingEnabled) return false;
+  return true;
+});
+
 
 // El sidebar es un drawer solo bajo el breakpoint md; en escritorio está siempre visible.
 const MOBILE_QUERY = '(max-width: 767px)';
@@ -59,6 +85,11 @@ export function Layout({ session, role }: { session: Session | null; role: Merch
 
   const closeSidebar = () => setIsSidebarOpen(false);
 
+  // Calcula días de prueba basados en creación del owner (asumiendo 30 días de prueba)
+  const createdAt = new Date(session?.user?.created_at || Date.now());
+  const expiresAt = new Date(createdAt.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const remainingDays = Math.max(0, Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+
   useEffect(() => {
     if (!isSidebarOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -73,7 +104,7 @@ export function Layout({ session, role }: { session: Session | null; role: Merch
   };
 
   return (
-    <div className="min-h-screen flex w-full bg-slate-100/50 dark:bg-[#0f172a] text-slate-900 dark:text-slate-100 transition-colors duration-300 relative overflow-hidden">
+    <div className="h-screen w-full flex bg-slate-100/50 dark:bg-[#0f172a] text-slate-900 dark:text-slate-100 transition-colors duration-300 relative overflow-hidden">
 
       {/* Mobile top bar */}
       <div className="md:hidden fixed top-0 inset-x-0 z-30 flex items-center justify-between px-4 py-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-b border-slate-200/80 dark:border-slate-800/80">
@@ -105,7 +136,7 @@ export function Layout({ session, role }: { session: Session | null; role: Merch
       <aside
         aria-hidden={isSidebarHidden}
         inert={isSidebarHidden}
-        className={`w-72 bg-white/95 dark:bg-slate-900/95 md:bg-white/80 md:dark:bg-slate-900/80 backdrop-blur-xl border-r border-slate-200/80 dark:border-slate-800/80 p-6 flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-40 fixed inset-y-0 left-0 transform transition-transform duration-300 md:sticky md:top-0 md:translate-x-0 md:h-screen ${
+        className={`w-72 bg-white/95 dark:bg-slate-900/95 md:bg-white/80 md:dark:bg-slate-900/80 backdrop-blur-xl border-r border-slate-200/80 dark:border-slate-800/80 p-6 flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-40 fixed inset-y-0 left-0 transform transition-transform duration-300 md:relative md:translate-x-0 md:h-full md:flex-shrink-0 ${
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -126,7 +157,7 @@ export function Layout({ session, role }: { session: Session | null; role: Merch
         </div>
 
         <nav className="space-y-2 flex-1">
-          {NAV_ITEMS.map((item) => (
+          {VISIBLE_NAV_ITEMS.map((item) => (
             <NavLink key={item.to} to={item.to} className={NAV_LINK_CLASSES} onClick={closeSidebar}>
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={item.strokeWidth} d={item.icon}></path>
@@ -157,12 +188,28 @@ export function Layout({ session, role }: { session: Session | null; role: Merch
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 min-w-0 p-6 pt-20 md:p-14 overflow-y-auto relative z-10">
-        {/* Decorative Background Elements for depth */}
-        <div className="absolute top-0 right-0 w-[800px] h-[600px] bg-brand-blue/5 dark:bg-brand-blue/10 rounded-full blur-3xl pointer-events-none -z-10 translate-x-1/3 -translate-y-1/3" />
-        <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-brand-yellow/5 dark:bg-brand-yellow/10 rounded-full blur-3xl pointer-events-none -z-10 -translate-x-1/3 translate-y-1/3" />
+      <main className="flex-1 h-full min-w-0 flex flex-col overflow-y-auto overflow-x-hidden relative z-10 bg-slate-50 dark:bg-[#0f172a]">
+        
+        {/* Banner de Trial */}
+        {role === 'OWNER' && remainingDays > 0 && isBillingEnabled && (
+          <div className="bg-gradient-to-r from-brand-blue to-blue-600 text-white px-4 py-3 text-sm font-medium flex items-center justify-between sticky top-0 z-20 shadow-lg shadow-brand-blue/20 border-b border-white/10">
+            <div className="flex items-center gap-2 w-full flex-wrap">
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+              <span>Estás en periodo de prueba — te quedan {remainingDays} días para validar si somos lo que buscas para tu negocio.</span>
+              <NavLink to="/admin/billing" className="ml-auto bg-white/20 hover:bg-white/30 text-white px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors whitespace-nowrap">
+                Suscribirme
+              </NavLink>
+            </div>
+          </div>
+        )}
 
-        <Outlet />
+        <div className="p-6 md:p-14 flex-1 relative">
+          {/* Decorative Background Elements for depth */}
+          <div className="absolute top-0 right-0 w-[800px] h-[600px] bg-brand-blue/5 dark:bg-brand-blue/10 rounded-full blur-3xl pointer-events-none -z-10 translate-x-1/3 -translate-y-1/3" />
+          <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-brand-yellow/5 dark:bg-brand-yellow/10 rounded-full blur-3xl pointer-events-none -z-10 -translate-x-1/3 translate-y-1/3" />
+          
+          <Outlet />
+        </div>
       </main>
     </div>
   );

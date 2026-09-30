@@ -4,6 +4,9 @@ import { SupabaseAuth } from './auth/SupabaseAuth';
 import { Layout } from './components/Layout';
 import { PromotionsModule } from './pages/admin/PromotionsModule';
 import { Customers } from './pages/admin/Customers';
+import { Team } from './pages/admin/Team';
+import { Billing } from './pages/admin/Billing';
+import { Support } from './pages/admin/Support';
 import { Settings } from './pages/admin/Settings';
 import { NotFound } from './pages/NotFound';
 import { NotFoundScreen } from './components/NotFoundScreen';
@@ -57,6 +60,9 @@ export default function App() {
             <Route element={<Layout session={session} role={membership.role} />}>
               <Route path={ROUTES.admin} element={<Navigate to={ROUTES.dashboard} replace />} />
               <Route path={ROUTES.dashboard} element={<Dashboard session={session} merchantId={membership.merchantId} />} />
+              <Route path={ROUTES.team} element={<Team />} />
+              <Route path={ROUTES.billing} element={<Billing />} />
+              <Route path={ROUTES.support} element={<Support />} />
               <Route path={ROUTES.promotions} element={<PromotionsModule merchantId={membership.merchantId} />} />
               <Route path={ROUTES.customers} element={<Customers merchantId={membership.merchantId} />} />
               <Route path={ROUTES.settings} element={<Settings session={session} merchantId={membership.merchantId} />} />

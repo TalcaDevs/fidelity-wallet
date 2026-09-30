@@ -137,4 +137,133 @@ export class StaffService {
       update: {},
     });
   }
+
+  async listStaff(merchantId: string, callerUserId: string) {
+    if (!callerUserId) throw new UnauthorizedException('Usuario no autenticado');
+
+    const callerMembership = await this.prisma.merchantUser.findUnique({
+      where: { userId_merchantId: { userId: callerUserId, merchantId } },
+    });
+
+    if (!callerMembership || callerMembership.role !== 'OWNER') {
+      throw new ForbiddenException('Solo el dueño del comercio puede ver el personal');
+    }
+
+    const memberships = await this.prisma.merchantUser.findMany({
+      where: { merchantId, role: 'STAFF' },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const supabase = this.getSupabaseAdmin();
+    const result = [];
+
+    for (const m of memberships) {
+      const { data, error } = await supabase.auth.admin.getUserById(m.userId);
+      if (error || !data?.user) continue;
+
+      const isInvited = !data.user.last_sign_in_at;
+      result.push({
+        id: m.userId,
+        email: data.user.email,
+        role: m.role,
+        status: isInvited ? 'INVITED' : 'ACTIVE',
+        lastSignIn: data.user.last_sign_in_at,
+        createdAt: m.createdAt,
+      });
+    }
+
+    return result;
+  }
+
+  async removeStaff(merchantId: string, userIdToRemove: string, callerUserId: string) {
+    if (!callerUserId) throw new UnauthorizedException('Usuario no autenticado');
+
+    const callerMembership = await this.prisma.merchantUser.findUnique({
+      where: { userId_merchantId: { userId: callerUserId, merchantId } },
+    });
+
+    if (!callerMembership || callerMembership.role !== 'OWNER') {
+      throw new ForbiddenException('Solo el dueño del comercio puede eliminar personal');
+    }
+
+    const targetMembership = await this.prisma.merchantUser.findUnique({
+      where: { userId_merchantId: { userId: userIdToRemove, merchantId } },
+    });
+
+    if (!targetMembership) {
+      throw new NotFoundException('Miembro del personal no encontrado');
+    }
+    
+    if (targetMembership.role === 'OWNER') {
+      throw new BadRequestException('No puedes eliminar al dueño del comercio');
+    }
+
+    await this.prisma.merchantUser.delete({
+      where: { userId_merchantId: { userId: userIdToRemove, merchantId } },
+    });
+
+    return { success: true, message: 'Personal eliminado exitosamente' };
+  }
+
+  async getStaffActivity(merchantId: string, targetUserId: string, callerUserId: string) {
+    if (!callerUserId) throw new UnauthorizedException('Usuario no autenticado');
+
+    const callerMembership = await this.prisma.merchantUser.findUnique({
+      where: { userId_merchantId: { userId: callerUserId, merchantId } },
+    });
+
+    if (!callerMembership || callerMembership.role !== 'OWNER') {
+      throw new ForbiddenException('Solo el dueño del comercio puede ver la actividad del personal');
+    }
+
+    const scans = await this.prisma.scan.findMany({
+      where: { merchantId, createdByUserId: targetUserId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        pass: {
+          include: { customer: true }
+        },
+        promotion: true
+      },
+      take: 50
+    });
+
+    return scans.map(s => ({
+      id: s.id,
+      type: s.type,
+      method: s.method,
+      createdAt: s.createdAt,
+      customerPhone: s.pass?.customer?.phone || 'Desconocido',
+      promotionName: s.promotion?.name || null
+    }));
+  }
+
+  async updateStaffPassword(merchantId: string, targetUserId: string, newPassword: string, callerUserId: string) {
+    if (!callerUserId) throw new UnauthorizedException('Usuario no autenticado');
+
+    const callerMembership = await this.prisma.merchantUser.findUnique({
+      where: { userId_merchantId: { userId: callerUserId, merchantId } },
+    });
+
+    if (!callerMembership || callerMembership.role !== 'OWNER') {
+      throw new ForbiddenException('Solo el dueño del comercio puede editar personal');
+    }
+
+    const targetMembership = await this.prisma.merchantUser.findUnique({
+      where: { userId_merchantId: { userId: targetUserId, merchantId } },
+    });
+
+    if (!targetMembership) {
+      throw new NotFoundException('Miembro del personal no encontrado');
+    }
+
+    const supabase = this.getSupabaseAdmin();
+    const { error } = await supabase.auth.admin.updateUserById(targetUserId, { password: newPassword });
+    
+    if (error) {
+      throw new BadRequestException(error.message);
+    }
+
+    return { success: true, message: 'Contraseña actualizada exitosamente' };
+  }
 }

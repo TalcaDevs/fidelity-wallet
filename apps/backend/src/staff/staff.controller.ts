@@ -1,12 +1,16 @@
 import {
   Body,
   Controller,
+  Delete,
+  Get,
   HttpCode,
+  Patch,
   HttpStatus,
   Param,
   ParseUUIDPipe,
   Post,
   UnauthorizedException,
+  BadRequestException,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -54,5 +58,69 @@ export class StaffController {
       },
       user.id,
     );
+  }
+
+  @Get(':merchantId/staff')
+  @ApiOperation({
+    summary: 'Listar personal de un comercio',
+    description: 'Devuelve la lista de usuarios STAFF con su estado y último acceso. Requiere rol OWNER.',
+  })
+  @ApiResponse({ status: 200, description: 'Lista de personal' })
+  async listStaff(
+    @Param('merchantId', new ParseUUIDPipe({ version: '4' })) merchantId: string,
+    @CurrentUser() user?: AuthenticatedUser,
+  ) {
+    if (!user?.id) throw new UnauthorizedException('Usuario no autenticado');
+    return this.staffService.listStaff(merchantId, user.id);
+  }
+
+  @Delete(':merchantId/staff/:userId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Dar de baja a un miembro del personal',
+    description: 'Elimina el acceso del usuario al comercio. Requiere rol OWNER.',
+  })
+  @ApiResponse({ status: 200, description: 'Personal eliminado exitosamente' })
+  async removeStaff(
+    @Param('merchantId', new ParseUUIDPipe({ version: '4' })) merchantId: string,
+    @Param('userId', new ParseUUIDPipe({ version: '4' })) userIdToRemove: string,
+    @CurrentUser() user?: AuthenticatedUser,
+  ) {
+    if (!user?.id) throw new UnauthorizedException('Usuario no autenticado');
+    return this.staffService.removeStaff(merchantId, userIdToRemove, user.id);
+  }
+
+  @Get(':merchantId/staff/:userId/scans')
+  @ApiOperation({
+    summary: 'Ver actividad del personal',
+    description: 'Devuelve los últimos escaneos realizados por un usuario STAFF.',
+  })
+  @ApiResponse({ status: 200, description: 'Lista de escaneos' })
+  async getStaffActivity(
+    @Param('merchantId', new ParseUUIDPipe({ version: '4' })) merchantId: string,
+    @Param('userId', new ParseUUIDPipe({ version: '4' })) targetUserId: string,
+    @CurrentUser() user?: AuthenticatedUser,
+  ) {
+    if (!user?.id) throw new UnauthorizedException('Usuario no autenticado');
+    return this.staffService.getStaffActivity(merchantId, targetUserId, user.id);
+  }
+
+  @Patch(':merchantId/staff/:userId/password')
+  @ApiOperation({
+    summary: 'Actualizar contraseña de staff',
+    description: 'Permite al dueño cambiar la contraseña de un operador.',
+  })
+  @ApiResponse({ status: 200, description: 'Contraseña actualizada exitosamente' })
+  async updateStaffPassword(
+    @Param('merchantId', new ParseUUIDPipe({ version: '4' })) merchantId: string,
+    @Param('userId', new ParseUUIDPipe({ version: '4' })) targetUserId: string,
+    @Body('password') newPassword: string,
+    @CurrentUser() user?: AuthenticatedUser,
+  ) {
+    if (!user?.id) throw new UnauthorizedException('Usuario no autenticado');
+    if (!newPassword || newPassword.length < 6) {
+      throw new BadRequestException('La contraseña debe tener al menos 6 caracteres');
+    }
+    return this.staffService.updateStaffPassword(merchantId, targetUserId, newPassword, user.id);
   }
 }
