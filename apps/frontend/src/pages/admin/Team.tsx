@@ -56,16 +56,6 @@ export function Team({ brandId }: { brandId: string | null }) {
         </button>
       </div>
 
-      <aside className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-br from-brand-blue to-blue-700 rounded-3xl px-6 py-5 text-white shadow-xl shadow-brand-blue/30">
-        <div>
-          <h2 className="text-lg font-bold">Acceso al escáner</h2>
-          <p className="text-blue-100 text-sm">Tu equipo entra al escáner desde cualquier navegador con su correo y contraseña.</p>
-        </div>
-        <Link to={ROUTES.scan} className="shrink-0 bg-black/20 hover:bg-black/40 transition-colors px-5 py-3 rounded-xl text-sm font-bold text-center">
-          Abrir escáner web
-        </Link>
-      </aside>
-
       <section className="bg-white dark:bg-slate-800/80 rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-200/20 dark:shadow-none">
         <div className="flex flex-wrap items-baseline justify-between gap-2 mb-6">
           <h2 className="text-xl font-bold text-slate-900 dark:text-white">Usuarios</h2>
