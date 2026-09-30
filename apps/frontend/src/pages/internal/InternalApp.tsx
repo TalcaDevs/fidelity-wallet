@@ -27,7 +27,7 @@ function InternalLayout({ session, role }: { session: Session; role: PlatformRol
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50 dark:bg-[#0b1120] text-slate-900 dark:text-slate-100">
-      <aside className="md:w-64 md:min-h-screen shrink-0 bg-slate-900 text-slate-100 p-5 flex md:flex-col gap-4 md:gap-8 items-center md:items-stretch overflow-x-auto">
+      <aside className="sticky top-0 z-20 md:h-screen md:w-64 shrink-0 bg-slate-900 text-slate-100 p-5 flex md:flex-col gap-4 md:gap-8 items-center md:items-stretch overflow-x-auto md:overflow-y-auto">
         <div className="flex items-center gap-3 shrink-0">
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center font-black">F</div>
           <div>
