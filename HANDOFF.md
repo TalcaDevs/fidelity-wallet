@@ -292,7 +292,7 @@ Prioridad: 🔴 bloquea el piloto · 🟠 necesario para el piloto · 🟡 deuda
 **Motor de pases (sigue en su lista, detrás de la reportería)**
 - [x] 🟠 **Base de emisión de Google Wallet** (PR #13): JWT `savetowallet` firmado con credenciales reales.
 - [ ] 🟠 **Personalización del pase de Google** (clase, colores, logo, textos): próximo sprint. Probar el guardado en un Android real con la cuenta de Issuer.
-- [ ] 🟠 **Credenciales y emisión real de Apple Wallet** (§7.3): Pass Type ID, `.p12` y WWDR. Sin ellas, en iPhone solo funciona el `.pkpass` mock.
+- [ ] ⚪ **Diferido (2026-10-01): credenciales y emisión real de Apple Wallet** (§7.3), para una etapa futura: Pass Type ID, `.p12` y WWDR. Sin ellas, en iPhone solo funciona el `.pkpass` mock.
 - [ ] 🟠 **Push de actualización real** (§5.5). `notifyPassUpdate` y `GoogleWalletService.updateLoyaltyObject` hoy solo escriben un log. Falta el web service de PassKit (`/v1/devices/...`) con APNs y el PATCH del `loyaltyObject`. Falta además invalidar el objeto de Google (`state: INACTIVE`) y el pase de Apple (`voided`) cuando se borra un pase, incluido el borrado de la Ley 19.628.
 - [ ] 🟠 **Adaptar el motor a la decisión 5 junto con Dev 3:** `/api/scan`, alta y emisión pasan a resolver el `Pass` por `(customerId, programId)` y a registrar `locationId`. Dev 1 revisa el PR de la migración.
 - [ ] 🟠 **Recuperar un pase perdido** y **verificación por OTP SMS.** Siguen abiertas: el PR #13 las quitó antes del merge. Un cliente antiguo con un solo dato guardado sigue identificándose solo por ese dato.
@@ -323,7 +323,7 @@ Prioridad: 🔴 bloquea el piloto · 🟠 necesario para el piloto · 🟡 deuda
 - [x] 🟠 Programar contra **los tipos de §11.4** (`packages/shared`) con un adaptador en memoria (`supportService` con la misma firma que tendrá la API). Cuando Dev 3 publique los endpoints, solo se cambia el adaptador. *(2026-10-01: **la API ya existe** (PR2 de Dev 3), así que se puede ir directo contra ella. Para importar los tipos, agregar `"@fidelity/shared": "workspace:*"` a `apps/frontend`.)*
 
 **Escáner y landing (lo que quedaba)**
-- [ ] 🔴 **Probar la cámara en iOS Safari y Android Chrome reales** y medir el objetivo de < 2 s. Fuera de `localhost` la cámara exige **HTTPS**.
+- [x] 🔴 **Cámara probada en Android real con Google Wallet (2026-10-01): funciona.** *iOS Safari queda pendiente junto con Apple Wallet (diferido, ver Dev 1).* Fuera de `localhost` la cámara exige **HTTPS**.
 - [ ] 🟠 **Probar la sesión con varias horas de pantalla abierta.** El refresh automático ya existe (PR #12); falta la prueba real en una tablet.
 - [ ] 🟡 **Probar en un teléfono real la pantalla de elección de premio** con 3 o más promociones: lista larga en pantallas chicas y uso con una mano.
 - [ ] 🟡 **`/scan` con locales (decisión 7):** el `STAFF` escanea en su `locationId`. Un `OWNER` con varios locales elige el local al abrir `/scan`.
