@@ -364,4 +364,44 @@ describe('PassesService', () => {
     expect(buffer).toBeInstanceOf(Buffer);
     expect(buffer.toString()).toBe('mock-pkpass-buffer');
   });
+
+  describe('notifyPassUpdate', () => {
+    it('dispatches updateLoyaltyObject with passId, activeStamps and options', async () => {
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue({
+        id: mockPassId,
+        passToken: 'token-abc',
+        merchantId: mockMerchantId,
+        programId: mockProgramId,
+        brand: { id: mockMerchantId, name: 'Local' },
+        customer: { id: mockCustomerId, rut: '11111111-1' },
+      } as any);
+
+      vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue({
+        id: 'promo-1',
+        targetStamps: 5,
+        rewardName: 'Café',
+      } as any);
+      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(3);
+      vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
+
+      await service.notifyPassUpdate(mockPassId);
+
+      expect(googleWalletService.updateLoyaltyObject).toHaveBeenCalledWith(
+        mockPassId,
+        3,
+        {
+          targetStamps: 5,
+          rewardName: 'Café',
+        },
+      );
+    });
+
+    it('returns early when pass does not exist', async () => {
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(null);
+
+      await service.notifyPassUpdate('non-existent-pass');
+
+      expect(googleWalletService.updateLoyaltyObject).not.toHaveBeenCalled();
+    });
+  });
 });
