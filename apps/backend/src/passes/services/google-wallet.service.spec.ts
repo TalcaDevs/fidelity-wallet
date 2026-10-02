@@ -10,7 +10,7 @@ describe('GoogleWalletService', () => {
   let rsaPrivateKey: string;
 
   beforeEach(() => {
-    // Generar llave RSA real para pruebas criptográficas de RS256
+    // Generar llave RSA sintética en memoria para pruebas criptográficas de RS256
     const { privateKey } = crypto.generateKeyPairSync('rsa', {
       modulusLength: 2048,
       publicKeyEncoding: { type: 'spki', format: 'pem' },
@@ -21,8 +21,8 @@ describe('GoogleWalletService', () => {
     const mockConfig: Record<string, string> = {
       GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL: 'test-sa@fidelity-wallet.iam.gserviceaccount.com',
       GOOGLE_WALLET_PRIVATE_KEY: rsaPrivateKey,
-      GOOGLE_WALLET_ISSUER_ID: '3388000000023211518',
-      GOOGLE_WALLET_CLASS_ID: '3388000000023211518.fidelity_test',
+      GOOGLE_WALLET_ISSUER_ID: '1122334455667788990',
+      GOOGLE_WALLET_CLASS_ID: '1122334455667788990.fidelity_test',
       ALLOW_MOCK_PASSES: 'false',
     };
 
@@ -35,6 +35,7 @@ describe('GoogleWalletService', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   describe('hasCredentials', () => {
@@ -42,8 +43,19 @@ describe('GoogleWalletService', () => {
       expect(service.hasCredentials()).toBe(true);
     });
 
-    it('returns false when any required credential is missing', () => {
+    it('returns false when email or privateKey is missing', () => {
       vi.spyOn(configService, 'get').mockReturnValue(undefined);
+      expect(service.hasCredentials()).toBe(false);
+    });
+
+    it('returns false when issuerId is missing in non-mock mode', () => {
+      vi.spyOn(configService, 'get').mockImplementation((key: string) => {
+        if (key === 'GOOGLE_WALLET_ISSUER_ID') return undefined;
+        if (key === 'ALLOW_MOCK_PASSES') return 'false';
+        if (key === 'GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL') return 'sa@test.com';
+        if (key === 'GOOGLE_WALLET_PRIVATE_KEY') return rsaPrivateKey;
+        return undefined;
+      });
       expect(service.hasCredentials()).toBe(false);
     });
   });
@@ -60,8 +72,7 @@ describe('GoogleWalletService', () => {
       });
       vi.stubGlobal('fetch', mockFetch);
 
-      // Primera llamada: debe llamar a fetch hacia https://oauth2.googleapis.com/token
-      const token1 = await service.getAccessToken();
+      const token1 = await (service as any).getAccessToken();
       expect(token1).toBe('mock-access-token-123');
       expect(mockFetch).toHaveBeenCalledTimes(1);
 
@@ -70,9 +81,39 @@ describe('GoogleWalletService', () => {
       expect(options.method).toBe('POST');
       expect(options.headers['Content-Type']).toBe('application/x-www-form-urlencoded');
 
-      // Segunda llamada: debe retornar el token desde caché sin llamar a fetch de nuevo
-      const token2 = await service.getAccessToken();
+      const token2 = await (service as any).getAccessToken();
       expect(token2).toBe('mock-access-token-123');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('deduplicates simultaneous in-flight token requests', async () => {
+      let resolvePromise: (value: any) => void;
+      const delayedResponse = new Promise((resolve) => {
+        resolvePromise = resolve;
+      });
+
+      const mockFetch = vi.fn().mockImplementation(() => delayedResponse);
+      vi.stubGlobal('fetch', mockFetch);
+
+      const promise1 = (service as any).getAccessToken();
+      const promise2 = (service as any).getAccessToken();
+      const promise3 = (service as any).getAccessToken();
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      resolvePromise!({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          access_token: 'shared-token',
+          expires_in: 3600,
+        }),
+      });
+
+      const [token1, token2, token3] = await Promise.all([promise1, promise2, promise3]);
+      expect(token1).toBe('shared-token');
+      expect(token2).toBe('shared-token');
+      expect(token3).toBe('shared-token');
       expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
@@ -84,14 +125,14 @@ describe('GoogleWalletService', () => {
       });
       vi.stubGlobal('fetch', mockFetch);
 
-      await expect(service.getAccessToken()).rejects.toThrow(
+      await expect((service as any).getAccessToken()).rejects.toThrow(
         /Google OAuth2 token request failed \(400\): invalid_grant/,
       );
     });
 
     it('returns null if credentials are not configured', async () => {
       vi.spyOn(configService, 'get').mockReturnValue(undefined);
-      const token = await service.getAccessToken();
+      const token = await (service as any).getAccessToken();
       expect(token).toBeNull();
     });
   });
@@ -129,10 +170,8 @@ describe('GoogleWalletService', () => {
   });
 
   describe('updateLoyaltyObject', () => {
-    it('executes PATCH request with correct resourceId and payload', async () => {
-      let callCount = 0;
+    it('executes PATCH request with correct resourceId, payload and singular text', async () => {
       const mockFetch = vi.fn().mockImplementation(async (url: string) => {
-        callCount++;
         if (url.includes('oauth2.googleapis.com')) {
           return {
             ok: true,
@@ -170,7 +209,7 @@ describe('GoogleWalletService', () => {
 
       const [patchUrl, patchOptions] = patchCall;
       expect(patchUrl).toBe(
-        'https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/3388000000023211518.pass-uuid-999',
+        'https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/1122334455667788990.pass-uuid-999',
       );
       expect(patchOptions.method).toBe('PATCH');
       expect(patchOptions.headers['Authorization']).toBe('Bearer mock-auth-token');
@@ -187,8 +226,39 @@ describe('GoogleWalletService', () => {
       });
       expect(body.textModulesData).toEqual([
         { header: 'Premio', body: 'Almuerzo gratis' },
-        { header: 'Estado', body: 'Faltan 1 sellos' },
+        { header: 'Estado', body: 'Falta 1 sello' },
       ]);
+    });
+
+    it('sets plural status text when remaining stamps > 1', async () => {
+      const mockFetch = vi.fn().mockImplementation(async (url: string) => {
+        if (url.includes('oauth2.googleapis.com')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ access_token: 'token', expires_in: 3600 }),
+          };
+        }
+        return { ok: true, status: 200, text: async () => '{}' };
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      await service.updateLoyaltyObject('pass-123', 3, {
+        targetStamps: 5,
+        rewardName: 'Café gratis',
+      });
+
+      const patchCall = mockFetch.mock.calls.find((call) =>
+        call[0].includes('walletobjects.googleapis.com'),
+      );
+      expect(patchCall).toBeDefined();
+      if (!patchCall) throw new Error('patchCall not found');
+
+      const body = JSON.parse(patchCall[1].body);
+      expect(body.textModulesData[1]).toEqual({
+        header: 'Estado',
+        body: 'Faltan 2 sellos',
+      });
     });
 
     it('sets unlocked status text when activeStamps >= targetStamps', async () => {

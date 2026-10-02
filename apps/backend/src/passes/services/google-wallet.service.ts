@@ -17,12 +17,9 @@ interface CachedToken {
 export class GoogleWalletService {
   private readonly logger = new Logger(GoogleWalletService.name);
   private cachedToken: CachedToken | null = null;
+  private tokenPromise: Promise<string | null> | null = null;
 
   constructor(private readonly configService: ConfigService) {}
-
-  public resetTokenCache(): void {
-    this.cachedToken = null;
-  }
 
   public hasCredentials(): boolean {
     const email = this.getServiceAccountEmail();
@@ -107,12 +104,24 @@ export class GoogleWalletService {
     }
   }
 
-  public async getAccessToken(): Promise<string | null> {
+  private async getAccessToken(): Promise<string | null> {
     const now = Date.now();
     if (this.cachedToken && this.cachedToken.expiresAt > now + 60_000) {
       return this.cachedToken.token;
     }
 
+    if (this.tokenPromise) {
+      return this.tokenPromise;
+    }
+
+    this.tokenPromise = this.fetchAndCacheToken().finally(() => {
+      this.tokenPromise = null;
+    });
+
+    return this.tokenPromise;
+  }
+
+  private async fetchAndCacheToken(): Promise<string | null> {
     const email = this.getServiceAccountEmail();
     const privateKey = this.getNormalizedPrivateKey();
 
@@ -123,6 +132,7 @@ export class GoogleWalletService {
     const assertion = this.signOAuthAssertion(email, privateKey);
     const tokenData = await this.requestOAuthToken(assertion);
 
+    const now = Date.now();
     this.cachedToken = {
       token: tokenData.access_token,
       expiresAt: now + (tokenData.expires_in ?? 3600) * 1000,
@@ -137,12 +147,16 @@ export class GoogleWalletService {
     return this.configService.get<string>('ALLOW_MOCK_PASSES') === 'true';
   }
 
-  private getIssuerId(): string {
-    return (
+  private getIssuerId(): string | null {
+    const configuredIssuer =
       this.configService.get<string>('GOOGLE_WALLET_ISSUER_ID') ||
-      process.env.GOOGLE_WALLET_ISSUER_ID ||
-      '3388000000022314567'
-    );
+      process.env.GOOGLE_WALLET_ISSUER_ID;
+
+    if (configuredIssuer) {
+      return configuredIssuer;
+    }
+
+    return this.isMockAllowed() ? '3388000000022314567' : null;
   }
 
   private getServiceAccountEmail(): string | null {
@@ -161,15 +175,21 @@ export class GoogleWalletService {
   }
 
   private resolveResourceId(passId: string): string {
-    return `${this.getIssuerId()}.${passId}`;
+    const issuerId = this.getIssuerId() ?? 'mock_issuer';
+    return `${issuerId}.${passId}`;
   }
 
   private resolveClassId(programId: string): string {
-    return (
+    const customClassId =
       this.configService.get<string>('GOOGLE_WALLET_CLASS_ID') ||
-      process.env.GOOGLE_WALLET_CLASS_ID ||
-      `${this.getIssuerId()}.fidelity_${programId.replace(/-/g, '_')}`
-    );
+      process.env.GOOGLE_WALLET_CLASS_ID;
+
+    if (customClassId) {
+      return customClassId;
+    }
+
+    const issuerId = this.getIssuerId() ?? 'mock_issuer';
+    return `${issuerId}.fidelity_${programId.replace(/-/g, '_')}`;
   }
 
   // --- MÉTODOS PRIVADOS: PAYLOAD BUILDERS ---
@@ -253,9 +273,11 @@ export class GoogleWalletService {
   }
 
   private buildStatusText(activeStamps: number, targetStamps: number): string {
-    return activeStamps >= targetStamps
-      ? '¡Premio desbloqueado!'
-      : `Faltan ${targetStamps - activeStamps} sellos`;
+    if (activeStamps >= targetStamps) {
+      return '¡Premio desbloqueado!';
+    }
+    const remaining = targetStamps - activeStamps;
+    return remaining === 1 ? 'Falta 1 sello' : `Faltan ${remaining} sellos`;
   }
 
   // --- MÉTODOS PRIVADOS: HTTP Y COMUNICACIÓN EXTERNA ---
