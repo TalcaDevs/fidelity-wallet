@@ -58,7 +58,7 @@ export class BillingService {
   async getUsage(brandId: string): Promise<PlanUsage> {
     const [programs, locations, teamUsers, customers] = await Promise.all([
       this.prisma.loyaltyProgram.count({ where: { brandId, isActive: true } }),
-      this.prisma.merchant.count({ where: { brandId } }),
+      this.prisma.merchant.count({ where: { brandId, isActive: true } }),
       // El OWNER no ocupa cupo de "usuarios de equipo".
       this.prisma.brandMember.count({
         where: { brandId, role: MerchantRole.STAFF },

@@ -7,6 +7,8 @@ import {
 import { Transform, Type } from 'class-transformer';
 import {
   IsDateString,
+  IsLatitude,
+  IsLongitude,
   IsEmail,
   IsIn,
   IsInt,
@@ -135,6 +137,32 @@ export class ListLocationPinsQueryDto {
   @IsString()
   @Length(2, 60)
   region?: string;
+
+  @ApiPropertyOptional({
+    description: 'Bbox del mapa visible: los cuatro juntos o ninguno',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsLatitude()
+  minLat?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsLatitude()
+  maxLat?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsLongitude()
+  minLng?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsLongitude()
+  maxLng?: number;
 }
 
 export class SearchCustomersQueryDto extends InternalPageQueryDto {

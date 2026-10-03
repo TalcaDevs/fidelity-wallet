@@ -24,6 +24,7 @@ import type {
   InternalBrandSummaryDto,
   InternalCustomerDto,
   InternalLocationPinDto,
+  InternalSummaryDto,
   LocationDto,
   Paginated,
   PlatformMeDto,
@@ -48,6 +49,7 @@ import {
 import { InternalBrandsService } from './internal-brands.service.js';
 import { InternalCustomersService } from './internal-customers.service.js';
 import { InternalLocationsService } from './internal-locations.service.js';
+import { InternalSummaryService } from './internal-summary.service.js';
 
 /** Lectura para todo el equipo interno; escrituras, datos completos y auditoría solo SUPERADMIN. */
 @ApiTags('Internal')
@@ -64,6 +66,7 @@ export class InternalController {
     private readonly brands: InternalBrandsService,
     private readonly customers: InternalCustomersService,
     private readonly locations: InternalLocationsService,
+    private readonly summaries: InternalSummaryService,
   ) {}
 
   @Get('me')
@@ -74,6 +77,15 @@ export class InternalController {
       email: user.email ?? null,
       role: user.platformRole,
     };
+  }
+
+  @Get('summary')
+  @ApiOperation({
+    summary:
+      'Resumen de la plataforma: marcas, pruebas por vencer, tickets y actividad',
+  })
+  summary(): Promise<InternalSummaryDto> {
+    return this.summaries.summary();
   }
 
   @Get('brands')

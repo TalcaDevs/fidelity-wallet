@@ -93,8 +93,12 @@ export class PassesService {
       throw new UnauthorizedException('Usuario no autenticado');
     }
 
+    // Solo el OWNER: la respuesta trae los links de billetera del pase de un cliente, y un mesero
+    // que conozca un customerId podría sacarle la tarjeta a otro.
     const { merchant } = await resolveLocationAccess(this.prisma, callerUserId, dto.merchantId, {
+      ownerOnly: true,
       forbiddenMessage: 'El usuario no está autorizado como miembro de este comercio',
+      ownerMessage: 'Solo el dueño del comercio puede emitir pases manualmente',
     });
 
     const customer = await this.prisma.customer.findUnique({

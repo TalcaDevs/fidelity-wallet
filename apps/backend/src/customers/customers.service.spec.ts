@@ -40,6 +40,7 @@ describe('CustomersService', () => {
   beforeEach(() => {
     prismaMock = {
       $transaction: vi.fn((callback: (tx: any) => Promise<any>) => callback(prismaMock)),
+      $queryRaw: vi.fn().mockResolvedValue([]),
       merchant: {
         findUnique: vi.fn(),
       },
@@ -61,9 +62,11 @@ describe('CustomersService', () => {
       },
       pass: {
         findUnique: vi.fn(),
+        findFirst: vi.fn().mockResolvedValue(null),
         delete: vi.fn(),
         count: vi.fn(),
       },
+      brand: { findUnique: vi.fn().mockResolvedValue({ planId: 'BUSINESS' }) },
     };
 
     passesServiceMock = {

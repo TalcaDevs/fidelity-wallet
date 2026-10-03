@@ -7,6 +7,7 @@ import { InternalBrandsService } from './internal-brands.service.js';
 import { InternalController } from './internal.controller.js';
 import { InternalCustomersService } from './internal-customers.service.js';
 import { InternalLocationsService } from './internal-locations.service.js';
+import { InternalSummaryService } from './internal-summary.service.js';
 
 @Module({
   imports: [BillingModule],
@@ -15,6 +16,7 @@ import { InternalLocationsService } from './internal-locations.service.js';
     InternalBrandsService,
     InternalCustomersService,
     InternalLocationsService,
+    InternalSummaryService,
     UserDirectoryService,
     PlatformAdminGuard,
   ],

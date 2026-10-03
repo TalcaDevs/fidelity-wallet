@@ -16,7 +16,7 @@ import { Prisma, TicketStatus as DbTicketStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
   attachmentPath,
-  validateImage,
+  sanitizeImage,
   type UploadedImage,
 } from './attachments.js';
 import type {
@@ -174,7 +174,7 @@ export class InternalTicketsService {
     dto: InternalReplyTicketDto,
     file?: UploadedImage,
   ): Promise<InternalTicketDto> {
-    const image = file ? validateImage(file) : null;
+    const image = file ? await sanitizeImage(file) : null;
     const current = await this.findTicket(ticketId);
 
     if (current.status === DbTicketStatus.CLOSED) {

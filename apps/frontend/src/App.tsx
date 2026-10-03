@@ -77,7 +77,7 @@ export default function App() {
               <Route path={ROUTES.support} element={<Support brandId={membership.brandId} />} />
               <Route path={ROUTES.promotions} element={<PromotionsModule programId={membership.programId} />} />
               <Route path={ROUTES.customers} element={<Customers brandId={membership.brandId} merchantId={membership.merchantId} />} />
-              <Route path={ROUTES.settings} element={<Settings session={session} merchantId={membership.merchantId} />} />
+              <Route path={ROUTES.settings} element={<Settings session={session} brandId={membership.brandId} />} />
               {/* Un 404 dentro del panel conserva la navegación lateral */}
               <Route path="/admin/*" element={<NotFound />} />
             </Route>
