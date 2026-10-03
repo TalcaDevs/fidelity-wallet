@@ -1,7 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { getPlan, type StaffMemberDto } from '@fidelity/shared';
-import { ROUTES } from '../../components/routing/routePaths';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
 import { useBrandLocations } from '../../hooks/useBrandLocations';
@@ -57,15 +55,12 @@ export function Team({ brandId }: { brandId: string | null }) {
         </button>
       </div>
 
-      <aside className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-br from-brand-blue to-blue-700 rounded-3xl px-6 py-5 text-white shadow-xl shadow-brand-blue/30">
-        <div>
-          <h2 className="text-lg font-bold">Acceso al escáner</h2>
-          <p className="text-blue-100 text-sm">Tu equipo entra al escáner desde cualquier navegador con su correo y contraseña.</p>
-        </div>
-        <Link to={ROUTES.scan} className="shrink-0 bg-black/20 hover:bg-black/40 transition-colors px-5 py-3 rounded-xl text-sm font-bold text-center">
-          Abrir escáner web
-        </Link>
-      </aside>
+      <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 p-4 rounded-xl flex gap-3 items-start border border-blue-100 dark:border-blue-800/30">
+        <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        <p className="text-sm font-medium">
+          Tu equipo entra al escáner desde cualquier navegador web (ej. el celular del local) usando su propio correo y contraseña.
+        </p>
+      </div>
 
       <section className="bg-white dark:bg-slate-800/80 rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-200/20 dark:shadow-none">
         <div className="flex flex-wrap items-baseline justify-between gap-2 mb-6">

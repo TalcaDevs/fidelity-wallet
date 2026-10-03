@@ -32,6 +32,7 @@ const passRelations = { brand: true, customer: true } as const;
 @Injectable()
 export class PassesService {
   private readonly logger = new Logger(PassesService.name);
+  private readonly passUpdateQueues = new Map<string, Promise<void>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -147,7 +148,6 @@ export class PassesService {
 
   /**
    * Genera las URLs de billetera para un pase (utilizado por el alta anónima de clientes).
-   * Acepta el ID del pase o el pase completo pre-cargado para evitar queries redundantes.
    */
   async getWalletUrlsForPass(
     passOrId: string | PassWithBrandAndCustomer,
@@ -192,6 +192,24 @@ export class PassesService {
   }
 
   async notifyPassUpdate(passId: string): Promise<void> {
+    const previousQueue = this.passUpdateQueues.get(passId) ?? Promise.resolve();
+
+    const currentTask = previousQueue
+      .catch(() => {})
+      .then(async () => {
+        await this.dispatchPassUpdate(passId);
+      })
+      .finally(() => {
+        if (this.passUpdateQueues.get(passId) === currentTask) {
+          this.passUpdateQueues.delete(passId);
+        }
+      });
+
+    this.passUpdateQueues.set(passId, currentTask);
+    return currentTask;
+  }
+
+  private async dispatchPassUpdate(passId: string): Promise<void> {
     try {
       const pass = await this.prisma.pass.findUnique({
         where: { id: passId },
@@ -207,7 +225,10 @@ export class PassesService {
         `Dispatching wallet update for pass ${passId} (activeStamps: ${passData.activeStamps})`,
       );
       await Promise.allSettled([
-        this.googleWalletService.updateLoyaltyObject(passId, passData.activeStamps),
+        this.googleWalletService.updateLoyaltyObject(passId, passData.activeStamps, {
+          targetStamps: passData.targetStamps,
+          rewardName: passData.rewardName,
+        }),
       ]);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -219,7 +240,7 @@ export class PassesService {
    * Helper privado para armar el contrato PassData.
    * El saldo (sellos activos y próximo vencimiento) es único del pase y no depende de la
    * promoción: la promoción solo define la meta y el premio que se muestran en la tarjeta (la
-   * indicada en explicitPromotionId o, si no, la activa más reciente).
+   * indicada en explicitPromotionId o, si no, la meta alcanzada o más próxima alcanzable).
    */
   private async buildPassData(
     pass: PassWithBrandAndCustomer,
@@ -227,19 +248,6 @@ export class PassesService {
     tx?: Prisma.TransactionClient,
   ): Promise<PassData | null> {
     const prisma = tx ?? this.prisma;
-    const promotion = explicitPromotionId
-      ? await prisma.promotion.findFirst({
-          where: { id: explicitPromotionId, programId: pass.programId, isActive: true },
-        })
-      : await prisma.promotion.findFirst({
-          where: { programId: pass.programId, isActive: true },
-          orderBy: { createdAt: 'desc' },
-        });
-
-    if (!promotion) return null;
-
-    // El saldo es único del pase (sirve para cualquier promoción activa); la promoción solo
-    // define la meta que se muestra en la tarjeta: la más reciente, o la pedida explícitamente.
     const now = new Date();
     const activeStamps = await prisma.stamp.count({
       where: {
@@ -248,6 +256,37 @@ export class PassesService {
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
     });
+
+    let promotion: any = null;
+    const activePromotions = prisma.promotion.findMany
+      ? explicitPromotionId
+        ? await prisma.promotion.findMany({
+            where: { id: explicitPromotionId, programId: pass.programId, isActive: true },
+          })
+        : await prisma.promotion.findMany({
+            where: { programId: pass.programId, isActive: true },
+            orderBy: { targetStamps: 'asc' },
+          })
+      : [];
+
+    if (activePromotions && activePromotions.length > 0) {
+      const reachedPromotions = activePromotions.filter((p) => activeStamps >= p.targetStamps);
+      promotion =
+        reachedPromotions.length > 0
+          ? reachedPromotions[reachedPromotions.length - 1]
+          : activePromotions[0];
+    } else if (prisma.promotion.findFirst) {
+      promotion = explicitPromotionId
+        ? await prisma.promotion.findFirst({
+            where: { id: explicitPromotionId, programId: pass.programId, isActive: true },
+          })
+        : await prisma.promotion.findFirst({
+            where: { programId: pass.programId, isActive: true },
+            orderBy: { createdAt: 'desc' },
+          });
+    }
+
+    if (!promotion) return null;
 
     const nextExpiring = await prisma.stamp.findFirst({
       where: {
