@@ -40,6 +40,7 @@ describe('CustomersService', () => {
   beforeEach(() => {
     prismaMock = {
       $transaction: vi.fn((callback: (tx: any) => Promise<any>) => callback(prismaMock)),
+      $queryRaw: vi.fn().mockResolvedValue([]),
       merchant: {
         findUnique: vi.fn(),
       },

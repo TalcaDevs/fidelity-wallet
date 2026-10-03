@@ -80,15 +80,18 @@ export class LocationsService {
     dto: CreateLocationDto,
   ): Promise<LocationDto> {
     await requireActiveBrandOwner(this.prisma, userId, brandId);
-    await assertPlanAllows(this.prisma, brandId, 'locations');
-    const create = async () =>
-      this.prisma.merchant.create({
-        data: {
-          ...(locationChanges(dto) as Prisma.MerchantUncheckedCreateInput),
-          brandId,
-          name: dto.name,
-          slug: await availableSlug(this.prisma, dto.name),
-        },
+    // Límite y alta en la misma transacción: el lock de la marca serializa altas simultáneas.
+    const create = () =>
+      this.prisma.$transaction(async (tx) => {
+        await assertPlanAllows(tx, brandId, 'locations');
+        return tx.merchant.create({
+          data: {
+            ...(locationChanges(dto) as Prisma.MerchantUncheckedCreateInput),
+            brandId,
+            name: dto.name,
+            slug: await availableSlug(tx, dto.name),
+          },
+        });
       });
 
     try {
@@ -118,14 +121,15 @@ export class LocationsService {
     });
     if (!existing)
       throw new NotFoundException('El local no existe en tu marca');
-    if (dto.isActive === true && !existing.isActive) {
-      await assertPlanAllows(this.prisma, brandId, 'locations');
-    }
+    const reactivating = dto.isActive === true && !existing.isActive;
 
     return toLocationDto(
-      await this.prisma.merchant.update({
-        where: { id: locationId },
-        data: locationChanges(dto),
+      await this.prisma.$transaction(async (tx) => {
+        if (reactivating) await assertPlanAllows(tx, brandId, 'locations');
+        return tx.merchant.update({
+          where: { id: locationId },
+          data: locationChanges(dto),
+        });
       }),
     );
   }

@@ -91,6 +91,7 @@ describe('StaffService', () => {
       auditLog: { create: vi.fn().mockResolvedValue({}) },
       scan: { findMany: vi.fn().mockResolvedValue([]) },
       $transaction: vi.fn((fn: (tx: unknown) => unknown) => fn(prisma)),
+      $queryRaw: vi.fn().mockResolvedValue([]),
     };
 
     supabase = {

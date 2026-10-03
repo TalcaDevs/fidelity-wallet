@@ -94,5 +94,11 @@ function toBbox(q: ListLocationPinsQueryDto) {
   const { minLat, maxLat, minLng, maxLng } = q;
   if ([minLat, maxLat, minLng, maxLng].some((v) => v === undefined))
     return null;
-  return { minLat: minLat!, maxLat: maxLat!, minLng: minLng!, maxLng: maxLng! };
+  // Un cliente que manda los extremos al revés recibe el mismo recuadro, no una lista vacía.
+  return {
+    minLat: Math.min(minLat!, maxLat!),
+    maxLat: Math.max(minLat!, maxLat!),
+    minLng: Math.min(minLng!, maxLng!),
+    maxLng: Math.max(minLng!, maxLng!),
+  };
 }

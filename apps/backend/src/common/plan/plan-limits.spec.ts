@@ -1,6 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
-import type { Db } from '../access/brand-access.js';
+import type { Prisma } from '@prisma/client';
 import { PLAN_LIMIT_CODE, assertPlanAllows } from './plan-limits.js';
 
 const dbWith = (
@@ -8,11 +8,12 @@ const dbWith = (
   used: { locations?: number; teamUsers?: number; customers?: number },
 ) =>
   ({
+    $queryRaw: vi.fn().mockResolvedValue([]),
     brand: { findUnique: vi.fn().mockResolvedValue({ planId }) },
     merchant: { count: vi.fn().mockResolvedValue(used.locations ?? 0) },
     brandMember: { count: vi.fn().mockResolvedValue(used.teamUsers ?? 0) },
     pass: { count: vi.fn().mockResolvedValue(used.customers ?? 0) },
-  }) as unknown as Db;
+  }) as unknown as Prisma.TransactionClient;
 
 const reject = (promise: Promise<unknown>) =>
   promise.then(
@@ -34,6 +35,17 @@ describe('assertPlanAllows', () => {
       message:
         'Tu plan Prueba gratis permite 1 sucursal activa. Sube de plan para agregar más.',
     });
+  });
+
+  it('locks the brand row before counting, so concurrent signups serialize', async () => {
+    const db = dbWith('TRIAL', { locations: 0 });
+    await assertPlanAllows(db, 'b-1', 'locations');
+    expect(db.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(
+      (db.$queryRaw as unknown as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      (db.merchant.count as unknown as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0],
+    );
   });
 
   it('allows while under the limit', async () => {

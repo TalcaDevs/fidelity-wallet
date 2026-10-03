@@ -48,6 +48,8 @@ describe('LocationsService', () => {
         create: vi.fn(({ data }: any) => Promise.resolve(merchant(data))),
         update: vi.fn(({ data }: any) => Promise.resolve(merchant(data))),
       },
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      $transaction: vi.fn((fn: (tx: unknown) => unknown) => fn(prisma)),
     };
     service = new LocationsService(prisma as PrismaService);
   });

@@ -96,7 +96,10 @@ export class StaffService {
       callerUserId,
       dto.locationId,
     );
-    await assertPlanAllows(this.prisma, brandId, 'teamUsers');
+    // Corte temprano para no crear cuentas ni mandar correos sin cupo; el definitivo va con la membresía.
+    await this.prisma.$transaction((tx) =>
+      assertPlanAllows(tx, brandId, 'teamUsers'),
+    );
     const supabase = this.getSupabaseAdmin();
 
     if (dto.password) {
@@ -411,8 +414,13 @@ export class StaffService {
       );
     }
 
-    await this.prisma.brandMember.create({
-      data: { userId, brandId, merchantId, role: MerchantRole.STAFF },
+    // La cuenta de auth ya existe, pero sin membresía no da acceso: si otra alta simultánea tomó
+    // el último cupo, se corta aquí y la invitación puede repetirse cuando haya espacio.
+    await this.prisma.$transaction(async (tx) => {
+      await assertPlanAllows(tx, brandId, 'teamUsers');
+      await tx.brandMember.create({
+        data: { userId, brandId, merchantId, role: MerchantRole.STAFF },
+      });
     });
     await this.liftBan(userId);
   }

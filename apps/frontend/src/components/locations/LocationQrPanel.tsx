@@ -53,15 +53,15 @@ export function LocationQrPanel({ location, onSlugChange }: { location: Location
     const hint = doc.createElement('p');
     hint.textContent = 'Escanea y saca tu tarjeta de sellos';
     const img = doc.createElement('img');
+    img.onload = () => {
+      win.focus();
+      win.print();
+    };
     img.src = qr;
     img.alt = `QR de ${location.name}`;
     const link = doc.createElement('p');
     link.textContent = url;
     doc.body.append(title, hint, img, link);
-    img.onload = () => {
-      win.focus();
-      win.print();
-    };
   }
 
   async function saveSlug(e: FormEvent) {

@@ -1,6 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import { getPlan, type PlanUsage } from '@fidelity/shared';
-import { MerchantRole } from '@prisma/client';
+import { MerchantRole, type Prisma } from '@prisma/client';
 import type { Db } from '../access/brand-access.js';
 
 /** Lo que el plan limita al crecer. Los programas no se crean desde la app (uno por marca). */
@@ -34,16 +34,17 @@ export function countUsage(
 
 /**
  * Bloquea crecer por sobre el plan (decisión 2026-10-02): lo existente no se toca, pero no se
- * agrega nada más. Entre contar e insertar puede colarse una alta concurrente; con los tamaños
- * de estos límites eso es un exceso de uno, no un agujero.
+ * agrega nada más. Bloquea la fila de la marca hasta el fin de la transacción, así que el alta
+ * que se valida debe ir en la misma `tx`: si no, N altas simultáneas cuentan lo mismo y pasan.
  */
 export async function assertPlanAllows(
-  db: Db,
+  tx: Prisma.TransactionClient,
   brandId: string,
   resource: LimitedResource,
   options: { publicMessage?: string } = {},
 ): Promise<void> {
-  const brand = await db.brand.findUnique({
+  await tx.$queryRaw`SELECT id FROM "Brand" WHERE id = ${brandId}::uuid FOR UPDATE`;
+  const brand = await tx.brand.findUnique({
     where: { id: brandId },
     select: { planId: true },
   });
@@ -52,7 +53,7 @@ export async function assertPlanAllows(
   const limit = plan.limits[resource];
   if (limit === null) return;
 
-  const used = await countUsage(db, brandId, resource);
+  const used = await countUsage(tx, brandId, resource);
   if (used < limit) return;
 
   const [singular, plural] = LABELS[resource];
