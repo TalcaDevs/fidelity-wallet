@@ -3,6 +3,12 @@ import { formatBirthday, formatDate, formatDateTime } from '../../lib/formatDate
 
 const clp = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
 
+const METHOD_LABELS: Record<PurchaseHistoryEntryDto['method'], string> = {
+  QR: 'QR',
+  MANUAL: 'búsqueda manual',
+  PANEL: 'sumado desde el panel',
+};
+
 const CARD = 'bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/70 dark:border-slate-700/70';
 
 function Field({ label, value }: { label: string; value: string | null }) {
@@ -49,7 +55,7 @@ function EntryRow({ entry }: { entry: PurchaseHistoryEntryDto }) {
           {entry.locationName}
           {entry.staffEmail && <> · {entry.staffEmail}</>}
           {' · '}
-          {entry.method === 'QR' ? 'QR' : 'búsqueda manual'}
+          {METHOD_LABELS[entry.method]}
           {!isStamp && <> · {entry.stamps} sellos usados</>}
         </p>
         {entry.note && <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">“{entry.note}”</p>}

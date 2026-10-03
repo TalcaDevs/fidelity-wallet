@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { CustomerHistoryDto, PurchaseHistoryEntryDto } from '@fidelity/shared';
 import { ScanType, type Customer } from '@prisma/client';
 import { findStampsProgram, requireActiveBrandOwner } from '../common/access/brand-access.js';
@@ -7,6 +8,7 @@ import { UserDirectoryService } from '../common/users/user-directory.service.js'
 import { maskEmail, maskPhone, maskRut } from '../common/utils/mask.util.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ReceiptStorageService } from '../scan/receipt-storage.service.js';
+import { resolveOwnerMaxStamps } from '../scan/scan.service.js';
 import type { CustomerHistoryQueryDto } from './dto/history.dto.js';
 
 /**
@@ -16,12 +18,18 @@ import type { CustomerHistoryQueryDto } from './dto/history.dto.js';
 @Injectable()
 export class CustomerHistoryService {
   private readonly logger = new Logger(CustomerHistoryService.name);
+  private readonly maxStampsPerLoad: number;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly users: UserDirectoryService,
     private readonly receipts: ReceiptStorageService,
-  ) {}
+    configService: ConfigService,
+  ) {
+    this.maxStampsPerLoad = resolveOwnerMaxStamps(
+      configService.get<string>('OWNER_MAX_STAMPS_PER_LOAD'),
+    );
+  }
 
   async forOwner(
     customerId: string,
@@ -130,19 +138,19 @@ export class CustomerHistoryService {
     }));
 
     return {
-      customer: this.profile(pass.customer, pass.createdAt, activeStamps, maskIdentifiers),
+      customer: this.profile(pass, activeStamps, maskIdentifiers),
       totals: {
         visits,
         redemptions,
         purchaseAmount: amount._sum.purchaseAmount ?? 0,
       },
       history: { items, page, pageSize, total },
+      maxStampsPerLoad: this.maxStampsPerLoad,
     };
   }
 
   private profile(
-    customer: Customer,
-    joinedAt: Date,
+    { customer, createdAt, merchantId }: { customer: Customer; createdAt: Date; merchantId: string },
     activeStamps: number,
     maskIdentifiers: boolean,
   ): CustomerHistoryDto['customer'] {
@@ -157,8 +165,9 @@ export class CustomerHistoryService {
       birthDay: customer.birthDay,
       birthMonth: customer.birthMonth,
       birthYear: customer.birthYear,
-      joinedAt: joinedAt.toISOString(),
+      joinedAt: createdAt.toISOString(),
       activeStamps,
+      homeLocationId: merchantId,
     };
   }
 

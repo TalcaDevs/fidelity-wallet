@@ -1,4 +1,4 @@
-import type { CustomerHistoryDto } from '@fidelity/shared';
+import { RECEIPT_MAX_BYTES, type CustomerHistoryDto, type PanelStampsResultDto } from '@fidelity/shared';
 import {
   Controller,
   Get,
@@ -11,17 +11,33 @@ import {
   HttpStatus,
   ParseUUIDPipe,
   UnauthorizedException,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiExtraModels,
+  ApiQuery,
+  getSchemaPath,
+} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
 import { SupabaseAuthGuard } from '../common/guards/supabase-auth.guard.js';
+import type { UploadedImage } from '../common/storage/image.js';
+import { ScanService } from '../scan/scan.service.js';
 import { CustomerHistoryService } from './customer-history.service.js';
 import { CustomersService } from './customers.service.js';
 import { CreateCustomerDto, CustomerResponseDto } from './dto/create-customer.dto.js';
 import { DeleteCustomerResponseDto } from './dto/deletion.dto.js';
 import { CustomerHistoryQueryDto } from './dto/history.dto.js';
+import { PanelStampsDto } from './dto/panel-stamps.dto.js';
 
 @ApiTags('Customers')
 @Controller('customers')
@@ -29,6 +45,7 @@ export class CustomersController {
   constructor(
     private readonly customersService: CustomersService,
     private readonly historyService: CustomerHistoryService,
+    private readonly scanService: ScanService,
   ) {}
 
   @Post()
@@ -76,6 +93,52 @@ export class CustomersController {
       throw new UnauthorizedException('Usuario no autenticado');
     }
     return this.historyService.forOwner(customerId, query, user.id);
+  }
+
+  @Post(':customerId/stamps')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiBearerAuth()
+  @UseGuards(SupabaseAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('receipt', { limits: { fileSize: RECEIPT_MAX_BYTES, files: 1 } }),
+  )
+  @ApiConsumes('application/json', 'multipart/form-data')
+  @ApiExtraModels(PanelStampsDto)
+  @ApiBody({
+    schema: {
+      allOf: [
+        { $ref: getSchemaPath(PanelStampsDto) },
+        {
+          properties: {
+            receipt: {
+              type: 'string',
+              format: 'binary',
+              description: 'En multipart: foto de la boleta (PNG o JPG, hasta 10 MB)',
+            },
+          },
+        },
+      ],
+    },
+  })
+  @ApiOperation({
+    summary: 'Sumar sellos desde la ficha del cliente (solo el dueño)',
+    description:
+      'Sin escanear en caja: motivo obligatorio (queda en AuditLog), hasta OWNER_MAX_STAMPS_PER_LOAD sellos, sin bloqueo entre sellos. Queda en el historial con método PANEL y actualiza la tarjeta de la billetera.',
+  })
+  @ApiResponse({ status: 201, description: 'Sellos sumados' })
+  @ApiResponse({ status: 400, description: 'Sin motivo, sobre el tope o foto inválida' })
+  @ApiResponse({ status: 403, description: 'Solo el dueño, y solo en un local activo de su marca' })
+  @ApiResponse({ status: 404, description: 'El cliente no tiene tarjeta en esta marca' })
+  async addStamps(
+    @Param('customerId', new ParseUUIDPipe({ version: '4' })) customerId: string,
+    @Body() dto: PanelStampsDto,
+    @UploadedFile() receipt?: UploadedImage,
+    @CurrentUser() user?: AuthenticatedUser,
+  ): Promise<PanelStampsResultDto> {
+    if (!user?.id) {
+      throw new UnauthorizedException('Usuario no autenticado');
+    }
+    return this.scanService.addStampsFromPanel(customerId, dto, user.id, receipt);
   }
 
   @Delete(':customerId')

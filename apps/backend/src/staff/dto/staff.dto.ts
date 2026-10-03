@@ -88,7 +88,7 @@ export class StaffMemberResponseDto implements StaffMemberDto {
 export class StaffActivityResponseDto implements StaffActivityDto {
   @ApiProperty() id: string;
   @ApiProperty({ enum: ['STAMP_ADDED', 'REWARD_REDEEMED'] }) type: StaffScanType;
-  @ApiProperty({ enum: ['QR', 'MANUAL'] }) method: StaffScanMethod;
+  @ApiProperty({ enum: ['QR', 'MANUAL', 'PANEL'] }) method: StaffScanMethod;
   @ApiProperty() createdAt: string;
   @ApiProperty() locationName: string;
   @ApiProperty({ type: String, nullable: true, example: '+56 9 **** 5678' })

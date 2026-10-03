@@ -7,11 +7,14 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { DEFAULT_OWNER_MAX_STAMPS, firstName } from '@fidelity/shared';
+import { DEFAULT_OWNER_MAX_STAMPS, firstName, type PanelStampsResultDto } from '@fidelity/shared';
 import type { Customer, LoyaltyProgram, Pass, Promotion, Scan } from '@prisma/client';
 import { MerchantRole, ScanMethod, ScanType } from '@prisma/client';
 import {
+  assertLocationOperational,
   findStampsProgram,
+  locationWithBrandSelect,
+  requireActiveBrandOwner,
   resolveLocationAccess,
   type Db,
   type LocationWithBrand,
@@ -25,6 +28,7 @@ import { cleanRut, validateRut } from '../common/utils/rut.util.js';
 import { ConfigService } from '@nestjs/config';
 import { PassesService } from '../passes/passes.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import type { PanelStampsDto } from '../customers/dto/panel-stamps.dto.js';
 import {
   MaskedCustomerDto,
   PromotionOptionDto,
@@ -75,6 +79,14 @@ interface ScanContext {
 interface ResolvedTarget {
   pass: PassWithRelations;
   method: ScanMethod;
+}
+
+/** Lo que puede acompañar una carga de sellos, venga del escáner o del panel. */
+interface StampInput {
+  stampCount?: number;
+  reason?: string;
+  purchaseAmount?: number;
+  note?: string;
 }
 
 interface StampOptions {
@@ -279,6 +291,58 @@ export class ScanService {
     throw new BadRequestException(`Acción de escaneo no soportada: ${unsupportedAction}`);
   }
 
+  /**
+   * El dueño suma sellos desde la ficha del cliente, sin escanear en caja. El cliente no está
+   * presente, así que el motivo es siempre obligatorio y queda en AuditLog (§8.5). Pasa por la
+   * misma transacción que el escáner: queda en el historial con método PANEL.
+   */
+  async addStampsFromPanel(
+    customerId: string,
+    dto: PanelStampsDto,
+    callerUserId: string,
+    receiptFile?: UploadedImage,
+  ): Promise<PanelStampsResultDto> {
+    await requireActiveBrandOwner(this.prisma, callerUserId, dto.brandId);
+    const program = await this.requireActiveProgram(dto.brandId);
+
+    const pass = await this.prisma.pass.findUnique({
+      where: { customerId_programId: { customerId, programId: program.id } },
+      include: { customer: true },
+    });
+    if (!pass) {
+      throw new NotFoundException('El cliente no tiene una tarjeta en esta marca');
+    }
+
+    const merchant = await this.prisma.merchant.findUnique({
+      where: { id: dto.merchantId ?? pass.merchantId },
+      select: locationWithBrandSelect,
+    });
+    if (!merchant || merchant.brandId !== dto.brandId) {
+      throw new ForbiddenException('El local no pertenece a tu marca');
+    }
+    assertLocationOperational(merchant);
+
+    const activePromotions = await this.findActivePromotions(program.id);
+    const options = await this.buildStampOptions(dto, true, dto.brandId, pass.id, receiptFile);
+    const result = await this.executeStampAction(
+      pass,
+      { merchant, program },
+      activePromotions,
+      callerUserId,
+      toCashierCustomer(pass.customer),
+      ScanMethod.PANEL,
+      options,
+    );
+    void this.passesService.notifyPassUpdate(pass.id);
+
+    return {
+      scanId: result.scanId!,
+      stampsAdded: result.stampsAdded ?? options.stampCount,
+      activeStamps: result.activeStamps,
+      rewardUnlocked: result.rewardUnlocked,
+    };
+  }
+
   private async requireActiveProgram(brandId: string): Promise<LoyaltyProgram> {
     const program = await findStampsProgram(this.prisma, brandId);
     if (!program || !program.isActive) {
@@ -304,7 +368,7 @@ export class ScanService {
    * antes de abrir la transacción.
    */
   private async buildStampOptions(
-    dto: ScanActionDto,
+    dto: StampInput,
     isOwner: boolean,
     brandId: string,
     passId: string,
@@ -633,6 +697,7 @@ export class ScanService {
           after: {
             scanId: scan.id,
             merchantId: merchant.id,
+            method,
             stampCount: options.stampCount,
             overridesCooldown,
           },

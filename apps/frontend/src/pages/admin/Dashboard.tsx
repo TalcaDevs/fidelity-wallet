@@ -76,7 +76,7 @@ export function Dashboard({ session, brandId }: { session: Session | null; brand
               const customer = scan.customer;
               const identifier = maskIdentifier(customer?.rut) ?? maskIdentifier(customer?.phone) ?? 'Anónimo';
               const isReward = scan.type === 'REWARD_REDEEMED';
-              const isManual = scan.method === 'MANUAL';
+              const isManual = scan.method === 'MANUAL' || scan.method === 'PANEL';
               return (
                 <div key={scan.id} className="flex items-center justify-between p-5 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border border-transparent hover:border-slate-100 dark:hover:border-slate-700">
                   <div className="flex items-center gap-5">
@@ -92,7 +92,7 @@ export function Dashboard({ session, brandId }: { session: Session | null; brand
                               ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
                               : 'bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300'
                           }`}>
-                            {isManual ? 'Manual' : 'QR'}
+                            {scan.method === 'PANEL' ? 'Panel' : isManual ? 'Manual' : 'QR'}
                           </span>
                         )}
                       </div>

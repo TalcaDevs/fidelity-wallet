@@ -1,8 +1,8 @@
-import type { CustomerHistoryDto } from '@fidelity/shared';
+import type { CustomerHistoryDto, PanelStampsResultDto } from '@fidelity/shared';
 import { supabase } from '../lib/supabase';
 import { apiUrl } from '../lib/api';
 import { extractApiError } from '../lib/apiError';
-import { requestJson } from './httpJson';
+import { jsonBody, requestJson } from './httpJson';
 
 export interface CustomerRow {
   passId: string;
@@ -139,5 +139,35 @@ export function getCustomerHistory(customerId: string, brandId: string, page = 1
     `/api/customers/${encodeURIComponent(customerId)}/history?${qs.toString()}`,
     undefined,
     'No pudimos cargar el historial del cliente.',
+  );
+}
+
+export interface PanelStampsInput {
+  brandId: string;
+  merchantId: string;
+  stampCount: number;
+  reason: string;
+  purchaseAmount?: number;
+  note?: string;
+  receipt?: File;
+}
+
+/** El dueño suma sellos desde la ficha del cliente. Con foto va en multipart. */
+export function addStampsFromPanel(customerId: string, input: PanelStampsInput): Promise<PanelStampsResultDto> {
+  const { receipt, ...fields } = input;
+  const entries = Object.entries(fields).filter(([, value]) => value !== undefined && value !== '');
+  let init: RequestInit;
+  if (receipt) {
+    const form = new FormData();
+    for (const [key, value] of entries) form.append(key, String(value));
+    form.append('receipt', receipt);
+    init = { method: 'POST', body: form };
+  } else {
+    init = { method: 'POST', ...jsonBody(Object.fromEntries(entries)) };
+  }
+  return requestJson(
+    `/api/customers/${encodeURIComponent(customerId)}/stamps`,
+    init,
+    'No pudimos sumar los sellos.',
   );
 }

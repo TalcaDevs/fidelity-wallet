@@ -326,6 +326,8 @@ enum ScanType {
 enum ScanMethod {
   QR
   MANUAL
+  /// El dueño sumó sellos desde la ficha del cliente, sin escanear en caja.
+  PANEL
 }
 
 enum MerchantRole {

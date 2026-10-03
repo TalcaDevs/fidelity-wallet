@@ -1,3 +1,4 @@
+import type { ScanMethodName } from './scan.js';
 import type { Paginated } from './support.js';
 
 export const CUSTOMER_NAME_MAX = 80;
@@ -37,7 +38,8 @@ export interface PurchaseHistoryEntryDto {
   id: string;
   type: PurchaseHistoryEntryType;
   createdAt: string;
-  method: 'QR' | 'MANUAL';
+  /** PANEL: el dueño sumó sellos desde la ficha del cliente. */
+  method: ScanMethodName;
   locationName: string;
   /** Correo de quien registró el movimiento; null si la cuenta ya no existe. */
   staffEmail: string | null;
@@ -63,10 +65,22 @@ export interface CustomerProfileDto {
   birthYear: number | null;
   joinedAt: string;
   activeStamps: number;
+  /** Local donde se registró: el que se propone al sumar sellos desde el panel. */
+  homeLocationId: string;
 }
 
 export interface CustomerHistoryDto {
   customer: CustomerProfileDto;
   totals: { visits: number; redemptions: number; purchaseAmount: number };
   history: Paginated<PurchaseHistoryEntryDto>;
+  /** Tope de sellos por carga del dueño (OWNER_MAX_STAMPS_PER_LOAD). */
+  maxStampsPerLoad: number;
+}
+
+/** Respuesta de POST /api/customers/:id/stamps. */
+export interface PanelStampsResultDto {
+  scanId: string;
+  stampsAdded: number;
+  activeStamps: number;
+  rewardUnlocked: boolean;
 }

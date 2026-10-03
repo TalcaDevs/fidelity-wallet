@@ -1,4 +1,5 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import type { ConfigService } from '@nestjs/config';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UserDirectoryService } from '../common/users/user-directory.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
@@ -60,7 +61,7 @@ describe('CustomerHistoryService', () => {
       brand: { findUnique: vi.fn().mockResolvedValue({ status: 'ACTIVE' }) },
       loyaltyProgram: { findFirst: vi.fn().mockResolvedValue({ id: 'prog-1' }) },
       pass: {
-        findUnique: vi.fn().mockResolvedValue({ id: 'p-1', createdAt: new Date('2026-09-01'), customer }),
+        findUnique: vi.fn().mockResolvedValue({ id: 'p-1', merchantId: 'loc-1', createdAt: new Date('2026-09-01'), customer }),
       },
       scan: {
         findMany: vi.fn().mockResolvedValue([redeemScan, stampScan]),
@@ -80,6 +81,7 @@ describe('CustomerHistoryService', () => {
       prisma as PrismaService,
       { lookup: vi.fn().mockResolvedValue(new Map([['staff-1', { email: 'cajero@local.cl' }]])) } as unknown as UserDirectoryService,
       receipts as unknown as ReceiptStorageService,
+      { get: () => '6' } as unknown as ConfigService,
     );
   });
 
@@ -88,6 +90,8 @@ describe('CustomerHistoryService', () => {
 
     expect(result.customer).toMatchObject({ name: 'María Pérez', phone: '+56912345678', email: 'maria@gmail.com', activeStamps: 3 });
     expect(result.totals).toEqual({ visits: 1, redemptions: 1, purchaseAmount: 12500 });
+    expect(result.customer.homeLocationId).toBe('loc-1');
+    expect(result.maxStampsPerLoad).toBe(6);
     expect(result.history.total).toBe(2);
     expect(result.history.items[0]).toMatchObject({ type: 'REWARD_REDEEMED', stamps: 5, rewardName: 'Café gratis', receiptUrl: null });
     expect(result.history.items[1]).toMatchObject({

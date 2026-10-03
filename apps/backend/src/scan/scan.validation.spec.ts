@@ -107,6 +107,7 @@ describe('ScanService: validación en caja', () => {
       },
       scanReceipt: { create: vi.fn() },
       auditLog: { create: vi.fn() },
+      brand: { findUnique: vi.fn().mockResolvedValue({ status: 'ACTIVE' }) },
       $queryRaw: vi.fn().mockResolvedValue([]),
       $transaction: vi.fn((callback: (tx: unknown) => unknown) => callback(prisma)),
     } as unknown as PrismaService;
@@ -351,6 +352,61 @@ describe('ScanService: validación en caja', () => {
         ),
       ).rejects.toThrow('La foto de la boleta debe ser una imagen PNG o JPG');
       expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('addStampsFromPanel (ficha del cliente)', () => {
+    const customerId = pass.customerId;
+    const panel = (extra: object = {}) => ({ brandId, stampCount: 2, reason: 'Compra sin tarjeta', ...extra });
+
+    beforeEach(() => {
+      role = 'OWNER';
+    });
+
+    it('adds the stamps with method PANEL at the customer home location, skipping the cooldown', async () => {
+      latestStamp = recentStamp();
+
+      const result = await service.addStampsFromPanel(customerId, panel({ purchaseAmount: 9900 }), userId);
+
+      expect(result).toMatchObject({ scanId: 'scan-1', stampsAdded: 2 });
+      expect(prisma.scan.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ method: ScanMethod.PANEL, merchantId, stampCount: 2, purchaseAmount: 9900 }),
+      });
+      expect(prisma.stamp.create).toHaveBeenCalledTimes(2);
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          action: 'pass.stamps_added',
+          reason: 'Compra sin tarjeta',
+          after: expect.objectContaining({ method: ScanMethod.PANEL }),
+        }),
+      });
+    });
+
+    it('is only for the OWNER', async () => {
+      role = 'STAFF';
+
+      await expect(service.addStampsFromPanel(customerId, panel(), userId)).rejects.toThrow(ForbiddenException);
+      expect(prisma.scan.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a location of another brand', async () => {
+      vi.mocked(prisma.merchant.findUnique).mockResolvedValueOnce({
+        id: 'otro',
+        brandId: 'otra-marca',
+        name: 'Otro',
+        isActive: true,
+        brand: { name: 'Otra', status: 'ACTIVE' },
+      } as never);
+
+      await expect(
+        service.addStampsFromPanel(customerId, panel({ merchantId: 'otro' }), userId),
+      ).rejects.toThrow('El local no pertenece a tu marca');
+    });
+
+    it('caps the load like the scanner', async () => {
+      await expect(service.addStampsFromPanel(customerId, panel({ stampCount: 11 }), userId)).rejects.toThrow(
+        'hasta 10 sellos',
+      );
     });
   });
 });

@@ -6,6 +6,7 @@ import { CustomerDetail } from './CustomerDetail';
 import { Customers } from './Customers';
 import * as customersService from '../../services/customersService';
 import * as toastHook from '../../hooks/useToast';
+import * as locationsService from '../../services/locationsService';
 
 const history = (page = 1): CustomerHistoryDto => ({
   customer: {
@@ -19,8 +20,10 @@ const history = (page = 1): CustomerHistoryDto => ({
     birthYear: null,
     joinedAt: '2026-09-01T12:00:00Z',
     activeStamps: 3,
+    homeLocationId: 'loc-1',
   },
   totals: { visits: 21, redemptions: 1, purchaseAmount: 45000 },
+  maxStampsPerLoad: 10,
   history: {
     page,
     pageSize: 20,
@@ -67,7 +70,67 @@ function renderDetail() {
 }
 
 describe('CustomerDetail', () => {
-  beforeEach(() => vi.restoreAllMocks());
+  const notifySuccess = vi.fn();
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    notifySuccess.mockReset();
+    vi.spyOn(toastHook, 'useToast').mockReturnValue({ notifySuccess, notifyError: vi.fn() });
+    vi.spyOn(locationsService, 'listBrandLocations').mockResolvedValue([
+      { id: 'loc-1', name: 'Centro', isActive: true },
+      { id: 'loc-2', name: 'Providencia', isActive: true },
+    ]);
+  });
+
+  it('adds stamps from the profile with a mandatory reason and refreshes the history', async () => {
+    const historySpy = vi.spyOn(customersService, 'getCustomerHistory').mockResolvedValue(history());
+    const addSpy = vi.spyOn(customersService, 'addStampsFromPanel').mockResolvedValue({
+      scanId: 's-9',
+      stampsAdded: 2,
+      activeStamps: 5,
+      rewardUnlocked: true,
+    });
+    renderDetail();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Sumar sellos' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Un sello más' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sumar 2 sellos' }));
+    expect(screen.getByRole('alert')).toHaveTextContent(/indica el motivo/i);
+    expect(addSpy).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Motivo'), { target: { value: 'Compró sin su tarjeta' } });
+    fireEvent.change(await screen.findByLabelText('Local'), { target: { value: 'loc-2' } });
+    fireEvent.change(screen.getByLabelText(/monto/i), { target: { value: '9900' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sumar 2 sellos' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(addSpy).toHaveBeenCalledWith('c-1', {
+      brandId: 'b-1',
+      merchantId: 'loc-2',
+      stampCount: 2,
+      reason: 'Compró sin su tarjeta',
+      purchaseAmount: 9900,
+      note: undefined,
+      receipt: undefined,
+    });
+    expect(notifySuccess).toHaveBeenCalledWith('Sumamos 2 sellos. Ahora tiene 5. Ya puede canjear un premio.');
+    await waitFor(() => expect(historySpy).toHaveBeenCalledTimes(2));
+  });
+
+  it('keeps the dialog open and shows the API error', async () => {
+    vi.spyOn(customersService, 'getCustomerHistory').mockResolvedValue(history());
+    vi.spyOn(customersService, 'addStampsFromPanel').mockRejectedValue(new Error('Este local no está habilitado para operar'));
+    renderDetail();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Sumar sellos' }));
+    fireEvent.change(screen.getByLabelText('Motivo'), { target: { value: 'Compensación' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sumar 1 sello' }));
+
+    expect(await screen.findByText('Este local no está habilitado para operar')).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
 
   it('shows the profile, the totals and the purchases with the receipt photo', async () => {
     const spy = vi.spyOn(customersService, 'getCustomerHistory').mockResolvedValue(history());

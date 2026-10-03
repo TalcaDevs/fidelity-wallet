@@ -278,7 +278,7 @@ export function InternalBrandDetail() {
               <ul className="text-sm divide-y divide-slate-100 dark:divide-slate-700/60">
                 {brand.recentActivity.map((a) => (
                   <li key={a.id} className="py-2 flex flex-wrap justify-between gap-2">
-                    <span>{a.type === 'STAMP_ADDED' ? 'Sello' : 'Canje'} · {a.customer} · {a.locationName} <span className="text-xs text-slate-500">({a.method === 'QR' ? 'QR' : 'manual'})</span></span>
+                    <span>{a.type === 'STAMP_ADDED' ? 'Sello' : 'Canje'} · {a.customer} · {a.locationName} <span className="text-xs text-slate-500">({a.method === 'QR' ? 'QR' : a.method === 'PANEL' ? 'panel' : 'manual'})</span></span>
                     <span className="text-slate-500 whitespace-nowrap">{formatDateTime(a.createdAt)}</span>
                   </li>
                 ))}
