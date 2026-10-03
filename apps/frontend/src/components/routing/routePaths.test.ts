@@ -31,6 +31,10 @@ describe('buildLoginUrl', () => {
   it('does not point the login back at itself', () => {
     expect(buildLoginUrl(ROUTES.login)).toBe(ROUTES.login);
   });
+
+  it('does not append redirect query parameter when coming from scan', () => {
+    expect(buildLoginUrl(ROUTES.scan)).toBe(ROUTES.login);
+  });
 });
 
 describe('passwordResetUrl', () => {

@@ -120,16 +120,51 @@ export function RequirePlatformAdmin({
 
 /**
  * El login sigue siendo una ruta pública, pero con sesión abierta no tiene
- * sentido mostrar el formulario: devuelve al destino que originó el redirect.
+ * sentido mostrar el formulario: redirige según el rol del usuario (STAFF → /scan,
+ * OWNER → /admin/dashboard o subruta administrativa previa, PlatformAdmin → /internal).
  */
-export function RedirectIfAuthenticated({ session }: { session: Session | null }) {
+export function RedirectIfAuthenticated({
+  session,
+  membership,
+  platformAdmin,
+}: {
+  session: Session | null;
+  membership?: MembershipState;
+  platformAdmin?: PlatformAdminState;
+}) {
   const location = useLocation();
-
   if (!session) return <Outlet />;
+
+  if (membership) {
+    if (membership.loading || (!membership.role && platformAdmin?.loading)) {
+      return <FullScreenLoader label="Cargando tu cuenta..." />;
+    }
+
+    if (!membership.role && platformAdmin?.role) {
+      return <Navigate to={ROUTES.internal} replace />;
+    }
+
+    if (membership.role === 'STAFF') {
+      return <Navigate to={ROUTES.scan} replace />;
+    }
+
+    if (membership.error || !membership.role) {
+      return <AccessDenied reason={membership.error} />;
+    }
+  }
 
   const fromState = (location.state as LocationState | null)?.from;
   const fromQuery = new URLSearchParams(location.search).get('redirect');
-  return <Navigate to={resolveRedirectTarget(fromState ?? fromQuery)} replace />;
+  const candidate = fromState ?? fromQuery;
+
+  // Para OWNER o fallback: si candidate es /scan (por ejemplo, residuo de sesión previa),
+  // se ignora y se envía al dashboard. Solo respetamos redirects hacia /admin/*.
+  const target =
+    candidate && candidate !== ROUTES.scan && candidate.startsWith('/admin')
+      ? resolveRedirectTarget(candidate)
+      : ROUTES.dashboard;
+
+  return <Navigate to={target} replace />;
 }
 
 /**

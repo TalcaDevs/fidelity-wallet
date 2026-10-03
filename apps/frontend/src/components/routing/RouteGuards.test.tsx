@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
-import { RequirePlatformAdmin, RequireRole } from './RouteGuards';
+import { RedirectIfAuthenticated, RequirePlatformAdmin, RequireRole } from './RouteGuards';
 import type { MembershipState } from '../../hooks/useMembership';
 import type { PlatformAdminState } from '../../hooks/usePlatformAdmin';
 
@@ -106,3 +106,63 @@ describe('equipo interno', () => {
     expect(screen.getByText('panel del dueño')).toBeInTheDocument();
   });
 });
+
+describe('RedirectIfAuthenticated', () => {
+  const renderRedirect = (
+    membership?: MembershipState,
+    initialEntries: string[] = ['/admin/login'],
+    platformAdmin?: PlatformAdminState,
+  ) =>
+    render(
+      <MemoryRouter initialEntries={initialEntries}>
+        <Routes>
+          <Route element={<RedirectIfAuthenticated session={SESSION} membership={membership} platformAdmin={platformAdmin} />}>
+            <Route path="/admin/login" element={<p>formulario login</p>} />
+          </Route>
+          <Route path="/scan" element={<p>pantalla escaner</p>} />
+          <Route path="/admin/dashboard" element={<p>pantalla dashboard</p>} />
+          <Route path="/admin/team" element={<p>pantalla equipo</p>} />
+          <Route path="/internal" element={<p>pantalla interna</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+  it('muestra loader mientras carga la membresía', () => {
+    renderRedirect({ brandId: null, programId: null, merchantId: null, role: null, loading: true, error: null });
+    expect(screen.getByText('Cargando tu cuenta...')).toBeInTheDocument();
+  });
+
+  it('manda al STAFF siempre a /scan aunque haya intentado entrar con redirect a admin', () => {
+    renderRedirect(
+      { brandId: null, programId: null, merchantId: 'm1', role: 'STAFF', loading: false, error: null },
+      ['/admin/login?redirect=%2Fadmin%2Fteam'],
+    );
+    expect(screen.getByText('pantalla escaner')).toBeInTheDocument();
+  });
+
+  it('manda al OWNER al dashboard ignorando un residuo de redirect a /scan', () => {
+    renderRedirect(
+      { brandId: null, programId: null, merchantId: 'm1', role: 'OWNER', loading: false, error: null },
+      ['/admin/login?redirect=%2Fscan'],
+    );
+    expect(screen.getByText('pantalla dashboard')).toBeInTheDocument();
+  });
+
+  it('manda al OWNER a la subruta administrativa si el redirect apunta a /admin/*', () => {
+    renderRedirect(
+      { brandId: null, programId: null, merchantId: 'm1', role: 'OWNER', loading: false, error: null },
+      ['/admin/login?redirect=%2Fadmin%2Fteam'],
+    );
+    expect(screen.getByText('pantalla equipo')).toBeInTheDocument();
+  });
+
+  it('manda a /internal si es un PlatformAdmin sin membresía comercial', () => {
+    renderRedirect(
+      NO_MEMBERSHIP,
+      ['/admin/login'],
+      { role: 'SUPPORT', loading: false },
+    );
+    expect(screen.getByText('pantalla interna')).toBeInTheDocument();
+  });
+});
+

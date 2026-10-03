@@ -33,7 +33,7 @@ export function resolveRedirectTarget(
 }
 
 export function buildLoginUrl(from: string): string {
-  if (from === ROUTES.login) return ROUTES.login;
+  if (from === ROUTES.login || from === ROUTES.scan) return ROUTES.login;
   return `${ROUTES.login}?redirect=${encodeURIComponent(from)}`;
 }
 
