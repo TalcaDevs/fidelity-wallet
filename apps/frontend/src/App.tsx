@@ -56,13 +56,13 @@ export default function App() {
           <Route path={ROUTES.terms} element={<Terms />} />
           <Route path={ROUTES.resetPassword} element={<PasswordResetRoute onDone={finishPasswordRecovery} />} />
 
-          <Route element={<RedirectIfAuthenticated session={session} />}>
+          <Route element={<RedirectIfAuthenticated session={session} membership={membership} platformAdmin={platformAdmin} />}>
             <Route path={ROUTES.login} element={<SupabaseAuth />} />
           </Route>
 
           {/* Scanner: requiere sesión y rol OWNER o STAFF */}
           <Route element={<RequireRole session={session} membership={membership} allow={['OWNER', 'STAFF']} platformAdmin={platformAdmin} />}>
-            <Route path={ROUTES.scan} element={session && membership.merchantId ? <Scan merchantId={membership.merchantId} session={session} role={membership.role} /> : null} />
+            <Route path={ROUTES.scan} element={session && membership.merchantId ? <Scan merchantId={membership.merchantId} session={session} role={membership.role} /> : <div className="h-[100dvh] w-full bg-slate-950" />} />
           </Route>
 
           {/* Panel: requiere sesión y rol OWNER */}

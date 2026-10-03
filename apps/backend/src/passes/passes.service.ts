@@ -203,7 +203,10 @@ export class PassesService {
         `Dispatching wallet update for pass ${passId} (activeStamps: ${passData.activeStamps})`,
       );
       await Promise.allSettled([
-        this.googleWalletService.updateLoyaltyObject(passId, passData.activeStamps),
+        this.googleWalletService.updateLoyaltyObject(passId, passData.activeStamps, {
+          targetStamps: passData.targetStamps,
+          rewardName: passData.rewardName,
+        }),
       ]);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
