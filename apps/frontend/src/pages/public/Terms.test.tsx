@@ -24,8 +24,9 @@ describe('Terms', () => {
 
   it('covers the rules the product actually enforces', () => {
     renderTerms();
-    // Registro con ambos datos, bloqueo antifraude, saldo compartido y datos personales
-    expect(screen.getByText(/RUT y tu número de teléfono celular/)).toBeInTheDocument();
+    // Registro con teléfono o correo, validación de la compra, bloqueo antifraude, saldo compartido y datos personales
+    expect(screen.getByText('tu número de teléfono celular o tu correo electrónico')).toBeInTheDocument();
+    expect(screen.getByText('foto de la boleta')).toBeInTheDocument();
     expect(screen.getByText(/como máximo un sello cada 30 minutos/)).toBeInTheDocument();
     expect(screen.getByText(/sirven para cualquiera de las promociones activas/)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /tus datos personales/i })).toBeInTheDocument();

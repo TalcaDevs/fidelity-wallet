@@ -20,6 +20,8 @@ export interface FieldValue {
   /** RUT "12.345.678-5" o teléfono "+56912345678". Vacío si no es válido. */
   value: string;
   isValid: boolean;
+  /** Sin nada escrito: en un campo opcional distingue "no lo dio" de "lo escribió mal". */
+  isEmpty?: boolean;
 }
 
 export interface IdentifierValue extends FieldValue {
@@ -190,7 +192,7 @@ export function RutField({ onChange, showErrors = false, variant = 'light', auto
             setPendingCaret(caret);
             setDisplay(next);
             const isValid = validateRUT(next);
-            onChange({ value: isValid ? next : '', isValid });
+            onChange({ value: isValid ? next : '', isValid, isEmpty: rutLength(next) === 0 });
           }}
           onBlur={() => display && setTouched(true)}
           placeholder="12.345.678-9"
@@ -240,7 +242,7 @@ export function PhoneField({ onChange, showErrors = false, variant = 'light', au
             setPendingCaret(caret);
             setDigits(next);
             const isValid = isValidPhoneLocal(next);
-            onChange({ value: isValid ? toFullPhone(next) : '', isValid });
+            onChange({ value: isValid ? toFullPhone(next) : '', isValid, isEmpty: next.length === 0 });
           }}
           onBlur={() => digits && setTouched(true)}
           placeholder="9 1234 5678"
@@ -279,7 +281,7 @@ export function EmailField({ onChange, showErrors = false, variant = 'light', au
             const next = e.target.value;
             setValue(next);
             const isValid = isValidEmail(next);
-            onChange({ value: isValid ? normalizeEmailInput(next) : '', isValid });
+            onChange({ value: isValid ? normalizeEmailInput(next) : '', isValid, isEmpty: next.trim().length === 0 });
           }}
           onBlur={() => value && setTouched(true)}
           placeholder="nombre@correo.cl"
@@ -331,7 +333,7 @@ export function IdentifierInput({ onChange, variant = 'light', ...fieldProps }: 
         ))}
       </div>
       {/* key: al cambiar de tipo el campo se monta de nuevo, vacío y sin errores previos */}
-      <Field key={kind} variant={variant} {...fieldProps} onChange={(f) => onChange({ kind, ...f })} />
+      <Field key={kind} variant={variant} {...fieldProps} onChange={({ value, isValid }) => onChange({ kind, value, isValid })} />
     </div>
   );
 }
