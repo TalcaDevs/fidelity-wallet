@@ -1,12 +1,19 @@
+import type { CustomerHistoryDto } from '@fidelity/shared';
 import { supabase } from '../lib/supabase';
 import { apiUrl } from '../lib/api';
 import { extractApiError } from '../lib/apiError';
+import { requestJson } from './httpJson';
 
 export interface CustomerRow {
   passId: string;
   customerId: string;
   rut: string | null;
   phone: string | null;
+  name?: string | null;
+  email?: string | null;
+  birthDay?: number | null;
+  birthMonth?: number | null;
+  birthYear?: number | null;
   // Saldo vigente: sellos ni consumidos ni vencidos. Reemplaza al viejo
   // contador plano Pass.stampsCount, que no sabía de vencimientos.
   activeStamps: number;
@@ -15,12 +22,22 @@ export interface CustomerRow {
   lastActivityAt: string;
 }
 
+interface RawCustomer {
+  rut: string | null;
+  phone: string | null;
+  name: string | null;
+  email: string | null;
+  birthDay: number | null;
+  birthMonth: number | null;
+  birthYear: number | null;
+}
+
 interface RawPassRow {
   id: string;
   customerId: string;
   createdAt: string;
   updatedAt: string;
-  customer?: { rut: string | null; phone: string | null } | { rut: string | null; phone: string | null }[] | null;
+  customer?: RawCustomer | RawCustomer[] | null;
 }
 
 interface RawBalanceRow {
@@ -42,7 +59,7 @@ export async function listCustomers(brandId: string): Promise<CustomerRow[]> {
     // sin tener que traer la tabla Scan completa.
     supabase
       .from('Pass')
-      .select('id, customerId, createdAt, updatedAt, customer:Customer(rut, phone)')
+      .select('id, customerId, createdAt, updatedAt, customer:Customer(rut, phone, name, email, birthDay, birthMonth, birthYear)')
       .eq('brandId', brandId)
       .order('updatedAt', { ascending: false }),
     supabase
@@ -68,6 +85,11 @@ export async function listCustomers(brandId: string): Promise<CustomerRow[]> {
       customerId: row.customerId,
       rut: customer?.rut ?? null,
       phone: customer?.phone ?? null,
+      name: customer?.name ?? null,
+      email: customer?.email ?? null,
+      birthDay: customer?.birthDay ?? null,
+      birthMonth: customer?.birthMonth ?? null,
+      birthYear: customer?.birthYear ?? null,
       // Un pase sin sellos vigentes puede no tener fila en la vista.
       activeStamps: balance?.activeStamps ?? 0,
       nextExpiryAt: balance?.nextExpiryAt ?? null,
@@ -107,3 +129,15 @@ export async function deleteCustomer(merchantId: string, customerId: string): Pr
   }
 }
 
+
+export const HISTORY_PAGE_SIZE = 20;
+
+/** Historial de compras del cliente en la marca: solo el dueño (las fotos van con URL firmada). */
+export function getCustomerHistory(customerId: string, brandId: string, page = 1): Promise<CustomerHistoryDto> {
+  const qs = new URLSearchParams({ brandId, page: String(page), pageSize: String(HISTORY_PAGE_SIZE) });
+  return requestJson(
+    `/api/customers/${encodeURIComponent(customerId)}/history?${qs.toString()}`,
+    undefined,
+    'No pudimos cargar el historial del cliente.',
+  );
+}
