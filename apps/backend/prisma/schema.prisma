@@ -113,6 +113,14 @@ model Customer {
   id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   rut             String?   @unique
   phone           String?   @unique
+  /// En minúsculas. El alta exige phone o email (lo aplica la API).
+  email           String?   @unique
+  /// Global: el mismo en todas las marcas. La caja solo ve el primer nombre.
+  name            String?
+  /// Cumpleaños: día y mes; el año es opcional (CHECK en la migración).
+  birthDay        Int?      @db.SmallInt
+  birthMonth      Int?      @db.SmallInt
+  birthYear       Int?      @db.SmallInt
   /// Última aceptación de los términos y condiciones (prueba del consentimiento, Ley 19.628).
   /// NULL en clientes registrados antes del 2026-09-24.
   termsAcceptedAt DateTime?
@@ -123,6 +131,7 @@ model Customer {
 
   @@index([rut])
   @@index([phone])
+  @@index([email])
 }
 
 model Pass {
@@ -195,11 +204,29 @@ model Scan {
   /// Auditoria: que usuario (dueno o mesero) ejecuto el scan.
   createdByUserId String?        @db.Uuid
   method          ScanMethod     @default(QR)
+  /// Sellos que sumó este scan: 1 para el STAFF; el OWNER puede cargar varios (motivo en AuditLog).
+  stampCount      Int            @default(1)
+  /// Pesos chilenos. Solo se registra: no da sellos.
+  purchaseAmount  Int?
+  note            String?
+  receipt         ScanReceipt?
   createdAt       DateTime       @default(now())
 
   @@index([promotionId])
   @@index([brandId, createdAt])
   @@index([merchantId, createdAt])
+}
+
+/// Foto de la boleta en el bucket privado purchase-receipts. Va aparte de Scan porque el STAFF
+/// lee Scan por RLS, y la foto solo la ven el OWNER y SUPERADMIN a través del backend.
+model ScanReceipt {
+  scanId           String   @id @db.Uuid
+  scan             Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  storagePath      String   @unique
+  mimeType         String
+  sizeBytes        Int
+  uploadedByUserId String   @db.Uuid
+  createdAt        DateTime @default(now())
 }
 
 /// Se asigna solo por seed o SQL, nunca desde la UI. Sin grants para anon ni authenticated.
