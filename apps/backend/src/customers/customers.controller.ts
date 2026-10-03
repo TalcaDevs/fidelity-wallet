@@ -1,5 +1,7 @@
+import type { CustomerHistoryDto } from '@fidelity/shared';
 import {
   Controller,
+  Get,
   Post,
   Delete,
   Body,
@@ -15,14 +17,19 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@ne
 import { Throttle } from '@nestjs/throttler';
 import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
 import { SupabaseAuthGuard } from '../common/guards/supabase-auth.guard.js';
+import { CustomerHistoryService } from './customer-history.service.js';
 import { CustomersService } from './customers.service.js';
 import { CreateCustomerDto, CustomerResponseDto } from './dto/create-customer.dto.js';
 import { DeleteCustomerResponseDto } from './dto/deletion.dto.js';
+import { CustomerHistoryQueryDto } from './dto/history.dto.js';
 
 @ApiTags('Customers')
 @Controller('customers')
 export class CustomersController {
-  constructor(private readonly customersService: CustomersService) {}
+  constructor(
+    private readonly customersService: CustomersService,
+    private readonly historyService: CustomerHistoryService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -47,6 +54,28 @@ export class CustomersController {
   })
   async createCustomer(@Body() dto: CreateCustomerDto): Promise<CustomerResponseDto> {
     return this.customersService.createOrFindCustomer(dto);
+  }
+
+  @Get(':customerId/history')
+  @ApiBearerAuth()
+  @UseGuards(SupabaseAuthGuard)
+  @ApiOperation({
+    summary: 'Historial de compras del cliente en la marca (solo el dueño)',
+    description:
+      'Datos del cliente, totales y cada sello validado (monto, nota y foto de la boleta con URL firmada de 5 minutos) o canje, del más reciente al más antiguo.',
+  })
+  @ApiResponse({ status: 200, description: 'Historial paginado' })
+  @ApiResponse({ status: 403, description: 'Solo el dueño de la marca puede ver el historial' })
+  @ApiResponse({ status: 404, description: 'El cliente no tiene tarjeta en esta marca' })
+  async getHistory(
+    @Param('customerId', new ParseUUIDPipe({ version: '4' })) customerId: string,
+    @Query() query: CustomerHistoryQueryDto,
+    @CurrentUser() user?: AuthenticatedUser,
+  ): Promise<CustomerHistoryDto> {
+    if (!user?.id) {
+      throw new UnauthorizedException('Usuario no autenticado');
+    }
+    return this.historyService.forOwner(customerId, query, user.id);
   }
 
   @Delete(':customerId')

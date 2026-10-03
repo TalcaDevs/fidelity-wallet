@@ -7,14 +7,26 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { firstName } from '@fidelity/shared';
 import { Brand, Customer, Pass, Prisma } from '@prisma/client';
 import { findStampsProgram, resolveLocationAccess } from '../common/access/brand-access.js';
-import { maskPhone, maskRut } from '../common/utils/mask.util.js';
+import { maskEmail, maskPhone, maskRut } from '../common/utils/mask.util.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { GeneratePassDto, PassEmissionResponseDto } from './dto/generate-pass.dto.js';
 import { PassData } from './interfaces/pass-data.interface.js';
 import { ApplePassService } from './services/apple-pass.service.js';
 import { GoogleWalletService } from './services/google-wallet.service.js';
+
+/** Nombre que muestra la tarjeta en la billetera: el primer nombre, o un dato enmascarado. */
+export function passCustomerLabel(customer: Customer | null): string {
+  if (!customer) return 'Cliente';
+  const name = firstName(customer.name);
+  if (name) return name;
+  if (customer.phone) return maskPhone(customer.phone);
+  if (customer.email) return maskEmail(customer.email);
+  if (customer.rut) return maskRut(customer.rut);
+  return 'Cliente';
+}
 
 export type PassWithBrandAndCustomer = Pass & {
   brand: Brand;
@@ -298,19 +310,13 @@ export class PassesService {
       select: { expiresAt: true },
     });
 
-    const customerLabel = pass.customer?.rut
-      ? maskRut(pass.customer.rut)
-      : pass.customer?.phone
-        ? maskPhone(pass.customer.phone)
-        : 'Cliente';
-
     return {
       passId: pass.id,
       serialNumber: pass.id,
       passToken: pass.passToken,
       programId: pass.programId,
       merchantName: pass.brand.name,
-      customerLabel,
+      customerLabel: passCustomerLabel(pass.customer),
       activeStamps,
       targetStamps: promotion.targetStamps,
       rewardName: promotion.rewardName,

@@ -2,6 +2,7 @@ import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { GUARDS_METADATA } from '@nestjs/common/constants.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SupabaseAuthGuard } from '../common/guards/supabase-auth.guard.js';
+import type { CustomerHistoryService } from './customer-history.service.js';
 import { CustomersController } from './customers.controller.js';
 import type { CustomersService } from './customers.service.js';
 import type { CreateCustomerDto } from './dto/create-customer.dto.js';
@@ -21,7 +22,10 @@ describe('CustomersController (Security & Protection)', () => {
       deleteCustomerGlobal: vi.fn(),
     };
 
-    controller = new CustomersController(customersService as CustomersService);
+    controller = new CustomersController(
+      customersService as CustomersService,
+      { forOwner: vi.fn() } as unknown as CustomerHistoryService,
+    );
   });
 
   describe('Guards Metadata & Route Protection', () => {
@@ -29,6 +33,12 @@ describe('CustomersController (Security & Protection)', () => {
       const guards = Reflect.getMetadata(GUARDS_METADATA, CustomersController.prototype.deleteCustomer);
 
       expect(guards).toBeDefined();
+      expect(guards).toContain(SupabaseAuthGuard);
+    });
+
+    it('applies SupabaseAuthGuard to GET :customerId/history', () => {
+      const guards = Reflect.getMetadata(GUARDS_METADATA, CustomersController.prototype.getHistory);
+
       expect(guards).toContain(SupabaseAuthGuard);
     });
 
