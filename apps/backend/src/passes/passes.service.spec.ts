@@ -100,22 +100,32 @@ describe('PassesService', () => {
     vi.restoreAllMocks();
   });
 
-  it('does not let a STAFF issue passes (it would expose another customer wallet links)', async () => {
-    vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue({
-      userId: mockUserId,
-      brandId: mockMerchantId,
-      merchantId: mockMerchantId,
-      role: 'STAFF',
-    } as any);
+  describe('generatePass', () => {
+    it('should throw UnauthorizedException if callerUserId is missing or empty', async () => {
+      await expect(
+        service.generatePass(
+          {
+            customerId: mockCustomerId,
+            merchantId: mockMerchantId,
+          },
+          '',
+        ),
+      ).rejects.toThrow(UnauthorizedException);
+    });
 
-    await expect(
-      service.generatePass({ customerId: mockCustomerId, merchantId: mockMerchantId }, mockUserId),
-    ).rejects.toThrow('Solo el dueño del comercio puede emitir pases manualmente');
-    expect(prisma.pass.create).not.toHaveBeenCalled();
-  });
+    it('does not let a STAFF issue passes (it would expose another customer wallet links)', async () => {
+      vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue({
+        userId: mockUserId,
+        brandId: mockMerchantId,
+        merchantId: mockMerchantId,
+        role: 'STAFF',
+      } as any);
 
-  it('should throw ForbiddenException if callerUserId is not a member of the merchant', async () => {
-    vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue(null);
+      await expect(
+        service.generatePass({ customerId: mockCustomerId, merchantId: mockMerchantId }, mockUserId),
+      ).rejects.toThrow('Solo el dueño del comercio puede emitir pases manualmente');
+      expect(prisma.pass.create).not.toHaveBeenCalled();
+    });
 
     it('should throw ForbiddenException if callerUserId is not a member of the merchant', async () => {
       vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue(null);
