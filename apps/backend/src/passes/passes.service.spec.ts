@@ -4,7 +4,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { PassesService } from './passes.service.js';
@@ -22,7 +22,13 @@ describe('PassesService', () => {
   const mockPassId = 'p0000000-0000-0000-0000-000000000001';
   const mockUserId = 'u0000000-0000-0000-0000-000000000001';
   const mockProgramId = 'b0000000-0000-0000-0000-000000000001';
-  const mockTarget = { programId: mockProgramId, brandId: mockMerchantId, merchantId: mockMerchantId };
+
+  const mockTarget = {
+    programId: mockProgramId,
+    brandId: mockMerchantId,
+    merchantId: mockMerchantId,
+  };
+
   const mockLocation = {
     id: mockMerchantId,
     brandId: mockMerchantId,
@@ -30,19 +36,50 @@ describe('PassesService', () => {
     isActive: true,
     brand: { name: 'Cafeteria Don Tito', status: 'ACTIVE' },
   };
-  const ownerMembership = { userId: mockUserId, brandId: mockMerchantId, merchantId: null, role: 'OWNER' };
+
+  const ownerMembership = {
+    userId: mockUserId,
+    brandId: mockMerchantId,
+    merchantId: null,
+    role: 'OWNER',
+  };
+
+  const createMockPass = (overrides: Record<string, unknown> = {}) => ({
+    id: mockPassId,
+    passToken: 'token-abc',
+    merchantId: mockMerchantId,
+    programId: mockProgramId,
+    brand: { id: mockMerchantId, name: 'Cafeteria Don Tito' },
+    customer: { id: mockCustomerId, rut: '11111111-1', phone: '+56912345678' },
+    ...overrides,
+  });
+
+  const createMockPromotion = (overrides: Record<string, unknown> = {}) => ({
+    id: 'promo-1',
+    programId: mockProgramId,
+    targetStamps: 5,
+    rewardName: 'Café',
+    isActive: true,
+    ...overrides,
+  });
 
   beforeEach(() => {
     prisma = {
       customer: { findUnique: vi.fn() },
       merchant: { findUnique: vi.fn().mockResolvedValue(mockLocation) },
       brandMember: { findUnique: vi.fn() },
-      brand: { findUnique: vi.fn().mockResolvedValue({ id: mockMerchantId, name: 'Cafeteria Don Tito' }) },
+      brand: {
+        findUnique: vi.fn().mockResolvedValue({ id: mockMerchantId, name: 'Cafeteria Don Tito' }),
+      },
       loyaltyProgram: {
-        findFirst: vi.fn().mockResolvedValue({ id: mockProgramId, brandId: mockMerchantId, isActive: true }),
+        findFirst: vi.fn().mockResolvedValue({
+          id: mockProgramId,
+          brandId: mockMerchantId,
+          isActive: true,
+        }),
       },
       pass: { findUnique: vi.fn(), create: vi.fn() },
-      promotion: { findFirst: vi.fn() },
+      promotion: { findFirst: vi.fn(), findMany: vi.fn() },
       stamp: { count: vi.fn(), findFirst: vi.fn() },
     } as unknown as PrismaService;
 
@@ -59,132 +96,138 @@ describe('PassesService', () => {
     service = new PassesService(prisma, applePassService, googleWalletService);
   });
 
-  it('should throw UnauthorizedException if callerUserId is missing or empty', async () => {
-    await expect(
-      service.generatePass(
-        {
-          customerId: mockCustomerId,
-          merchantId: mockMerchantId,
-        },
-        '',
-      ),
-    ).rejects.toThrow(UnauthorizedException);
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
-  it('should throw ForbiddenException if callerUserId is not a member of the merchant', async () => {
-    vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue(null);
-
-    await expect(
-      service.generatePass(
-        {
-          customerId: mockCustomerId,
-          merchantId: mockMerchantId,
-        },
-        'unauthorized-user',
-      ),
-    ).rejects.toThrow(ForbiddenException);
-  });
-
-  it('should throw NotFoundException if customer does not exist', async () => {
-    vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue(ownerMembership as any);
-    vi.spyOn(prisma.customer, 'findUnique').mockResolvedValue(null);
-
-    await expect(
-      service.generatePass(
-        {
-          customerId: mockCustomerId,
-          merchantId: mockMerchantId,
-        },
-        mockUserId,
-      ),
-    ).rejects.toThrow(NotFoundException);
-  });
-
-  it('should throw ForbiddenException if the location does not exist (same as a foreign one)', async () => {
-    vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue(ownerMembership as any);
-    vi.spyOn(prisma.customer, 'findUnique').mockResolvedValue({ id: mockCustomerId } as any);
-    vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue(null);
-
-    await expect(
-      service.generatePass(
-        {
-          customerId: mockCustomerId,
-          merchantId: mockMerchantId,
-        },
-        mockUserId,
-      ),
-    ).rejects.toThrow(ForbiddenException);
-  });
-
-  it('should throw BadRequestException if merchant has no active promotion', async () => {
-    vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue(ownerMembership as any);
-    vi.spyOn(prisma.customer, 'findUnique').mockResolvedValue({ id: mockCustomerId } as any);
-    vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue({ id: mockPassId } as any);
-    vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(null);
-
-    await expect(
-      service.generatePass(
-        {
-          customerId: mockCustomerId,
-          merchantId: mockMerchantId,
-        },
-        mockUserId,
-      ),
-    ).rejects.toThrow(BadRequestException);
-  });
-
-  it('should create new pass and return Apple and Google Wallet URLs', async () => {
-    vi.spyOn(prisma.customer, 'findUnique').mockResolvedValue({
-      id: mockCustomerId,
-      rut: '12345678-5',
-      phone: '+56912345678',
-    } as any);
-
-    vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(null); // No existing pass
-
-    const mockCreatedPass = {
-      id: mockPassId,
-      customerId: mockCustomerId,
-      ...mockTarget,
-      passToken: 'mock-entropy-token-12345',
-    };
-    vi.spyOn(prisma.pass, 'create').mockResolvedValue(mockCreatedPass as any);
-
-    vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue({
-      id: 'promo-1',
-      merchantId: mockMerchantId,
-      targetStamps: 10,
-      rewardName: 'Capuccino Gratis',
-      isActive: true,
-    } as any);
-
-    vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue(ownerMembership as any);
-
-    vi.spyOn(prisma.stamp, 'count').mockResolvedValue(2);
-    vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
-
-    const result = await service.generatePass(
-      {
-        customerId: mockCustomerId,
-        merchantId: mockMerchantId,
-      },
-      mockUserId,
-    );
-
-    expect(result.passId).toBe(mockPassId);
-    expect(result.passToken).toBe('mock-entropy-token-12345');
-    expect(result.activeStamps).toBe(2);
-    expect(result.targetStamps).toBe(10);
-    expect(result.rewardName).toBe('Capuccino Gratis');
-    expect(result.appleWalletUrl).toContain('mock-entropy-token-12345/apple');
-    expect(result.googleWalletUrl).toBe('https://pay.google.com/gp/v/save/mock-jwt');
-
-    expect(prisma.pass.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ customerId: mockCustomerId, ...mockTarget }),
+  describe('generatePass', () => {
+    it('should throw UnauthorizedException if callerUserId is missing or empty', async () => {
+      await expect(
+        service.generatePass(
+          {
+            customerId: mockCustomerId,
+            merchantId: mockMerchantId,
+          },
+          '',
+        ),
+      ).rejects.toThrow(UnauthorizedException);
     });
-    expect(googleWalletService.generateSaveUrl).toHaveBeenCalledWith(
-      expect.objectContaining({ programId: mockProgramId, merchantName: 'Cafeteria Don Tito' }),
-    );
+
+    it('should throw ForbiddenException if callerUserId is not a member of the merchant', async () => {
+      vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue(null);
+
+      await expect(
+        service.generatePass(
+          {
+            customerId: mockCustomerId,
+            merchantId: mockMerchantId,
+          },
+          'unauthorized-user',
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw NotFoundException if customer does not exist', async () => {
+      vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue(ownerMembership as any);
+      vi.spyOn(prisma.customer, 'findUnique').mockResolvedValue(null);
+
+      await expect(
+        service.generatePass(
+          {
+            customerId: mockCustomerId,
+            merchantId: mockMerchantId,
+          },
+          mockUserId,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw ForbiddenException if the location does not exist (same as a foreign one)', async () => {
+      vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue(ownerMembership as any);
+      vi.spyOn(prisma.customer, 'findUnique').mockResolvedValue({ id: mockCustomerId } as any);
+      vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue(null);
+
+      await expect(
+        service.generatePass(
+          {
+            customerId: mockCustomerId,
+            merchantId: mockMerchantId,
+          },
+          mockUserId,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw BadRequestException if merchant has no active promotion', async () => {
+      vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue(ownerMembership as any);
+      vi.spyOn(prisma.customer, 'findUnique').mockResolvedValue({ id: mockCustomerId } as any);
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue({ id: mockPassId } as any);
+      vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(null);
+
+      await expect(
+        service.generatePass(
+          {
+            customerId: mockCustomerId,
+            merchantId: mockMerchantId,
+          },
+          mockUserId,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should create new pass and return Apple and Google Wallet URLs', async () => {
+      vi.spyOn(prisma.customer, 'findUnique').mockResolvedValue({
+        id: mockCustomerId,
+        rut: '12345678-5',
+        phone: '+56912345678',
+      } as any);
+
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(null); // No existing pass
+
+      const mockCreatedPass = {
+        id: mockPassId,
+        customerId: mockCustomerId,
+        ...mockTarget,
+        passToken: 'mock-entropy-token-12345',
+      };
+      vi.spyOn(prisma.pass, 'create').mockResolvedValue(mockCreatedPass as any);
+
+      vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue({
+        id: 'promo-1',
+        merchantId: mockMerchantId,
+        targetStamps: 10,
+        rewardName: 'Capuccino Gratis',
+        isActive: true,
+      } as any);
+
+      vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue(ownerMembership as any);
+
+      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(2);
+      vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
+
+      const result = await service.generatePass(
+        {
+          customerId: mockCustomerId,
+          merchantId: mockMerchantId,
+        },
+        mockUserId,
+      );
+
+      expect(result.passId).toBe(mockPassId);
+      expect(result.passToken).toBe('mock-entropy-token-12345');
+      expect(result.activeStamps).toBe(2);
+      expect(result.targetStamps).toBe(10);
+      expect(result.rewardName).toBe('Capuccino Gratis');
+      expect(result.appleWalletUrl).toContain('mock-entropy-token-12345/apple');
+      expect(result.googleWalletUrl).toBe('https://pay.google.com/gp/v/save/mock-jwt');
+
+      expect(prisma.pass.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ customerId: mockCustomerId, ...mockTarget }),
+      });
+      expect(googleWalletService.generateSaveUrl).toHaveBeenCalledWith(
+        expect.objectContaining({ programId: mockProgramId, merchantName: 'Cafeteria Don Tito' }),
+      );
+    });
   });
 
   describe('findOrCreatePass', () => {
@@ -266,20 +309,10 @@ describe('PassesService', () => {
 
   describe('getWalletUrlsForPass', () => {
     it('should return appleWalletUrl and googleWalletUrl for pass', async () => {
-      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue({
-        id: mockPassId,
-        passToken: 'token-123',
-        merchantId: mockMerchantId,
-        programId: mockProgramId,
-        brand: { id: mockMerchantId, name: 'Local' },
-        customer: { id: mockCustomerId, rut: '11111111-1' },
-      } as any);
-
-      vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue({
-        id: 'promo-1',
-        targetStamps: 5,
-        rewardName: 'Café',
-      } as any);
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(
+        createMockPass({ passToken: 'token-123' }) as any,
+      );
+      vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(createMockPromotion() as any);
       vi.spyOn(prisma.stamp, 'count').mockResolvedValue(0);
       vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
 
@@ -292,21 +325,12 @@ describe('PassesService', () => {
     it('should use transaction client tx when provided', async () => {
       const txMock: any = {
         pass: {
-          findUnique: vi.fn().mockResolvedValue({
-            id: mockPassId,
-            passToken: 'token-tx',
-            merchantId: mockMerchantId,
-            programId: mockProgramId,
-        brand: { id: mockMerchantId, name: 'Local' },
-            customer: { id: mockCustomerId, rut: '11111111-1' },
-          }),
+          findUnique: vi.fn().mockResolvedValue(
+            createMockPass({ passToken: 'token-tx' }),
+          ),
         },
         promotion: {
-          findFirst: vi.fn().mockResolvedValue({
-            id: 'promo-1',
-            targetStamps: 5,
-            rewardName: 'Café',
-          }),
+          findFirst: vi.fn().mockResolvedValue(createMockPromotion()),
         },
         stamp: {
           count: vi.fn().mockResolvedValue(0),
@@ -327,41 +351,97 @@ describe('PassesService', () => {
     });
   });
 
-  it('should throw BadRequestException in getApplePassBuffer if no active promotion', async () => {
-    vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue({
-      id: mockPassId,
-      passToken: 'token-abc',
-      merchantId: mockMerchantId,
-      programId: mockProgramId,
-        brand: { id: mockMerchantId, name: 'Local' },
-      customer: { id: mockCustomerId, rut: '11111111-1' },
-    } as any);
+  describe('getApplePassBuffer', () => {
+    it('should throw BadRequestException if no active promotion', async () => {
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(createMockPass() as any);
+      vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(null);
 
-    vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(null);
+      await expect(service.getApplePassBuffer('token-abc')).rejects.toThrow(BadRequestException);
+    });
 
-    await expect(service.getApplePassBuffer('token-abc')).rejects.toThrow(BadRequestException);
+    it('should return Apple pass buffer when valid pass and promotion exist', async () => {
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(createMockPass() as any);
+      vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(createMockPromotion() as any);
+      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(0);
+      vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
+
+      const buffer = await service.getApplePassBuffer('token-abc');
+      expect(buffer).toBeInstanceOf(Buffer);
+      expect(buffer.toString()).toBe('mock-pkpass-buffer');
+    });
   });
 
-  it('should return Apple pass buffer when valid pass and promotion exist', async () => {
-    vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue({
-      id: mockPassId,
-      passToken: 'token-abc',
-      merchantId: mockMerchantId,
-      programId: mockProgramId,
-        brand: { id: mockMerchantId, name: 'Local' },
-      customer: { id: mockCustomerId, rut: '11111111-1' },
-    } as any);
+  describe('notifyPassUpdate', () => {
+    it('dispatches updateLoyaltyObject with passId, activeStamps and options', async () => {
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(createMockPass() as any);
+      vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(createMockPromotion() as any);
+      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(3);
+      vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
 
-    vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue({
-      id: 'promo-1',
-      targetStamps: 5,
-      rewardName: 'Café',
-    } as any);
-    vi.spyOn(prisma.stamp, 'count').mockResolvedValue(0);
-    vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
+      await service.notifyPassUpdate(mockPassId);
 
-    const buffer = await service.getApplePassBuffer('token-abc');
-    expect(buffer).toBeInstanceOf(Buffer);
-    expect(buffer.toString()).toBe('mock-pkpass-buffer');
+      expect(googleWalletService.updateLoyaltyObject).toHaveBeenCalledWith(
+        mockPassId,
+        3,
+        {
+          targetStamps: 5,
+          rewardName: 'Café',
+        },
+      );
+    });
+
+    it('returns early when pass does not exist', async () => {
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(null);
+
+      await service.notifyPassUpdate('non-existent-pass');
+
+      expect(googleWalletService.updateLoyaltyObject).not.toHaveBeenCalled();
+    });
+
+    it('serializes rapid consecutive updates for the same pass in FIFO order', async () => {
+      const executionOrder: string[] = [];
+
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(createMockPass() as any);
+      vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(createMockPromotion() as any);
+      vi.spyOn(prisma.stamp, 'count')
+        .mockResolvedValueOnce(5)
+        .mockResolvedValueOnce(0);
+
+      vi.spyOn(googleWalletService, 'updateLoyaltyObject').mockImplementation(
+        async (_id, stamps) => {
+          executionOrder.push(`update-${stamps}`);
+        },
+      );
+
+      // Disparamos dos actualizaciones simultáneas para el mismo passId
+      const p1 = service.notifyPassUpdate(mockPassId);
+      const p2 = service.notifyPassUpdate(mockPassId);
+
+      await Promise.all([p1, p2]);
+
+      expect(executionOrder).toEqual(['update-5', 'update-0']);
+    });
+
+    it('selects reached promotion over higher unreached target when multiple promotions exist', async () => {
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(createMockPass() as any);
+
+      vi.spyOn(prisma.promotion, 'findMany').mockResolvedValue([
+        createMockPromotion({ id: 'promo-cafe', targetStamps: 5, rewardName: 'Café' }),
+        createMockPromotion({ id: 'promo-almuerzo', targetStamps: 10, rewardName: 'Almuerzo' }),
+      ] as any);
+
+      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(6);
+
+      await service.notifyPassUpdate(mockPassId);
+
+      expect(googleWalletService.updateLoyaltyObject).toHaveBeenCalledWith(
+        mockPassId,
+        6,
+        expect.objectContaining({
+          targetStamps: 5,
+          rewardName: 'Café',
+        }),
+      );
+    });
   });
 });
