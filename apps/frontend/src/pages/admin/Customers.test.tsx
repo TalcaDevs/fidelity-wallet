@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import { Customers } from './Customers';
 import * as customersService from '../../services/customersService';
 import * as toastHook from '../../hooks/useToast';
@@ -30,7 +31,7 @@ describe('Customers page (Ley 19.628)', () => {
       },
     ]);
 
-    render(<Customers brandId="m-1" merchantId="m-1" />);
+    render(<MemoryRouter><Customers brandId="m-1" merchantId="m-1" /></MemoryRouter>);
 
     await waitFor(() => {
       expect(screen.getByText('Acciones')).toBeInTheDocument();
@@ -53,7 +54,7 @@ describe('Customers page (Ley 19.628)', () => {
     ]);
     const deleteSpy = vi.spyOn(customersService, 'deleteCustomer').mockResolvedValue(undefined);
 
-    render(<Customers brandId="m-1" merchantId="m-1" />);
+    render(<MemoryRouter><Customers brandId="m-1" merchantId="m-1" /></MemoryRouter>);
 
     await waitFor(() => {
       expect(screen.getByTitle('Eliminar datos personales (Ley 19.628)')).toBeInTheDocument();
@@ -90,7 +91,7 @@ describe('Customers page (Ley 19.628)', () => {
     ]);
     const deleteSpy = vi.spyOn(customersService, 'deleteCustomer').mockResolvedValue(undefined);
 
-    render(<Customers brandId="m-1" merchantId="m-1" />);
+    render(<MemoryRouter><Customers brandId="m-1" merchantId="m-1" /></MemoryRouter>);
 
     await waitFor(() => {
       expect(screen.getByTitle('Eliminar datos personales (Ley 19.628)')).toBeInTheDocument();

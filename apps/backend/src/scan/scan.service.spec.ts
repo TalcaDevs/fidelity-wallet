@@ -15,11 +15,22 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { ScanActionDto } from './dto/scan-action.dto.js';
 import { ManualLookupLimiter } from './manual-lookup-limiter.js';
+import type { ReceiptStorageService } from './receipt-storage.service.js';
+import { ScanValidationTokens } from './validation-token.js';
 import { ScanService, resolveStampCooldownMs } from './scan.service.js';
 
 // El cooldown se pasa explícito: el resultado no depende del .env de quien corre los tests.
 const configWithCooldown = (minutes: string) =>
   ({ get: (key: string) => (key === 'STAMP_COOLDOWN_MINUTES' ? minutes : undefined) }) as unknown as ConfigService;
+
+
+const receiptStorageStub = () =>
+  ({
+    uploadThen: vi.fn((_upload: unknown, persist: () => Promise<unknown>) => persist()),
+    remove: vi.fn(),
+  }) as unknown as ReceiptStorageService;
+const validationTokensStub = () =>
+  new ScanValidationTokens({ get: () => 'test-secret' } as unknown as ConfigService);
 
 describe('ScanService', () => {
   let service: ScanService;
@@ -121,7 +132,7 @@ describe('ScanService', () => {
       notifyPassUpdate: vi.fn().mockResolvedValue(undefined),
     } as unknown as PassesService;
 
-    service = new ScanService(prisma, passesService, configWithCooldown('30'), new ManualLookupLimiter());
+    service = new ScanService(prisma, passesService, configWithCooldown('30'), new ManualLookupLimiter(), receiptStorageStub(), validationTokensStub());
   });
 
   it('should throw UnauthorizedException if callerUserId is missing', async () => {
@@ -436,6 +447,9 @@ describe('ScanService', () => {
         type: ScanType.STAMP_ADDED,
         createdByUserId: mockUserId,
         method: ScanMethod.QR,
+        stampCount: 1,
+        purchaseAmount: null,
+        note: null,
       },
     });
 
@@ -873,7 +887,7 @@ describe('ScanService', () => {
     });
 
     it('does not block anything when STAMP_COOLDOWN_MINUTES=0', async () => {
-      const noCooldown = new ScanService(prisma, passesService, configWithCooldown('0'), new ManualLookupLimiter());
+      const noCooldown = new ScanService(prisma, passesService, configWithCooldown('0'), new ManualLookupLimiter(), receiptStorageStub(), validationTokensStub());
       vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
       vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue({
         id: 'scan-just-now',
@@ -907,7 +921,12 @@ describe('ScanService', () => {
         mockUserId,
       );
 
-      expect(result.customer).toEqual({ rut: '12.***.*78-5', phone: expect.any(String) });
+      expect(result.customer).toEqual({
+        firstName: null,
+        rut: '12.***.*78-5',
+        phone: expect.any(String),
+        email: null,
+      });
       expect(result.customer).not.toHaveProperty('id');
     });
 
@@ -989,7 +1008,7 @@ describe('ScanService', () => {
     });
 
     it('rate-limits manual lookups per user but never QR scans', async () => {
-      const limited = new ScanService(prisma, passesService, configWithCooldown('30'), new ManualLookupLimiter(2, 60_000));
+      const limited = new ScanService(prisma, passesService, configWithCooldown('30'), new ManualLookupLimiter(2, 60_000), receiptStorageStub(), validationTokensStub());
       vi.spyOn(prisma.pass, 'findFirst').mockResolvedValue(null);
       const manual = { customer: { rut: '12.345.678-5' }, action: ScanActionType.STAMP, merchantId: mockMerchantId };
 

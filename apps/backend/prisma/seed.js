@@ -114,6 +114,23 @@ function nextRut() {
 let phoneBase = 81_000_000;
 const nextPhone = () => `+569${(phoneBase += 1301)}`;
 
+// Sin random(): el perfil sale de un contador para no correr la secuencia del resto del seed.
+const FIRST_NAMES = ['María', 'José', 'Camila', 'Matías', 'Valentina', 'Benjamín', 'Fernanda', 'Diego'];
+const LAST_NAMES = ['González', 'Muñoz', 'Rojas', 'Díaz', 'Pérez', 'Soto', 'Contreras'];
+let customerSeq = 0;
+function nextProfile() {
+  customerSeq++;
+  // Uno de cada tres no deja nombre, correo ni cumpleaños: son opcionales en el alta.
+  if (customerSeq % 3 === 0) return {};
+  return {
+    name: `${FIRST_NAMES[customerSeq % FIRST_NAMES.length]} ${LAST_NAMES[customerSeq % LAST_NAMES.length]}`,
+    email: `cliente${customerSeq}@example.com`,
+    birthDay: (customerSeq % 28) + 1,
+    birthMonth: (customerSeq % 12) + 1,
+    ...(customerSeq % 2 === 0 ? { birthYear: 1980 + (customerSeq % 25) } : {}),
+  };
+}
+
 async function check(promise) {
   const { data, error } = await promise;
   if (error) throw error;
@@ -202,7 +219,7 @@ async function seedCustomers(ctx, count, merchantIds) {
     const [customer] = await check(
       supabase
         .from('Customer')
-        .insert({ rut: nextRut(), phone: nextPhone(), termsAcceptedAt: daysAgo(joinedDaysAgo).toISOString(), termsVersion: '2026-09-24', createdAt: daysAgo(joinedDaysAgo).toISOString() })
+        .insert({ rut: nextRut(), phone: nextPhone(), ...nextProfile(), termsAcceptedAt: daysAgo(joinedDaysAgo).toISOString(), termsVersion: '2026-10-03', createdAt: daysAgo(joinedDaysAgo).toISOString() })
         .select('id'),
     );
     const [pass] = await check(
@@ -230,7 +247,16 @@ async function seedCustomers(ctx, count, merchantIds) {
       const [scan] = await check(
         supabase
           .from('Scan')
-          .insert({ passId: pass.id, brandId: ctx.brandId, programId: ctx.programId, merchantId, type: 'STAMP_ADDED', createdByUserId: staff.userId, createdAt: at.toISOString() })
+          .insert({
+            passId: pass.id,
+            brandId: ctx.brandId,
+            programId: ctx.programId,
+            merchantId,
+            type: 'STAMP_ADDED',
+            createdByUserId: staff.userId,
+            createdAt: at.toISOString(),
+            purchaseAmount: stamps % 2 === 0 ? 3000 + (stamps % 10) * 1500 : null,
+          })
           .select('id'),
       );
       const [stamp] = await check(

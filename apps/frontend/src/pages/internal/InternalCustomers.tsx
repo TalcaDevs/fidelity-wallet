@@ -123,6 +123,17 @@ export function InternalCustomers() {
                         <p key={card.brandId}>
                           <Link to={`/internal/brands/${card.brandId}`} className="font-bold text-violet-600 hover:underline">{card.brandName}</Link>
                           <span className="text-slate-500"> · {card.activeStamps} sellos</span>
+                          {isSuperadmin && (
+                            <>
+                              {' · '}
+                              <Link
+                                to={`/internal/customers/${c.id}/history?brandId=${card.brandId}`}
+                                className="font-bold text-violet-600 hover:underline"
+                              >
+                                Historial
+                              </Link>
+                            </>
+                          )}
                         </p>
                       ))}
                     </td>

@@ -122,4 +122,80 @@ describe('Join', () => {
       expect(screen.getByText('¡Tarjeta Lista!')).toBeInTheDocument();
     });
   });
+describe('datos del alta', () => {
+    const merchantHandler = (onPost: (body: Record<string, unknown>) => void) =>
+      async (url: string, init?: RequestInit) => {
+        if (url.includes('/api/merchants/by-slug/test-merchant')) {
+          return new Response(JSON.stringify({
+            id: 'm1',
+            name: 'Local Test',
+            slug: 'test-merchant',
+            Promotion: [{ id: 'p1', targetStamps: 5, rewardName: 'Café' }],
+            activePromotions: [{ id: 'p1' }],
+          }), { status: 200 });
+        }
+        if (url.includes('/api/customers') && init?.method === 'POST') {
+          onPost(JSON.parse(init.body as string) as Record<string, unknown>);
+          return new Response(JSON.stringify({ appleWalletUrl: 'http://apple', googleWalletUrl: 'http://google' }), { status: 201 });
+        }
+        return new Response('{}', { status: 404 });
+      };
+
+    it('pide el teléfono o el correo y no envía nada sin ellos', async () => {
+      const posts: Record<string, unknown>[] = [];
+      currentFetchHandler = merchantHandler((body) => posts.push(body));
+      renderJoin();
+      await screen.findByText('Local Test');
+      const user = userEvent.setup();
+
+      await user.type(screen.getByLabelText(/nombre/i), 'María');
+      await user.click(screen.getByRole('checkbox', { name: /Acepto los/i }));
+      await user.click(screen.getByRole('button', { name: 'Obtener mi Tarjeta' }));
+
+      expect(screen.getByText('Ingresa tu teléfono o tu correo para recibir tu tarjeta.')).toBeInTheDocument();
+      expect(posts).toEqual([]);
+    });
+
+    it('emite la tarjeta solo con correo, nombre y cumpleaños sin año', async () => {
+      const posts: Record<string, unknown>[] = [];
+      currentFetchHandler = merchantHandler((body) => posts.push(body));
+      renderJoin();
+      await screen.findByText('Local Test');
+      const user = userEvent.setup();
+
+      await user.type(screen.getByLabelText(/nombre/i), '  María Pérez ');
+      await user.type(screen.getByLabelText(/correo electrónico/i), 'Maria@Gmail.com');
+      await user.selectOptions(screen.getByLabelText('Día'), '14');
+      await user.selectOptions(screen.getByLabelText('Mes'), 'Febrero');
+      await user.click(screen.getByRole('checkbox', { name: /Acepto los/i }));
+      await user.click(screen.getByRole('button', { name: 'Obtener mi Tarjeta' }));
+
+      await screen.findByText('¡Tarjeta Lista!');
+      expect(posts).toEqual([{
+        merchantId: 'm1',
+        name: 'María Pérez',
+        email: 'maria@gmail.com',
+        birthDay: 14,
+        birthMonth: 2,
+        acceptedTerms: true,
+      }]);
+    });
+
+    it('no envía un RUT opcional mal escrito ni un cumpleaños incompleto', async () => {
+      const posts: Record<string, unknown>[] = [];
+      currentFetchHandler = merchantHandler((body) => posts.push(body));
+      renderJoin();
+      await screen.findByText('Local Test');
+      const user = userEvent.setup();
+
+      await user.type(screen.getByLabelText(/celular/i), '912345678');
+      await user.type(screen.getByLabelText(/RUT/i), '12345678-0');
+      await user.selectOptions(screen.getByLabelText('Mes'), 'Abril');
+      await user.click(screen.getByRole('checkbox', { name: /Acepto los/i }));
+      await user.click(screen.getByRole('button', { name: 'Obtener mi Tarjeta' }));
+
+      expect(screen.getByText('Indica el día y el mes de tu cumpleaños')).toBeInTheDocument();
+      expect(posts).toEqual([]);
+    });
+  });
 });

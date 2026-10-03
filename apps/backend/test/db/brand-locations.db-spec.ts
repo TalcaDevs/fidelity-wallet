@@ -174,8 +174,8 @@ describe('RLS por marca y local', () => {
     });
   });
 
-  it('los tickets de soporte no se leen desde el panel: solo por el backend', async () => {
-    for (const table of ['Ticket', 'TicketMessage', 'TicketAttachment']) {
+  it('los tickets de soporte y las fotos de boletas no se leen desde el panel: solo por el backend', async () => {
+    for (const table of ['Ticket', 'TicketMessage', 'TicketAttachment', 'ScanReceipt']) {
       await inRollback(async (tx) => {
         const a = await createBrand(tx, 'a');
         await as(tx, a.ownerId, () =>
@@ -187,6 +187,24 @@ describe('RLS por marca y local', () => {
         );
       });
     }
+  });
+
+  it('el cumpleaños exige día y mes, y el correo se guarda en minúsculas', async () => {
+    await inRollback(async (tx) => {
+      await tx.$executeRaw`INSERT INTO "Customer" (phone, "birthDay", "birthMonth") VALUES ('+56900000001', 29, 2)`;
+      await expectDbError(
+        tx,
+        () => tx.$executeRaw`INSERT INTO "Customer" (phone, "birthYear") VALUES ('+56900000002', 1990)`,
+        'Customer_birthday_parts',
+      );
+    });
+    await inRollback(async (tx) => {
+      await expectDbError(
+        tx,
+        () => tx.$executeRaw`INSERT INTO "Customer" (email) VALUES ('Maria@Gmail.com')`,
+        'Customer_email_lowercase',
+      );
+    });
   });
 
   it('el OWNER edita promociones y vigencia de su marca; el STAFF no', async () => {

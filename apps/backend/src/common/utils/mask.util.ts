@@ -30,3 +30,13 @@ export function maskPhone(phone: string): string {
   const lastFour = clean.slice(-4);
   return `${prefix} **** ${lastFour}`;
 }
+
+/**
+ * Masks an email for cashier display, keeping the first letter and the domain.
+ * E.g., "maria.perez@gmail.com" -> "m***@gmail.com"
+ */
+export function maskEmail(email: string): string {
+  const at = email.lastIndexOf('@');
+  if (at < 1) return '***';
+  return `${email[0]}***${email.slice(at)}`;
+}

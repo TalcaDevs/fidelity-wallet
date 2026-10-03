@@ -11,11 +11,15 @@ export const ROUTES = {
   support: '/admin/support',
   promotions: '/admin/promotions',
   customers: '/admin/customers',
+  customerDetail: '/admin/customers/:customerId',
   settings: '/admin/settings',
   scan: '/scan',
   internal: '/internal',
   terms: '/terminos',
 } as const;
+
+export const customerDetailPath = (customerId: string) =>
+  ROUTES.customerDetail.replace(':customerId', encodeURIComponent(customerId));
 
 // El destino al que volver después del login llega desde fuera (query string o
 // state del historial), así que se valida antes de usarlo: sin este filtro un

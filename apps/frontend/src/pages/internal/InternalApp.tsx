@@ -8,6 +8,7 @@ import { InternalRoleContext } from './internalRole';
 import { InternalAudit } from './InternalAudit';
 import { InternalBrands } from './InternalBrands';
 import { InternalCustomers } from './InternalCustomers';
+import { InternalCustomerHistory } from './InternalCustomerHistory';
 import { InternalSummary } from './InternalSummary';
 import { InternalTickets } from './InternalTickets';
 
@@ -92,6 +93,7 @@ export default function InternalApp({ session, role }: { session: Session; role:
           <Route path="brands/:brandId" element={<InternalBrandDetail />} />
           <Route path="map" element={<InternalMap />} />
           <Route path="customers" element={<InternalCustomers />} />
+          {role === 'SUPERADMIN' && <Route path="customers/:customerId/history" element={<InternalCustomerHistory />} />}
           {role === 'SUPERADMIN' && <Route path="audit" element={<InternalAudit />} />}
           <Route path="*" element={<Navigate to="summary" replace />} />
         </Route>

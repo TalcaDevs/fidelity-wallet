@@ -7,7 +7,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { PassesService } from './passes.service.js';
+import { PassesService, passCustomerLabel } from './passes.service.js';
 import { ApplePassService } from './services/apple-pass.service.js';
 import { GoogleWalletService } from './services/google-wallet.service.js';
 
@@ -457,5 +457,17 @@ describe('PassesService', () => {
         }),
       );
     });
+  });
+});
+
+describe('passCustomerLabel', () => {
+  const base = { name: null, phone: null, email: null, rut: null } as never;
+
+  it('shows the first name, or a masked identifier when there is none', () => {
+    expect(passCustomerLabel({ ...(base as object), name: 'María José Pérez', phone: '+56912345678' } as never)).toBe('María');
+    expect(passCustomerLabel({ ...(base as object), phone: '+56912345678', rut: '12345678-5' } as never)).toBe('+56 9 **** 5678');
+    expect(passCustomerLabel({ ...(base as object), email: 'maria@gmail.com' } as never)).toBe('m***@gmail.com');
+    expect(passCustomerLabel({ ...(base as object), rut: '12345678-5' } as never)).toBe('12.***.*78-5');
+    expect(passCustomerLabel(null)).toBe('Cliente');
   });
 });

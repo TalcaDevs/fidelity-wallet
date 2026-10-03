@@ -1,3 +1,4 @@
+import type { ScanMethodName } from '@fidelity/shared';
 import { supabase } from '../lib/supabase';
 
 export interface ScanCustomer {
@@ -10,7 +11,7 @@ export interface ScanWithCustomer {
   type: 'STAMP_ADDED' | 'REWARD_REDEEMED' | string;
   createdAt: string;
   customer: ScanCustomer | null;
-  method?: 'QR' | 'MANUAL';
+  method?: ScanMethodName;
 }
 
 export interface DashboardStats {
@@ -38,7 +39,7 @@ interface RawScanRow {
   id: string;
   type: string;
   createdAt: string;
-  method?: 'QR' | 'MANUAL';
+  method?: ScanMethodName;
   pass?: { customer?: ScanCustomer | ScanCustomer[] | null } | { customer?: ScanCustomer | ScanCustomer[] | null }[] | null;
 }
 
