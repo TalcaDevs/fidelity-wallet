@@ -4,7 +4,6 @@ import {
   OWNER_STAMP_REASON_MIN,
   PURCHASE_AMOUNT_MAX,
   PURCHASE_NOTE_MAX,
-  RECEIPT_MAX_BYTES,
   RECEIPT_MIME_TYPES,
   balanceUnit,
   type CardType,
@@ -14,6 +13,7 @@ import { Modal } from '../../../../components/ui/Modal';
 import { ErrorAlert } from '../../../../components/ui/ErrorAlert';
 import { errorMessage, useAsyncData } from '../../../../hooks/useAsyncData';
 import { addStampsFromPanel } from '../../../../services/customersService';
+import { prepareReceiptPhoto } from '../../../../lib/receiptPhoto';
 import { listBrandLocations } from '../../../../services/locationsService';
 
 interface AddStampsModalProps {
@@ -56,6 +56,7 @@ export function AddStampsModal({
   const [note, setNote] = useState('');
   const [receipt, setReceipt] = useState<File | null>(null);
   const [receiptProblem, setReceiptProblem] = useState<string | null>(null);
+  const [preparingReceipt, setPreparingReceipt] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,16 +80,13 @@ export function AddStampsModal({
   const amountProblem =
     amountValue !== undefined && amountValue > PURCHASE_AMOUNT_MAX ? 'El monto es demasiado alto' : null;
 
-  const handleReceipt = (file: File | undefined) => {
+  const handleReceipt = async (file: File | undefined) => {
     if (!file) return;
-    let problem: string | null = null;
-    if (!(RECEIPT_MIME_TYPES as readonly string[]).includes(file.type)) {
-      problem = 'La foto de la boleta debe ser una imagen JPG o PNG';
-    } else if (file.size > RECEIPT_MAX_BYTES) {
-      problem = 'La foto de la boleta no puede superar los 10 MB';
-    }
-    setReceiptProblem(problem);
-    setReceipt(problem ? null : file);
+    setPreparingReceipt(true);
+    const result = await prepareReceiptPhoto(file);
+    setPreparingReceipt(false);
+    setReceiptProblem(result.problem);
+    setReceipt(result.file);
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -222,7 +220,7 @@ export function AddStampsModal({
               id={`${ids}-receipt`}
               type="file"
               accept={RECEIPT_MIME_TYPES.join(',')}
-              onChange={(e) => handleReceipt(e.target.files?.[0])}
+              onChange={(e) => void handleReceipt(e.target.files?.[0])}
               className="block w-full text-sm text-slate-600 dark:text-slate-300 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-slate-100 dark:file:bg-slate-800 file:font-bold"
             />
             {receiptProblem && <p role="alert" className="mt-2 text-sm font-bold text-red-600">{receiptProblem}</p>}
@@ -256,7 +254,7 @@ export function AddStampsModal({
           </button>
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy || preparingReceipt}
             className="px-5 py-3 rounded-xl font-bold text-white bg-brand-blue hover:bg-blue-600 shadow-lg shadow-brand-blue/20 disabled:opacity-50"
           >
             {busy ? 'Sumando…' : `Sumar ${clp.format(stampCount)} ${balanceUnit(cardType, stampCount)}`}

@@ -1,14 +1,15 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useId, useState } from 'react';
 import {
   OWNER_STAMP_REASON_MAX,
   OWNER_STAMP_REASON_MIN,
   PURCHASE_AMOUNT_MAX,
   PURCHASE_NOTE_MAX,
-  RECEIPT_MAX_BYTES,
   RECEIPT_MIME_TYPES,
   balanceUnit,
   pointsForAmount,
 } from '@fidelity/shared';
+import { useFilePreview } from '../../hooks/useFilePreview';
+import { prepareReceiptPhoto } from '../../lib/receiptPhoto';
 import type { ScanValidation as Validation, StampExtras } from '../../services/scanService';
 
 interface ScanValidationProps {
@@ -25,14 +26,6 @@ const timeOf = (iso: string) =>
 
 /** "12.500" → 12500. Solo dígitos: el monto es en pesos enteros. */
 const amountDigits = (raw: string) => raw.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 9);
-
-function receiptError(file: File): string | null {
-  if (!(RECEIPT_MIME_TYPES as readonly string[]).includes(file.type)) {
-    return 'La foto de la boleta debe ser una imagen JPG o PNG';
-  }
-  if (file.size > RECEIPT_MAX_BYTES) return 'La foto de la boleta no puede superar los 10 MB';
-  return null;
-}
 
 function blockedText(validation: Validation, isPoints: boolean): string {
   if (validation.canStamp) {
@@ -59,16 +52,15 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
   const isPoints = validation.cardType === 'POINTS';
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
-  const [receipt, setReceipt] = useState<File | null>(null);
+  const [receiptPreview, setReceiptFile] = useFilePreview();
+  const receipt = receiptPreview?.file ?? null;
   const [receiptProblem, setReceiptProblem] = useState<string | null>(null);
+  const [preparingReceipt, setPreparingReceipt] = useState(false);
   const [stampCount, setStampCount] = useState(1);
   const [reason, setReason] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
-  const previewUrl = useMemo(() => (receipt ? URL.createObjectURL(receipt) : null), [receipt]);
-  useEffect(() => () => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-  }, [previewUrl]);
+  const previewUrl = receiptPreview?.url ?? null;
 
   const needsReason = validation.reasonRequired || (isOwnerLoad && stampCount > 1);
   const reasonText = reason.trim();
@@ -89,16 +81,18 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
   const receiptMissing = validation.receiptRequired && !receipt ? 'Adjunta la foto de la boleta: es obligatoria para sumar puntos' : null;
   const progress = Math.min(100, Math.round((validation.stampsCount / Math.max(1, validation.targetStamps)) * 100));
 
-  const handleReceipt = (file: File | undefined) => {
+  const handleReceipt = async (file: File | undefined) => {
     if (!file) return;
-    const problem = receiptError(file);
-    setReceiptProblem(problem);
-    setReceipt(problem ? null : file);
+    setPreparingReceipt(true);
+    const result = await prepareReceiptPhoto(file);
+    setPreparingReceipt(false);
+    setReceiptProblem(result.problem);
+    setReceiptFile(result.file);
   };
 
   const handleAdd = () => {
     setSubmitted(true);
-    if (!validation.canStamp || reasonProblem || amountProblem || receiptMissing) return;
+    if (!validation.canStamp || preparingReceipt || reasonProblem || amountProblem || receiptMissing) return;
     onAddStamp({
       purchaseAmount: amountValue,
       note: note.trim() || undefined,
@@ -271,7 +265,7 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
                 <span className="flex-1 min-w-0 truncate text-sm font-medium text-slate-300">{receipt.name}</span>
                 <button
                   type="button"
-                  onClick={() => setReceipt(null)}
+                  onClick={() => setReceiptFile(null)}
                   className="px-3 py-2 rounded-xl text-sm font-bold text-red-300 hover:bg-red-950/40"
                 >
                   Quitar
@@ -296,7 +290,7 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
               capture="environment"
               className="sr-only"
               onChange={(e) => {
-                handleReceipt(e.target.files?.[0]);
+                void handleReceipt(e.target.files?.[0]);
                 e.target.value = '';
               }}
             />
@@ -312,7 +306,7 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
         <button
           type="button"
           onClick={handleAdd}
-          disabled={!validation.canStamp}
+          disabled={!validation.canStamp || preparingReceipt}
           className="w-full py-4 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:hover:bg-blue-600 rounded-2xl font-black text-xl shadow-lg shadow-blue-600/30 transition-all active:scale-[0.98]"
         >
           {isPoints

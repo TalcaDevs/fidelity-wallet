@@ -65,8 +65,10 @@ describe('CustomerHistoryService', () => {
       },
       scan: {
         findMany: vi.fn().mockResolvedValue([redeemScan, stampScan]),
-        count: vi.fn(({ where }: any) => Promise.resolve(where.type ? 1 : 2)),
-        aggregate: vi.fn().mockResolvedValue({ _sum: { purchaseAmount: 12500 } }),
+        groupBy: vi.fn().mockResolvedValue([
+          { type: 'STAMP_ADDED', _count: { _all: 1 }, _sum: { purchaseAmount: 12500 } },
+          { type: 'REWARD_REDEEMED', _count: { _all: 1 }, _sum: { purchaseAmount: null } },
+        ]),
       },
       stamp: {
         count: vi.fn().mockResolvedValue(3),
