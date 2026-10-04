@@ -27,7 +27,6 @@ export function Scan({ merchantId, session, role }: { merchantId: string, sessio
   const isOnline = useOnlineStatus();
   const [isSessionExpired, setIsSessionExpired] = useState(false);
 
-
   const handleScan = useCallback(async (nextTarget: ScanTarget) => {
     setState('loading');
     setTarget(nextTarget);

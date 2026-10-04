@@ -108,10 +108,12 @@ describe('equipo interno', () => {
 });
 
 describe('RedirectIfAuthenticated', () => {
+  const DEFAULT_PLATFORM_ADMIN: PlatformAdminState = { role: null, loading: false };
+
   const renderRedirect = (
-    membership?: MembershipState,
+    membership: MembershipState = LOADED,
     initialEntries: string[] = ['/admin/login'],
-    platformAdmin?: PlatformAdminState,
+    platformAdmin: PlatformAdminState = DEFAULT_PLATFORM_ADMIN,
   ) =>
     render(
       <MemoryRouter initialEntries={initialEntries}>
@@ -161,6 +163,15 @@ describe('RedirectIfAuthenticated', () => {
       NO_MEMBERSHIP,
       ['/admin/login'],
       { role: 'SUPPORT', loading: false },
+    );
+    expect(screen.getByText('pantalla interna')).toBeInTheDocument();
+  });
+
+  it('manda a /internal al OWNER que también es PlatformAdmin cuando viene con redirect a /internal', () => {
+    renderRedirect(
+      LOADED,
+      ['/admin/login?redirect=%2Finternal'],
+      { role: 'SUPERADMIN', loading: false },
     );
     expect(screen.getByText('pantalla interna')).toBeInTheDocument();
   });

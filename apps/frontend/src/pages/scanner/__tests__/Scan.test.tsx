@@ -19,9 +19,6 @@ vi.mock('../../../hooks/useOnlineStatus', () => ({
 vi.mock('../../../lib/supabase', () => ({
   supabase: {
     auth: {
-      onAuthStateChange: vi.fn(() => ({
-        data: { subscription: { unsubscribe: vi.fn() } },
-      })),
       signOut: vi.fn().mockResolvedValue({ error: null }),
     },
   },

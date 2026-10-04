@@ -22,7 +22,7 @@ function FullScreenLoader({ label }: { label: string }) {
   );
 }
 
-function AccessDenied({ reason }: { reason: string | null }) {
+export function AccessDenied({ reason }: { reason: string | null }) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-5 px-6 text-center bg-slate-50 dark:bg-[#0f172a] text-slate-600 dark:text-slate-300">
       <div className="w-14 h-14 rounded-2xl bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400 flex items-center justify-center text-2xl font-black">
@@ -129,38 +129,38 @@ export function RedirectIfAuthenticated({
   platformAdmin,
 }: {
   session: Session | null;
-  membership?: MembershipState;
-  platformAdmin?: PlatformAdminState;
+  membership: MembershipState;
+  platformAdmin: PlatformAdminState;
 }) {
   const location = useLocation();
   if (!session) return <Outlet />;
 
-  if (membership) {
-    if (membership.loading || (!membership.role && platformAdmin?.loading)) {
-      return <FullScreenLoader label="Cargando tu cuenta..." />;
-    }
+  if (membership.loading || (!membership.role && platformAdmin.loading)) {
+    return <FullScreenLoader label="Cargando tu cuenta..." />;
+  }
 
-    if (!membership.role && platformAdmin?.role) {
-      return <Navigate to={ROUTES.internal} replace />;
-    }
+  if (!membership.role && platformAdmin.role) {
+    return <Navigate to={ROUTES.internal} replace />;
+  }
 
-    if (membership.role === 'STAFF') {
-      return <Navigate to={ROUTES.scan} replace />;
-    }
+  if (membership.role === 'STAFF') {
+    return <Navigate to={ROUTES.scan} replace />;
+  }
 
-    if (membership.error || !membership.role) {
-      return <AccessDenied reason={membership.error} />;
-    }
+  if (membership.error || !membership.role) {
+    return <AccessDenied reason={membership.error} />;
   }
 
   const fromState = (location.state as LocationState | null)?.from;
   const fromQuery = new URLSearchParams(location.search).get('redirect');
   const candidate = fromState ?? fromQuery;
 
-  // Para OWNER o fallback: si candidate es /scan (por ejemplo, residuo de sesión previa),
-  // se ignora y se envía al dashboard. Solo respetamos redirects hacia /admin/*.
+  // Solo respetamos destinos que pertenezcan a /admin o /internal (rutas exactas o subrutas).
+  // Defensa en profundidad: previene open redirects y descarta candidatos no deseados como /scan.
+  const isAllowed = (p: string) =>
+    [ROUTES.admin, ROUTES.internal].some((base) => p === base || p.startsWith(`${base}/`));
   const target =
-    candidate && candidate !== ROUTES.scan && candidate.startsWith('/admin')
+    candidate && isAllowed(candidate)
       ? resolveRedirectTarget(candidate)
       : ROUTES.dashboard;
 
