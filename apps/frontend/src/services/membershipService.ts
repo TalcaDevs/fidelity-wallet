@@ -59,7 +59,6 @@ async function resolveMembership(row: BrandMemberRow): Promise<Membership> {
       .from('LoyaltyProgram')
       .select('id')
       .eq('brandId', row.brandId)
-      .eq('type', 'STAMPS')
       .maybeSingle(),
   ]);
 

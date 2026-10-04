@@ -1,5 +1,6 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { PassesService } from '../passes/passes.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import {
   LocationsService,
@@ -27,6 +28,7 @@ const merchant = (overrides: object = {}) => ({
 
 describe('LocationsService', () => {
   let prisma: any;
+  let passes: { refreshNearbyLocations: ReturnType<typeof vi.fn> };
   let service: LocationsService;
 
   beforeEach(() => {
@@ -51,7 +53,29 @@ describe('LocationsService', () => {
       $queryRaw: vi.fn().mockResolvedValue([]),
       $transaction: vi.fn((fn: (tx: unknown) => unknown) => fn(prisma)),
     };
-    service = new LocationsService(prisma as PrismaService);
+    passes = { refreshNearbyLocations: vi.fn().mockResolvedValue(undefined) };
+    service = new LocationsService(prisma as PrismaService, passes as unknown as PassesService);
+  });
+
+  describe('aviso al pasar cerca (Google Wallet)', () => {
+    it('republishes the card when a location moves or stops operating', async () => {
+      await service.update('b-1', 'owner', 'm-1', { latitude: -33.17, longitude: -70.67 });
+      await service.update('b-1', 'owner', 'm-1', { isActive: false });
+      expect(passes.refreshNearbyLocations).toHaveBeenCalledTimes(2);
+      expect(passes.refreshNearbyLocations).toHaveBeenCalledWith('b-1');
+    });
+
+    it('does not republish for changes Google does not use', async () => {
+      await service.update('b-1', 'owner', 'm-1', { name: 'Centro 2', phone: '+56912345678' });
+      expect(passes.refreshNearbyLocations).not.toHaveBeenCalled();
+    });
+
+    it('republishes when a new location already has coordinates', async () => {
+      await service.create('b-1', 'owner', { name: 'Sin mapa' });
+      expect(passes.refreshNearbyLocations).not.toHaveBeenCalled();
+      await service.create('b-1', 'owner', { name: 'Con mapa', latitude: -33.4, longitude: -70.6 });
+      expect(passes.refreshNearbyLocations).toHaveBeenCalledWith('b-1');
+    });
   });
 
   it('is only for the OWNER of an active brand', async () => {

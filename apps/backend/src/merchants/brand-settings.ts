@@ -1,5 +1,6 @@
 import {
   Body,
+  ConflictException,
   Controller,
   Get,
   Injectable,
@@ -14,9 +15,10 @@ import {
   ApiPropertyOptional,
   ApiTags,
 } from '@nestjs/swagger';
+import { PESOS_PER_POINT_MAX, PESOS_PER_POINT_MIN } from '@fidelity/shared';
 import { ProgramType } from '@prisma/client';
 import { Transform } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
 import { requireActiveBrandOwner } from '../common/access/brand-access.js';
 import {
   CurrentUser,
@@ -28,9 +30,40 @@ import { PrismaService } from '../prisma/prisma.service.js';
 export interface BrandSettingsDto {
   name: string;
   stampValidityDays: number | null;
+  pointsEnabled: boolean;
+  pesosPerPoint: number;
 }
 
-export class UpdateBrandSettingsDto {
+const POINTS_IN_USE =
+  'Tu tarjeta es de puntos: cámbiala a sellos en Tarjeta antes de deshabilitar los puntos';
+
+/** Los puntos no se pueden apagar con la tarjeta de la marca funcionando con puntos. */
+export async function assertPointsCanBeDisabled(
+  db: Pick<PrismaService, 'loyaltyProgram'>,
+  brandId: string,
+): Promise<void> {
+  const pointsCard = await db.loyaltyProgram.findFirst({
+    where: { brandId, type: ProgramType.POINTS },
+    select: { id: true },
+  });
+  if (pointsCard) throw new ConflictException(POINTS_IN_USE);
+}
+
+export class PointsSettingsFields {
+  @ApiPropertyOptional({ description: 'Habilita las tarjetas de puntos para la marca' })
+  @IsOptional()
+  @IsBoolean({ message: 'pointsEnabled debe ser verdadero o falso' })
+  pointsEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Pesos de compra por cada punto', example: 1000 })
+  @IsOptional()
+  @IsInt({ message: 'Los pesos por punto deben ser un número entero' })
+  @Min(PESOS_PER_POINT_MIN, { message: 'Cada punto debe valer al menos $1' })
+  @Max(PESOS_PER_POINT_MAX, { message: 'Los pesos por punto son demasiado altos' })
+  pesosPerPoint?: number;
+}
+
+export class UpdateBrandSettingsDto extends PointsSettingsFields {
   @ApiPropertyOptional({ example: 'Café Demo' })
   @IsOptional()
   @IsString()
@@ -53,7 +86,7 @@ export class UpdateBrandSettingsDto {
   stampValidityDays?: number | null;
 }
 
-/** Lo que es de la marca y no de un local: su nombre y la vigencia de los sellos del programa. */
+/** Lo que es de la marca y no de un local: su nombre, la vigencia de los sellos y los puntos. */
 @Injectable()
 export class BrandSettingsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -63,26 +96,34 @@ export class BrandSettingsService {
     return this.read(brandId);
   }
 
-  /** Nombre y vigencia en una transacción: o se guardan los dos o ninguno. */
+  /** Todo en una transacción: o se guarda todo o nada. */
   async update(
     brandId: string,
     userId: string,
     dto: UpdateBrandSettingsDto,
   ): Promise<BrandSettingsDto> {
     await requireActiveBrandOwner(this.prisma, userId, brandId);
+    if (dto.pointsEnabled === false) {
+      await assertPointsCanBeDisabled(this.prisma, brandId);
+    }
+    const brandData = {
+      ...(dto.name !== undefined ? { name: dto.name } : {}),
+      ...(dto.pointsEnabled !== undefined ? { pointsEnabled: dto.pointsEnabled } : {}),
+      ...(dto.pesosPerPoint !== undefined ? { pesosPerPoint: dto.pesosPerPoint } : {}),
+    };
     await this.prisma.$transaction([
-      ...(dto.name !== undefined
+      ...(Object.keys(brandData).length > 0
         ? [
             this.prisma.brand.update({
               where: { id: brandId },
-              data: { name: dto.name },
+              data: brandData,
             }),
           ]
         : []),
       ...(dto.stampValidityDays !== undefined
         ? [
             this.prisma.loyaltyProgram.updateMany({
-              where: { brandId, type: ProgramType.STAMPS },
+              where: { brandId },
               data: { stampValidityDays: dto.stampValidityDays },
             }),
           ]
@@ -96,8 +137,10 @@ export class BrandSettingsService {
       where: { id: brandId },
       select: {
         name: true,
+        pointsEnabled: true,
+        pesosPerPoint: true,
         programs: {
-          where: { type: ProgramType.STAMPS },
+          orderBy: { createdAt: 'asc' },
           take: 1,
           select: { stampValidityDays: true },
         },
@@ -106,6 +149,8 @@ export class BrandSettingsService {
     return {
       name: brand.name,
       stampValidityDays: brand.programs[0]?.stampValidityDays ?? null,
+      pointsEnabled: brand.pointsEnabled,
+      pesosPerPoint: brand.pesosPerPoint,
     };
   }
 }
@@ -119,7 +164,7 @@ export class BrandSettingsController {
 
   @Get()
   @ApiOperation({
-    summary: 'Nombre de la marca y vigencia de los sellos (solo OWNER)',
+    summary: 'Nombre de la marca, vigencia de los sellos y puntos (solo OWNER)',
   })
   get(
     @Param('brandId', new ParseUUIDPipe()) brandId: string,
@@ -130,7 +175,7 @@ export class BrandSettingsController {
 
   @Patch()
   @ApiOperation({
-    summary: 'Editar nombre de la marca y vigencia de los sellos (solo OWNER)',
+    summary: 'Editar nombre de la marca, vigencia de los sellos y puntos (solo OWNER)',
   })
   update(
     @Param('brandId', new ParseUUIDPipe()) brandId: string,

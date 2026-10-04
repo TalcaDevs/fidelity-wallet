@@ -1,6 +1,8 @@
 // Contrato de Equipo (HANDOFF §6.4). Lo implementa el módulo staff del backend y lo consume
 // /admin/team.
 
+import type { ScanMethodName } from './scan.js';
+
 export type MemberRole = 'OWNER' | 'STAFF';
 
 /** ACTIVE = ya entró alguna vez (last_sign_in_at). */
@@ -33,7 +35,7 @@ export interface ReassignStaffInput {
 }
 
 export type StaffScanType = 'STAMP_ADDED' | 'REWARD_REDEEMED';
-export type StaffScanMethod = 'QR' | 'MANUAL';
+export type StaffScanMethod = ScanMethodName;
 
 export interface StaffActivityDto {
   id: string;

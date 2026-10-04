@@ -3,6 +3,8 @@ import { jsonBody, requestJson } from './httpJson';
 export interface BrandSettings {
   name: string;
   stampValidityDays: number | null;
+  pointsEnabled: boolean;
+  pesosPerPoint: number;
 }
 
 // Lo que es de la marca y no de un local. Se guarda en una sola transacción del backend.

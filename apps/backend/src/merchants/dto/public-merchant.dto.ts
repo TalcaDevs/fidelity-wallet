@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import type { PublicCardDto } from '@fidelity/shared';
 import { IsNotEmpty, IsString } from 'class-validator';
 
 export class PublicPromotionDto {
@@ -58,6 +59,14 @@ export class PublicMerchantDto {
     type: [PublicPromotionDto],
   })
   activePromotions: PublicPromotionDto[];
+
+  @ApiProperty({
+    description:
+      'La tarjeta de la marca (PublicCardDto de @fidelity/shared): tipo, colores, logo, datos que pide el registro y si ya cerró. null si la marca no tiene tarjeta',
+    nullable: true,
+    type: Object,
+  })
+  card: PublicCardDto | null;
 }
 
 export class UpdateSlugDto {

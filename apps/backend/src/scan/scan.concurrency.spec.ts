@@ -6,12 +6,23 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { ScanActionDto, ScanActionType } from './dto/scan-action.dto.js';
 import type { ConfigService } from '@nestjs/config';
 import { ManualLookupLimiter } from './manual-lookup-limiter.js';
+import type { ReceiptStorageService } from './receipt-storage.service.js';
+import { ScanValidationTokens } from './validation-token.js';
 import { ScanService } from './scan.service.js';
 
 // Cooldown fijo en 30 min: el test no depende del .env de quien lo corre.
 const config = { get: () => '30' } as unknown as ConfigService;
 const makeService = (prisma: PrismaService, passes: PassesService) =>
-  new ScanService(prisma, passes, config, new ManualLookupLimiter());
+  new ScanService(prisma, passes, config, new ManualLookupLimiter(), receiptStorageStub(), validationTokensStub());
+
+
+const receiptStorageStub = () =>
+  ({
+    uploadThen: vi.fn((_upload: unknown, persist: () => Promise<unknown>) => persist()),
+    remove: vi.fn(),
+  }) as unknown as ReceiptStorageService;
+const validationTokensStub = () =>
+  new ScanValidationTokens({ get: () => 'test-secret' } as unknown as ConfigService);
 
 describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
   let service: ScanService;
@@ -72,6 +83,7 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
         id: mockProgramId,
         brandId: mockMerchantId,
         stampValidityDays: 30,
+        dailyStampLimit: false,
         isActive: true,
       }),
     },
@@ -92,6 +104,10 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
         create: vi.fn().mockResolvedValue({ id: 'scan-1' }),
       },
       stamp: {
+        createMany: vi.fn(async function (this: { create: (args: unknown) => unknown }, { data }: { data: unknown[] }) {
+          for (const row of data) await this.create({ data: row });
+          return { count: data.length };
+        }),
         create: vi.fn().mockResolvedValue({ id: 'stamp-1' }),
         count: vi.fn().mockResolvedValue(1),
         findFirst: vi.fn().mockResolvedValue(null),
@@ -163,6 +179,10 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
           }),
         },
         stamp: {
+          createMany: vi.fn(async function (this: { create: (args: unknown) => unknown }, { data }: { data: unknown[] }) {
+            for (const row of data) await this.create({ data: row });
+            return { count: data.length };
+          }),
           count: vi.fn(async () => {
             return stampsInDb.filter((s) => s.consumedAt === null).length;
           }),
@@ -272,6 +292,10 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
         }),
       },
       stamp: {
+        createMany: vi.fn(async function (this: { create: (args: unknown) => unknown }, { data }: { data: unknown[] }) {
+          for (const row of data) await this.create({ data: row });
+          return { count: data.length };
+        }),
         create: vi.fn(async ({ data }) => {
           stampCreates.push(data.sourceScanId);
           return { id: `stamp-${stampCreates.length}` };

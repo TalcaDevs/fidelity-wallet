@@ -1,11 +1,14 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   CATALOG_PLANS,
+  PESOS_PER_POINT_MAX,
+  PESOS_PER_POINT_MIN,
   REVEAL_REASON_MIN,
   type PlanId,
 } from '@fidelity/shared';
 import { Transform, Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsDateString,
   IsLatitude,
   IsLongitude,
@@ -118,6 +121,18 @@ export class UpdateBrandDto {
   @IsOptional()
   @IsDateString()
   trialEndsAt?: string;
+
+  @ApiPropertyOptional({ description: 'Habilita las tarjetas de puntos para la marca' })
+  @IsOptional()
+  @IsBoolean()
+  pointsEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Pesos de compra por cada punto', example: 1000 })
+  @IsOptional()
+  @IsInt()
+  @Min(PESOS_PER_POINT_MIN)
+  @Max(PESOS_PER_POINT_MAX)
+  pesosPerPoint?: number;
 
   @ApiPropertyOptional({ description: 'Motivo del cambio, queda en AuditLog' })
   @IsOptional()

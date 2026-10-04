@@ -174,8 +174,8 @@ describe('RLS por marca y local', () => {
     });
   });
 
-  it('los tickets de soporte no se leen desde el panel: solo por el backend', async () => {
-    for (const table of ['Ticket', 'TicketMessage', 'TicketAttachment']) {
+  it('los tickets de soporte y las fotos de boletas no se leen desde el panel: solo por el backend', async () => {
+    for (const table of ['Ticket', 'TicketMessage', 'TicketAttachment', 'ScanReceipt']) {
       await inRollback(async (tx) => {
         const a = await createBrand(tx, 'a');
         await as(tx, a.ownerId, () =>
@@ -187,6 +187,24 @@ describe('RLS por marca y local', () => {
         );
       });
     }
+  });
+
+  it('el cumpleaños exige día y mes, y el correo se guarda en minúsculas', async () => {
+    await inRollback(async (tx) => {
+      await tx.$executeRaw`INSERT INTO "Customer" (phone, "birthDay", "birthMonth") VALUES ('+56900000001', 29, 2)`;
+      await expectDbError(
+        tx,
+        () => tx.$executeRaw`INSERT INTO "Customer" (phone, "birthYear") VALUES ('+56900000002', 1990)`,
+        'Customer_birthday_parts',
+      );
+    });
+    await inRollback(async (tx) => {
+      await expectDbError(
+        tx,
+        () => tx.$executeRaw`INSERT INTO "Customer" (email) VALUES ('Maria@Gmail.com')`,
+        'Customer_email_lowercase',
+      );
+    });
   });
 
   it('el OWNER edita promociones y vigencia de su marca; el STAFF no', async () => {
@@ -292,17 +310,28 @@ describe('triggers de consistencia', () => {
     });
   });
 
-  it('permite un solo programa de sellos por marca', async () => {
+  it('permite una sola tarjeta por marca, del tipo que sea', async () => {
     await inRollback(async (tx) => {
       const a = await createBrand(tx, 'a');
       await expectDbError(
         tx,
         () =>
           tx.loyaltyProgram.create({
-            data: { brandId: a.brandId, name: 'Otro' },
+            data: { brandId: a.brandId, name: 'Otra', type: 'POINTS' },
           }),
         'P2002',
       );
+    });
+  });
+
+  it('la tarjeta puede pasar de sellos a puntos', async () => {
+    await inRollback(async (tx) => {
+      const a = await createBrand(tx, 'a');
+      const updated = await tx.loyaltyProgram.update({
+        where: { id: a.programId },
+        data: { type: 'POINTS' },
+      });
+      expect(updated.type).toBe('POINTS');
     });
   });
 

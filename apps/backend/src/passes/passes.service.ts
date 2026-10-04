@@ -7,14 +7,27 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { firstName } from '@fidelity/shared';
 import { Brand, Customer, Pass, Prisma } from '@prisma/client';
-import { findStampsProgram, resolveLocationAccess } from '../common/access/brand-access.js';
-import { maskPhone, maskRut } from '../common/utils/mask.util.js';
+import { passExpiresAt, toCardView } from '../cards/card-program.js';
+import { findBrandProgram, resolveLocationAccess } from '../common/access/brand-access.js';
+import { maskEmail, maskPhone, maskRut } from '../common/utils/mask.util.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { GeneratePassDto, PassEmissionResponseDto } from './dto/generate-pass.dto.js';
-import { PassData } from './interfaces/pass-data.interface.js';
+import type { CardClassData, PassData } from './interfaces/pass-data.interface.js';
 import { ApplePassService } from './services/apple-pass.service.js';
 import { GoogleWalletService } from './services/google-wallet.service.js';
+
+/** Nombre que muestra la tarjeta en la billetera: el primer nombre, o un dato enmascarado. */
+export function passCustomerLabel(customer: Customer | null): string {
+  if (!customer) return 'Cliente';
+  const name = firstName(customer.name);
+  if (name) return name;
+  if (customer.phone) return maskPhone(customer.phone);
+  if (customer.email) return maskEmail(customer.email);
+  if (customer.rut) return maskRut(customer.rut);
+  return 'Cliente';
+}
 
 export type PassWithBrandAndCustomer = Pass & {
   brand: Brand;
@@ -29,10 +42,21 @@ export interface PassTarget {
 
 const passRelations = { brand: true, customer: true } as const;
 
+/** Pases que se reenvían a Google a la vez al publicar un cambio de la tarjeta. */
+const REPUBLISH_CONCURRENCY = 5;
+const REPUBLISH_PAGE = 200;
+
+interface PublishRun {
+  /** Llegó otra publicación mientras corría: al terminar se publica una vez más. */
+  again: boolean;
+  refreshPasses: boolean;
+}
+
 @Injectable()
 export class PassesService {
   private readonly logger = new Logger(PassesService.name);
   private readonly passUpdateQueues = new Map<string, Promise<void>>();
+  private readonly publishRuns = new Map<string, PublishRun>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -108,7 +132,7 @@ export class PassesService {
       throw new NotFoundException(`Cliente con ID ${dto.customerId} no encontrado`);
     }
 
-    const program = await findStampsProgram(this.prisma, merchant.brandId);
+    const program = await findBrandProgram(this.prisma, merchant.brandId);
     const brand = await this.prisma.brand.findUnique({ where: { id: merchant.brandId } });
     if (!program || !brand) {
       throw new BadRequestException('El comercio no tiene una promoción activa configurada');
@@ -126,7 +150,7 @@ export class PassesService {
       customer,
     };
 
-    const passData = await this.buildPassData(fullPass, dto.promotionId);
+    const passData = await this.buildPassData(fullPass, dto.promotionId, undefined, true);
     if (!passData) {
       throw new BadRequestException('El comercio no tiene una promoción activa configurada');
     }
@@ -164,7 +188,7 @@ export class PassesService {
 
     if (!pass) return null;
 
-    const passData = await this.buildPassData(pass, undefined, tx);
+    const passData = await this.buildPassData(pass, undefined, tx, true);
     if (!passData) return null;
 
     return {
@@ -224,16 +248,114 @@ export class PassesService {
       this.logger.log(
         `Dispatching wallet update for pass ${passId} (activeStamps: ${passData.activeStamps})`,
       );
-      await Promise.allSettled([
-        this.googleWalletService.updateLoyaltyObject(passId, passData.activeStamps, {
-          targetStamps: passData.targetStamps,
-          rewardName: passData.rewardName,
-        }),
-      ]);
+      await Promise.allSettled([this.googleWalletService.updateLoyaltyObject(passData)]);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(`Failed to dispatch background wallet push for pass ${passId}: ${msg}`);
     }
+  }
+
+  /**
+   * Publica el diseño de la tarjeta en Google Wallet y, con refreshPasses, reenvía cada pase
+   * emitido (saldo, textos y tira de sellos con la versión nueva del diseño). Corre en segundo
+   * plano. Dos publicaciones de la misma tarjeta no se pisan: si llega otra mientras corre una,
+   * al terminar se publica una sola vez más, con lo último guardado.
+   */
+  async publishCard(programId: string, { refreshPasses = true } = {}): Promise<void> {
+    const running = this.publishRuns.get(programId);
+    if (running) {
+      running.again = true;
+      running.refreshPasses ||= refreshPasses;
+      return;
+    }
+    const run: PublishRun = { again: false, refreshPasses };
+    this.publishRuns.set(programId, run);
+    try {
+      do {
+        const refresh = run.refreshPasses;
+        run.again = false;
+        run.refreshPasses = false;
+        await this.publishOnce(programId, refresh);
+      } while (run.again);
+    } finally {
+      this.publishRuns.delete(programId);
+    }
+  }
+
+  /**
+   * Las sucursales con ubicación van en la clase (aviso al pasar cerca): si cambian, se vuelve a
+   * publicar la clase. Los pases no cambian, así que no se reenvían.
+   */
+  async refreshNearbyLocations(brandId: string): Promise<void> {
+    try {
+      const program = await findBrandProgram(this.prisma, brandId);
+      if (!program || !toCardView(program).details.nearbyNotifications) return;
+      await this.publishCard(program.id, { refreshPasses: false });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Failed to refresh locations of brand ${brandId}: ${msg}`);
+    }
+  }
+
+  private async publishOnce(programId: string, refreshPasses: boolean): Promise<void> {
+    try {
+      const cardClass = await this.cardClassData(this.prisma, programId, true);
+      if (!cardClass) return;
+      await this.googleWalletService.upsertLoyaltyClass(cardClass);
+      if (!refreshPasses) return;
+
+      let cursor: string | undefined;
+      let total = 0;
+      for (;;) {
+        const page = await this.prisma.pass.findMany({
+          where: { programId },
+          select: { id: true },
+          orderBy: { id: 'asc' },
+          take: REPUBLISH_PAGE,
+          ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+        });
+        if (page.length === 0) break;
+        for (let i = 0; i < page.length; i += REPUBLISH_CONCURRENCY) {
+          await Promise.all(
+            page.slice(i, i + REPUBLISH_CONCURRENCY).map((p) => this.notifyPassUpdate(p.id)),
+          );
+        }
+        total += page.length;
+        cursor = page[page.length - 1].id;
+      }
+      this.logger.log(`Card ${programId} published; ${total} passes refreshed`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Failed to publish card ${programId}: ${msg}`);
+    }
+  }
+
+  private async cardClassData(
+    prisma: Prisma.TransactionClient | PrismaService,
+    programId: string,
+    includeLocations: boolean,
+  ): Promise<CardClassData | null> {
+    const program = await prisma.loyaltyProgram.findUnique({
+      where: { id: programId },
+      include: { brand: { select: { name: true } } },
+    });
+    if (!program) return null;
+
+    const locations = includeLocations
+      ? await prisma.merchant.findMany({
+          where: { brandId: program.brandId, isActive: true, latitude: { not: null }, longitude: { not: null } },
+          select: { latitude: true, longitude: true },
+          orderBy: { createdAt: 'asc' },
+          take: 10,
+        })
+      : [];
+
+    return {
+      programId,
+      brandName: program.brand.name,
+      card: toCardView(program),
+      locations: locations.map((l) => ({ latitude: l.latitude!, longitude: l.longitude! })),
+    };
   }
 
   /**
@@ -246,8 +368,11 @@ export class PassesService {
     pass: PassWithBrandAndCustomer,
     explicitPromotionId?: string,
     tx?: Prisma.TransactionClient,
+    includeLocations = false,
   ): Promise<PassData | null> {
     const prisma = tx ?? this.prisma;
+    const cardClass = await this.cardClassData(prisma, pass.programId, includeLocations);
+    if (!cardClass) return null;
     const now = new Date();
     const activeStamps = await prisma.stamp.count({
       where: {
@@ -298,23 +423,20 @@ export class PassesService {
       select: { expiresAt: true },
     });
 
-    const customerLabel = pass.customer?.rut
-      ? maskRut(pass.customer.rut)
-      : pass.customer?.phone
-        ? maskPhone(pass.customer.phone)
-        : 'Cliente';
-
     return {
       passId: pass.id,
       serialNumber: pass.id,
       passToken: pass.passToken,
       programId: pass.programId,
       merchantName: pass.brand.name,
-      customerLabel,
+      customerLabel: passCustomerLabel(pass.customer),
       activeStamps,
       targetStamps: promotion.targetStamps,
       rewardName: promotion.rewardName,
       nextExpiryAt: nextExpiring?.expiresAt ?? null,
+      memberSince: pass.createdAt,
+      cardExpiresAt: passExpiresAt(cardClass.card, pass.createdAt),
+      cardClass,
     };
   }
 }

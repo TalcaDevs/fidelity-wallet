@@ -5,7 +5,7 @@
  * de los términos, subirla aquí y en apps/backend/src/customers/terms.ts en el mismo PR:
  * Terms.test.tsx falla si no coinciden.
  */
-export const TERMS_VERSION = '2026-09-24';
+export const TERMS_VERSION = '2026-10-03';
 
 const env = import.meta.env;
 

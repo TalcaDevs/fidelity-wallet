@@ -14,7 +14,7 @@ import { CustomersService } from './customers.service.js';
 import { CreateCustomerDto } from './dto/create-customer.dto.js';
 import { TERMS_VERSION } from './terms.js';
 
-// Alta válida: desde 2026-09-24 exige RUT + teléfono + aceptación de términos.
+// Alta válida: RUT opcional, teléfono o correo, y la aceptación de los términos.
 const validDto = (overrides: Partial<CreateCustomerDto> = {}): CreateCustomerDto => ({
   merchantId: 'm-1',
   rut: '11.111.111-1',
@@ -87,16 +87,117 @@ describe('CustomersService', () => {
     );
   });
 
-  it('should throw BadRequestException if the phone is missing (RUT alone is not enough)', async () => {
+  it('requires a phone or an email (the RUT alone is not enough)', async () => {
     await expect(
       service.createOrFindCustomer(validDto({ phone: '' })),
-    ).rejects.toThrow('Debe proporcionar el RUT y el teléfono para emitir la tarjeta');
+    ).rejects.toThrow('Ingresa tu teléfono o tu correo para emitir la tarjeta');
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
-  it('should throw BadRequestException if the RUT is missing (phone alone is not enough)', async () => {
+  describe('lo que pide la tarjeta', () => {
+    beforeEach(() => {
+      prismaMock.merchant.findUnique.mockResolvedValue(activeLocation);
+      prismaMock.customer.findUnique.mockResolvedValue(null);
+      prismaMock.customer.create.mockResolvedValue({ id: 'c-1' });
+      prismaMock.scan = { create: vi.fn().mockResolvedValue({ id: 'scan-welcome' }) };
+      prismaMock.stamp = { createMany: vi.fn().mockResolvedValue({ count: 0 }) };
+    });
+
+    it('rejects a signup without a required field', async () => {
+      prismaMock.loyaltyProgram.findFirst.mockResolvedValue({
+        ...stampsProgram,
+        registration: { name: 'REQUIRED', email: 'REQUIRED' },
+      });
+      await expect(service.createOrFindCustomer(validDto())).rejects.toThrow('Ingresa tu correo');
+      await expect(service.createOrFindCustomer(validDto({ email: 'ana@gmail.com' }))).rejects.toThrow(
+        'Ingresa tu nombre',
+      );
+      expect(prismaMock.customer.create).not.toHaveBeenCalled();
+    });
+
+    it('drops what the brand does not ask for', async () => {
+      prismaMock.loyaltyProgram.findFirst.mockResolvedValue({
+        ...stampsProgram,
+        registration: { rut: 'HIDDEN', birthday: 'HIDDEN' },
+      });
+      await service.createOrFindCustomer(validDto({ birthDay: 3, birthMonth: 4 }));
+      const { data } = prismaMock.customer.create.mock.calls[0][0];
+      expect(data.rut).toBeUndefined();
+      expect(data.birthDay).toBeUndefined();
+      expect(data.phone).toBe('+56912345678');
+    });
+
+    it('gives the welcome balance only with a new card', async () => {
+      prismaMock.loyaltyProgram.findFirst.mockResolvedValue({ ...stampsProgram, welcomeBalance: 2 });
+      await service.createOrFindCustomer(validDto());
+
+      expect(prismaMock.scan.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ passId: 'p-1', method: 'WELCOME', stampCount: 2, type: 'STAMP_ADDED' }),
+      });
+      const [{ data: rows }] = prismaMock.stamp.createMany.mock.calls[0];
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toMatchObject({ sourceScanId: 'scan-welcome', expiresAt: expect.any(Date) });
+      // El saldo se da antes de armar el pase, para que la tarjeta nazca con él.
+      expect(prismaMock.stamp.createMany.mock.invocationCallOrder[0]).toBeLessThan(
+        passesServiceMock.getWalletUrlsForPass.mock.invocationCallOrder[0],
+      );
+
+      passesServiceMock.findOrCreatePass.mockResolvedValue({ pass: { id: 'p-1' }, isNew: false });
+      prismaMock.scan.create.mockClear();
+      await service.createOrFindCustomer(validDto());
+      expect(prismaMock.scan.create).not.toHaveBeenCalled();
+    });
+
+    it('does not hand out new cards once a fixed-term card ended', async () => {
+      prismaMock.loyaltyProgram.findFirst.mockResolvedValue({
+        ...stampsProgram,
+        cardValidity: 'FIXED_DATE',
+        cardExpiresAt: new Date('2020-01-01T00:00:00Z'),
+      });
+      await expect(service.createOrFindCustomer(validDto())).rejects.toThrow('ya terminó');
+    });
+  });
+
+  it('creates the customer with only an email, a name and a birthday without year', async () => {
+    prismaMock.merchant.findUnique.mockResolvedValue(activeLocation);
+    prismaMock.customer.findUnique.mockResolvedValue(null);
+    prismaMock.customer.create.mockResolvedValue({ id: 'c-1' });
+
+    await service.createOrFindCustomer({
+      merchantId: 'm-1',
+      email: ' Maria@Gmail.com ',
+      name: '  María   Pérez ',
+      birthDay: 29,
+      birthMonth: 2,
+      acceptedTerms: true,
+    });
+
+    expect(prismaMock.customer.findUnique).toHaveBeenCalledTimes(1);
+    expect(prismaMock.customer.findUnique).toHaveBeenCalledWith({ where: { email: 'maria@gmail.com' } });
+    expect(prismaMock.customer.create).toHaveBeenCalledWith({
+      data: {
+        email: 'maria@gmail.com',
+        name: 'María Pérez',
+        birthDay: 29,
+        birthMonth: 2,
+        birthYear: undefined,
+        termsAcceptedAt: expect.any(Date),
+        termsVersion: TERMS_VERSION,
+      },
+    });
+  });
+
+  it('rejects an invalid email or birthday before opening the transaction', async () => {
+    await expect(service.createOrFindCustomer(validDto({ email: 'maria@' }))).rejects.toThrow(
+      'El correo ingresado no es válido',
+    );
     await expect(
-      service.createOrFindCustomer(validDto({ rut: '' })),
-    ).rejects.toThrow('Debe proporcionar el RUT y el teléfono para emitir la tarjeta');
+      service.createOrFindCustomer(validDto({ birthDay: 31, birthMonth: 4 })),
+    ).rejects.toThrow('La fecha de cumpleaños no es válida');
+    await expect(service.createOrFindCustomer(validDto({ birthYear: 1990 }))).rejects.toThrow(
+      'Indica el día y el mes de tu cumpleaños',
+    );
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
   it('should throw BadRequestException if the terms were not accepted', async () => {
@@ -206,6 +307,13 @@ describe('CustomersService', () => {
         termsVersion: TERMS_VERSION,
       },
     });
+    expect(prismaMock.pass.findFirst).toHaveBeenCalledWith({
+      where: {
+        programId: 'prog-1',
+        customer: { OR: [{ rut: '11111111-1' }, { phone: '+56912345678' }] },
+      },
+      select: { id: true },
+    });
     expect(result.customerId).toBe('c-1');
     expect(result.passId).toBe('p-1');
     expect(result.isNew).toBe(true);
@@ -314,6 +422,56 @@ describe('CustomersService', () => {
 
       await service.createOrFindCustomer(validDto());
 
+      expect(prismaMock.customer.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects an email that belongs to another customer', async () => {
+      prismaMock.customer.findUnique.mockImplementation(({ where }: any) => {
+        if (where.rut) return Promise.resolve({ id: 'c-1', rut: '11111111-1', phone: '+56912345678', email: null });
+        if (where.email) return Promise.resolve({ id: 'c-2', rut: null, phone: null, email: 'otra@gmail.com' });
+        return Promise.resolve(null);
+      });
+
+      await expect(
+        service.createOrFindCustomer(validDto({ email: 'otra@gmail.com' })),
+      ).rejects.toThrow('Los datos proporcionados no coinciden o no son válidos para emitir el pase.');
+    });
+
+    it('does NOT attach the sent email to a customer that had none', async () => {
+      existing({ rut: '11111111-1', phone: '+56912345678', email: null, termsVersion: TERMS_VERSION });
+
+      await service.createOrFindCustomer(validDto({ email: 'nueva@gmail.com' }));
+
+      expect(prismaMock.customer.update).not.toHaveBeenCalled();
+    });
+
+    it('fills an empty name and birthday but never overwrites them', async () => {
+      existing({
+        rut: '11111111-1',
+        phone: '+56912345678',
+        name: null,
+        birthDay: null,
+        termsVersion: TERMS_VERSION,
+      });
+
+      await service.createOrFindCustomer(
+        validDto({ name: 'María', birthDay: 14, birthMonth: 2, birthYear: 1990 }),
+      );
+      expect(prismaMock.customer.update).toHaveBeenCalledWith({
+        where: { id: 'c-1' },
+        data: { name: 'María', birthDay: 14, birthMonth: 2, birthYear: 1990 },
+      });
+
+      prismaMock.customer.update.mockClear();
+      existing({
+        rut: '11111111-1',
+        phone: '+56912345678',
+        name: 'María',
+        birthDay: 14,
+        birthMonth: 2,
+        termsVersion: TERMS_VERSION,
+      });
+      await service.createOrFindCustomer(validDto({ name: 'Otra Persona', birthDay: 1, birthMonth: 1 }));
       expect(prismaMock.customer.update).not.toHaveBeenCalled();
     });
 
@@ -474,9 +632,21 @@ describe('CreateCustomerDto validation', () => {
     expect(await errorsOf(validDto({ merchantId }))).toEqual([]);
   });
 
-  it('requires both RUT and phone', async () => {
-    expect(await errorsOf({ merchantId, rut: '11.111.111-1', acceptedTerms: true })).toContain('phone');
-    expect(await errorsOf({ merchantId, phone: '+56912345678', acceptedTerms: true })).toContain('rut');
+  it('requires a phone or an email, with the RUT optional', async () => {
+    expect(await errorsOf({ merchantId, rut: '11.111.111-1', acceptedTerms: true })).toEqual(
+      expect.arrayContaining(['phone', 'email']),
+    );
+    expect(await errorsOf({ merchantId, phone: '+56912345678', acceptedTerms: true })).toEqual([]);
+    expect(await errorsOf({ merchantId, email: 'maria@gmail.com', acceptedTerms: true })).toEqual([]);
+    expect(await errorsOf({ merchantId, phone: '  ', email: '', acceptedTerms: true })).toEqual(
+      expect.arrayContaining(['phone', 'email']),
+    );
+  });
+
+  it('validates the birthday parts and the name length', async () => {
+    expect(await errorsOf(validDto({ merchantId, birthDay: 32, birthMonth: 1 }))).toContain('birthDay');
+    expect(await errorsOf(validDto({ merchantId, birthDay: 1, birthMonth: 13 }))).toContain('birthMonth');
+    expect(await errorsOf(validDto({ merchantId, name: 'x'.repeat(81) }))).toContain('name');
   });
 
   it('rejects acceptedTerms false or missing', async () => {

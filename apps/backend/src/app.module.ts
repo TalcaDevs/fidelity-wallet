@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { BillingModule } from './billing/billing.module.js';
+import { CardsModule } from './cards/cards.module.js';
 import { CustomersModule } from './customers/customers.module.js';
 import { InternalModule } from './internal/internal.module.js';
 import { LocationsModule } from './locations/locations.module.js';
@@ -34,6 +35,7 @@ import { SupportModule } from './support/support.module.js';
     StaffModule,
     ScanModule,
     PassesModule,
+    CardsModule,
     SupportModule,
     BillingModule,
     ReportsModule,

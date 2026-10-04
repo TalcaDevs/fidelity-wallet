@@ -8,6 +8,7 @@ import {
 } from '../common/access/brand-access.js';
 import { assertPlanAllows } from '../common/plan/plan-limits.js';
 import { isValidSlug, slugify } from '../common/utils/slug.util.js';
+import { PassesService } from '../passes/passes.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type {
   CreateLocationDto,
@@ -60,10 +61,18 @@ export async function availableSlug(db: Db, name: string): Promise<string> {
   return `${base.slice(0, 47)}-${randomUUID().slice(0, 12)}`;
 }
 
+/** La ubicación y si opera: lo que va en el aviso de Google Wallet al pasar cerca del local. */
+export function changesNearbyLocations(dto: UpdateLocationDto): boolean {
+  return dto.latitude !== undefined || dto.longitude !== undefined || dto.isActive !== undefined;
+}
+
 /** Sucursales de la marca desde el panel del dueño: /api/brands/:brandId/locations. */
 @Injectable()
 export class LocationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly passes: PassesService,
+  ) {}
 
   async list(brandId: string, userId: string): Promise<LocationDto[]> {
     await requireActiveBrandOwner(this.prisma, userId, brandId);
@@ -94,18 +103,21 @@ export class LocationsService {
         });
       });
 
+    let created;
     try {
-      return toLocationDto(await create());
+      created = await create();
     } catch (err) {
       // Dos altas simultáneas con el mismo nombre: la segunda recalcula el slug.
       if (
-        err instanceof Prisma.PrismaClientKnownRequestError &&
-        err.code === 'P2002'
+        !(err instanceof Prisma.PrismaClientKnownRequestError) ||
+        err.code !== 'P2002'
       ) {
-        return toLocationDto(await create());
+        throw err;
       }
-      throw err;
+      created = await create();
     }
+    if (created.latitude !== null) void this.passes.refreshNearbyLocations(brandId);
+    return toLocationDto(created);
   }
 
   async update(
@@ -123,14 +135,14 @@ export class LocationsService {
       throw new NotFoundException('El local no existe en tu marca');
     const reactivating = dto.isActive === true && !existing.isActive;
 
-    return toLocationDto(
-      await this.prisma.$transaction(async (tx) => {
-        if (reactivating) await assertPlanAllows(tx, brandId, 'locations');
-        return tx.merchant.update({
-          where: { id: locationId },
-          data: locationChanges(dto),
-        });
-      }),
-    );
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (reactivating) await assertPlanAllows(tx, brandId, 'locations');
+      return tx.merchant.update({
+        where: { id: locationId },
+        data: locationChanges(dto),
+      });
+    });
+    if (changesNearbyLocations(dto)) void this.passes.refreshNearbyLocations(brandId);
+    return toLocationDto(updated);
   }
 }

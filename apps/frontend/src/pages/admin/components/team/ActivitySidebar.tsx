@@ -12,6 +12,8 @@ const SCAN_LABELS: Record<StaffScanType, string> = {
 const METHOD_LABELS: Record<StaffActivityDto['method'], string> = {
   QR: 'QR',
   MANUAL: 'Ingreso manual',
+  PANEL: 'Desde el panel',
+  WELCOME: 'Bienvenida',
 };
 
 /** Se monta por miembro (key = userId): cada apertura carga su propia actividad. */

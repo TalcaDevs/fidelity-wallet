@@ -2,7 +2,6 @@ import { ForbiddenException } from '@nestjs/common';
 import {
   BrandStatus,
   MerchantRole,
-  ProgramType,
   type BrandMember,
   type LoyaltyProgram,
   type Prisma,
@@ -106,12 +105,13 @@ export function assertLocationOperational(
   }
 }
 
-export async function findStampsProgram(
+/** La tarjeta de la marca (una por marca), sea de sellos o de puntos. */
+export async function findBrandProgram(
   db: Db,
   brandId: string,
 ): Promise<LoyaltyProgram | null> {
   return db.loyaltyProgram.findFirst({
-    where: { brandId, type: ProgramType.STAMPS },
+    where: { brandId },
     orderBy: { createdAt: 'asc' },
   });
 }

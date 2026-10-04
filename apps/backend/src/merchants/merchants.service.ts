@@ -5,7 +5,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, ProgramType } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { cardViewSelect, toCardView } from '../cards/card-program.js';
 import { isLocationOperational, resolveLocationAccess } from '../common/access/brand-access.js';
 import { isValidSlug, slugify, SLUG_MAX_LENGTH, SLUG_MIN_LENGTH } from '../common/utils/slug.util.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -34,12 +35,12 @@ export class MerchantsService {
               select: {
                 name: true,
                 status: true,
+                pesosPerPoint: true,
                 programs: {
-                  where: { type: ProgramType.STAMPS },
                   orderBy: { createdAt: 'asc' },
                   take: 1,
                   select: {
-                    stampValidityDays: true,
+                    ...cardViewSelect,
                     isActive: true,
                     promotions: {
                       where: { isActive: true },
@@ -60,6 +61,7 @@ export class MerchantsService {
 
     const program = merchant.brand.programs[0];
     const promotions = program?.isActive ? program.promotions : [];
+    const card = program ? toCardView(program) : null;
     return {
       id: merchant.id,
       name: merchant.name,
@@ -70,6 +72,21 @@ export class MerchantsService {
       // La landing destaca la más reciente, pero los sellos sirven para cualquiera de las activas.
       activePromotion: promotions[0] ?? null,
       activePromotions: promotions,
+      card: card && {
+        type: card.type,
+        name: card.name,
+        backgroundColor: card.design.backgroundColor,
+        textColor: card.design.textColor,
+        logoUrl: card.design.logoUrl,
+        heroImageUrl: card.design.heroImageUrl,
+        pesosPerPoint: merchant.brand.pesosPerPoint,
+        welcomeBalance: card.welcomeBalance,
+        registration: card.registration,
+        closed:
+          card.validity.type === 'FIXED_DATE' &&
+          !!card.validity.expiresAt &&
+          new Date(card.validity.expiresAt) <= new Date(),
+      },
     };
   }
 
