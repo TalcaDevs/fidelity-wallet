@@ -9,25 +9,29 @@ datasource db {
 
 /// En toda marca migrada o que se registra sola, Brand.id = el id de su primer local.
 model Brand {
-  id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name         String
-  legalName    String?
-  taxId        String?
-  contactEmail String?
-  contactPhone String?
-  status       BrandStatus      @default(ACTIVE)
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  legalName     String?
+  taxId         String?
+  contactEmail  String?
+  contactPhone  String?
+  status        BrandStatus      @default(ACTIVE)
   /// Plan asignado a mano por el equipo interno hasta que exista cobro real (HANDOFF §6.5).
-  planId       PlanId           @default(TRIAL)
-  trialEndsAt  DateTime         @default(dbgenerated("(now() + '30 days'::interval)"))
-  locations    Merchant[]
-  programs     LoyaltyProgram[]
-  members      BrandMember[]
-  tickets      Ticket[]
-  passes       Pass[]
-  stamps       Stamp[]
-  scans        Scan[]
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @default(now()) @updatedAt
+  planId        PlanId           @default(TRIAL)
+  trialEndsAt   DateTime         @default(dbgenerated("(now() + '30 days'::interval)"))
+  /// La tarjeta puede ser de puntos solo si está habilitado (lo deciden el OWNER y SUPERADMIN).
+  pointsEnabled Boolean          @default(false)
+  /// Pesos chilenos de compra por cada punto.
+  pesosPerPoint Int              @default(1000)
+  locations     Merchant[]
+  programs      LoyaltyProgram[]
+  members       BrandMember[]
+  tickets       Ticket[]
+  passes        Pass[]
+  stamps        Stamp[]
+  scans         Scan[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @default(now()) @updatedAt
 }
 
 /// Un LOCAL de una marca (HANDOFF §4.1: Merchant = Location).
@@ -72,7 +76,9 @@ model BrandMember {
   @@index([merchantId])
 }
 
-/// A lo más un programa STAMPS por marca (trigger loyalty_program_single_stamps).
+/// La tarjeta de la marca: un programa por marca (trigger loyalty_program_single_per_brand).
+/// Con type POINTS cada fila de Stamp es un punto: el saldo, el vencimiento y el canje FIFO
+/// funcionan igual que con sellos.
 model LoyaltyProgram {
   id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   brandId           String       @db.Uuid
@@ -81,14 +87,32 @@ model LoyaltyProgram {
   /// LOCATION está reservado y no se implementa.
   scope             ProgramScope @default(BRAND)
   name              String
-  /// Vigencia de los sellos en dias. NULL = los sellos de este programa no vencen.
+  /// Vigencia de los sellos (o puntos) en dias. NULL = no vencen.
   stampValidityDays Int?
   isActive          Boolean      @default(true)
+  /// Sellos o puntos que recibe el cliente al obtener la tarjeta.
+  welcomeBalance    Int          @default(0)
+  /// Solo STAMPS: el STAFF suma a lo más un sello por día y cliente (hora de Chile).
+  dailyStampLimit   Boolean      @default(true)
+  cardValidity      CardValidity @default(UNLIMITED)
+  /// Solo FIXED_DATE.
+  cardExpiresAt     DateTime?
+  /// Solo AFTER_JOIN.
+  cardValidityDays  Int?
+  /// CardDesign de @fidelity/shared (colores, ícono e imágenes).
+  design            Json         @default("{}")
+  /// CardDetails de @fidelity/shared (enlaces, secciones y datos visibles).
+  details           Json         @default("{}")
+  /// RegistrationConfig de @fidelity/shared (datos que pide /join).
+  registration      Json         @default("{}")
+  /// Sube con cada guardado: versiona las URLs de las imágenes que genera el backend.
+  designVersion     Int          @default(1)
   promotions        Promotion[]
   passes            Pass[]
   stamps            Stamp[]
   scans             Scan[]
   createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @default(now()) @updatedAt
 
   @@index([brandId])
 }
@@ -204,9 +228,10 @@ model Scan {
   /// Auditoria: que usuario (dueno o mesero) ejecuto el scan.
   createdByUserId String?        @db.Uuid
   method          ScanMethod     @default(QR)
-  /// Sellos que sumó este scan: 1 para el STAFF; el OWNER puede cargar varios (motivo en AuditLog).
+  /// Sellos (o puntos) que sumó este scan. Sellos: 1 para el STAFF; el OWNER puede cargar varios
+  /// (motivo en AuditLog). Puntos: los que da el monto de la compra.
   stampCount      Int            @default(1)
-  /// Pesos chilenos. Solo se registra: no da sellos.
+  /// Pesos chilenos. En una tarjeta de puntos define los puntos; en una de sellos solo se registra.
   purchaseAmount  Int?
   note            String?
   receipt         ScanReceipt?
@@ -328,6 +353,8 @@ enum ScanMethod {
   MANUAL
   /// El dueño sumó sellos desde la ficha del cliente, sin escanear en caja.
   PANEL
+  /// Saldo de bienvenida al obtener la tarjeta.
+  WELCOME
 }
 
 enum MerchantRole {
@@ -342,6 +369,13 @@ enum BrandStatus {
 
 enum ProgramType {
   STAMPS
+  POINTS
+}
+
+enum CardValidity {
+  UNLIMITED
+  FIXED_DATE
+  AFTER_JOIN
 }
 
 enum ProgramScope {
