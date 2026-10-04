@@ -9,6 +9,7 @@ import { toSubscription, BillingService } from '../billing/billing.service.js';
 import { diffFields, recordAudit } from '../common/audit/audit.js';
 import { UserDirectoryService } from '../common/users/user-directory.service.js';
 import { maskPhone, maskRut } from '../common/utils/mask.util.js';
+import { assertPointsCanBeDisabled } from '../merchants/brand-settings.js';
 import { toLocationDto } from '../locations/location-mapper.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { ListBrandsQueryDto, UpdateBrandDto } from './dto/internal.dto.js';
@@ -93,6 +94,8 @@ export class InternalBrandsService {
         taxId: true,
         contactEmail: true,
         contactPhone: true,
+        pointsEnabled: true,
+        pesosPerPoint: true,
         locations: { orderBy: { createdAt: 'asc' } },
         programs: {
           orderBy: { createdAt: 'asc' },
@@ -134,6 +137,8 @@ export class InternalBrandsService {
       contactEmail: brand.contactEmail,
       contactPhone: brand.contactPhone,
       subscription: toSubscription(brand, usage, new Date()),
+      pointsEnabled: brand.pointsEnabled,
+      pesosPerPoint: brand.pesosPerPoint,
       locationsList: brand.locations.map(toLocationDto),
       programs: brand.programs.map((p) => ({
         id: p.id,
@@ -177,6 +182,9 @@ export class InternalBrandsService {
       where: { id: brandId },
     });
     if (!current) throw new NotFoundException('La marca no existe');
+    if (dto.pointsEnabled === false && current.pointsEnabled) {
+      await assertPointsCanBeDisabled(this.prisma, brandId);
+    }
 
     const { reason, trialEndsAt, ...fields } = dto;
     const changes = {

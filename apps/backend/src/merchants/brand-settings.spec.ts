@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { ForbiddenException } from '@nestjs/common';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { describe, expect, it, vi } from 'vitest';
@@ -16,12 +16,15 @@ function setup({ role = 'OWNER', status = 'ACTIVE' } = {}) {
       findUnique: vi.fn().mockResolvedValue({ status }),
       findUniqueOrThrow: vi.fn().mockResolvedValue({
         name: 'Café Demo',
+        pointsEnabled: false,
+        pesosPerPoint: 1000,
         programs: [{ stampValidityDays: 90 }],
       }),
       update: vi.fn().mockReturnValue('brand.update'),
     },
     loyaltyProgram: {
       updateMany: vi.fn().mockReturnValue('program.updateMany'),
+      findFirst: vi.fn().mockResolvedValue(null),
     },
     $transaction: vi.fn().mockResolvedValue([]),
   };
@@ -37,6 +40,8 @@ describe('BrandSettingsService', () => {
     await expect(service.get('b-1', 'u-1')).resolves.toEqual({
       name: 'Café Demo',
       stampValidityDays: 90,
+      pointsEnabled: false,
+      pesosPerPoint: 1000,
     });
   });
 
@@ -56,7 +61,7 @@ describe('BrandSettingsService', () => {
       data: { name: 'Café Nuevo' },
     });
     expect(prisma.loyaltyProgram.updateMany).toHaveBeenCalledWith({
-      where: { brandId: 'b-1', type: 'STAMPS' },
+      where: { brandId: 'b-1' },
       data: { stampValidityDays: null },
     });
   });
@@ -66,6 +71,24 @@ describe('BrandSettingsService', () => {
     await service.update('b-1', 'u-1', { stampValidityDays: 30 });
     expect(prisma.brand.update).not.toHaveBeenCalled();
     expect(prisma.$transaction).toHaveBeenCalledWith(['program.updateMany']);
+  });
+
+  it('saves the points settings on the brand', async () => {
+    const { service, prisma } = setup();
+    await service.update('b-1', 'u-1', { pointsEnabled: true, pesosPerPoint: 500 });
+    expect(prisma.brand.update).toHaveBeenCalledWith({
+      where: { id: 'b-1' },
+      data: { pointsEnabled: true, pesosPerPoint: 500 },
+    });
+  });
+
+  it('does not disable points while the card works with points', async () => {
+    const { service, prisma } = setup();
+    prisma.loyaltyProgram.findFirst.mockResolvedValue({ id: 'p-1' });
+    await expect(
+      service.update('b-1', 'u-1', { pointsEnabled: false }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it.each([
