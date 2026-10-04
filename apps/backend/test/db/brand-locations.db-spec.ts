@@ -207,6 +207,26 @@ describe('RLS por marca y local', () => {
     });
   });
 
+  it('el cumpleaños rechaza fechas que no existen', async () => {
+    await inRollback(async (tx) => {
+      await tx.$executeRaw`INSERT INTO "Customer" (phone, "birthDay", "birthMonth", "birthYear") VALUES ('+56900000003', 29, 2, 2000)`;
+    });
+    for (const [phone, day, month, year] of [
+      ['+56900000004', 31, 2, null],
+      ['+56900000005', 31, 4, null],
+      ['+56900000006', 29, 2, 1900],
+      ['+56900000007', 29, 2, 2023],
+    ] as const) {
+      await inRollback(async (tx) => {
+        await expectDbError(
+          tx,
+          () => tx.$executeRaw`INSERT INTO "Customer" (phone, "birthDay", "birthMonth", "birthYear") VALUES (${phone}, ${day}, ${month}, ${year})`,
+          'Customer_birthday_parts',
+        );
+      });
+    }
+  });
+
   it('el OWNER edita promociones y vigencia de su marca; el STAFF no', async () => {
     await inRollback(async (tx) => {
       const a = await createBrand(tx, 'a');
