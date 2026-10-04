@@ -147,6 +147,8 @@
 **Calidad**
 - 🟡 Tests: vencimiento y no-retroactividad contra la BD real, `slugify` y `generate_merchant_slug`, e2e reales (`test/app.e2e-spec.ts` sigue siendo el de ejemplo), y el DoD del panel interno (403 en todo `/api/internal/*` para quien no es admin, notas internas nunca visibles al dueño, `AuditLog` en cada escritura).
 - 🟡 `ManualLookupLimiter` y la caché de imágenes de la tarjeta viven en memoria: con más de una instancia del backend, moverlos a un store compartido (Redis). `SCAN_VALIDATION_SECRET` debe ser la misma en todas las instancias.
+- 🟡 Separar `ScanService` en `ScanLookupService` y `ScanRedeemService`, y pasar los estados de `Scan.tsx` a un reducer (propuesto en la revisión del PR #26, para después de mergear #26 y #27).
+- 🟡 Crear los buckets de Storage en el provisionamiento del deploy; `ensureBucket` queda como red de seguridad.
 - 🟡 Anonimizar los datos de marcas suspendidas por más de 2 años, **después** de la revisión legal.
 
 ---
@@ -183,7 +185,8 @@ cd apps/backend && npx prisma migrate deploy && node --env-file=.env prisma/seed
 - **Backend:**
   - `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ALLOWED_ORIGINS` y `BACKEND_URL` (raíz pública: desde ahí Google descarga las imágenes).
   - `ALLOW_MOCK_PASSES=true` para trabajar sin certificados; sin ella el alta responde 500.
-  - Opcionales: `STAMP_COOLDOWN_MINUTES` (`1` para probar rápido), `OWNER_MAX_STAMPS_PER_LOAD`, `SCAN_VALIDATION_SECRET`, `SUPABASE_PUBLIC_URL`, `GEOCODING_CONTACT_EMAIL` y `SUPPORT_AUTOCLOSE_INTERVAL_MINUTES`.
+  - `SCAN_VALIDATION_SECRET`: obligatoria en producción (sin ella el backend no arranca); en desarrollo se genera sola.
+  - Opcionales: `STAMP_COOLDOWN_MINUTES` (`1` para probar rápido), `OWNER_MAX_STAMPS_PER_LOAD`, `SUPABASE_PUBLIC_URL`, `GEOCODING_CONTACT_EMAIL` y `SUPPORT_AUTOCLOSE_INTERVAL_MINUTES`.
   - Billeteras: `APPLE_*` y `GOOGLE_WALLET_*` (`GOOGLE_WALLET_CLASS_ID` solo en sandbox).
 - **Frontend:**
   - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` y `VITE_API_URL` (en desarrollo, sin `VITE_API_URL` se usa el proxy de Vite).
