@@ -5,7 +5,7 @@ import type { PlatformRole } from '@fidelity/shared';
 import type { PlatformAdminState } from '../../hooks/usePlatformAdmin';
 import type { MembershipState, MerchantRole } from '../../hooks/useMembership';
 import { supabase } from '../../lib/supabase';
-import { ROUTES, buildLoginUrl, resolveRedirectTarget } from './routePaths';
+import { ROUTES, buildLoginUrl, isReturnableRoute, resolveRedirectTarget } from './routePaths';
 
 interface LocationState {
   from?: string;
@@ -22,7 +22,7 @@ function FullScreenLoader({ label }: { label: string }) {
   );
 }
 
-function AccessDenied({ reason }: { reason: string | null }) {
+export function AccessDenied({ reason }: { reason: string | null }) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-5 px-6 text-center bg-slate-50 dark:bg-[#0f172a] text-slate-600 dark:text-slate-300">
       <div className="w-14 h-14 rounded-2xl bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400 flex items-center justify-center text-2xl font-black">
@@ -71,7 +71,16 @@ export function RequireRole({
 
   if (!session) {
     const from = `${location.pathname}${location.search}`;
-    return <Navigate to={buildLoginUrl(from)} state={{ from } satisfies LocationState} replace />;
+    // Unificación con isReturnableRoute: si el origen no es retornable (ej. /scan o /admin/login),
+    // no se propaga ni en la URL de login ni en el history state.
+    const canReturn = isReturnableRoute(from);
+    return (
+      <Navigate
+        to={buildLoginUrl(from)}
+        state={canReturn ? ({ from } satisfies LocationState) : undefined}
+        replace
+      />
+    );
   }
 
   if (membership.loading || (!membership.role && platformAdmin?.loading)) {
@@ -120,16 +129,51 @@ export function RequirePlatformAdmin({
 
 /**
  * El login sigue siendo una ruta pública, pero con sesión abierta no tiene
- * sentido mostrar el formulario: devuelve al destino que originó el redirect.
+ * sentido mostrar el formulario: redirige según el rol del usuario (STAFF → /scan,
+ * OWNER → /admin/dashboard o subruta administrativa previa, PlatformAdmin → /internal).
  */
-export function RedirectIfAuthenticated({ session }: { session: Session | null }) {
+export function RedirectIfAuthenticated({
+  session,
+  membership,
+  platformAdmin,
+}: {
+  session: Session | null;
+  membership: MembershipState;
+  platformAdmin: PlatformAdminState;
+}) {
   const location = useLocation();
-
   if (!session) return <Outlet />;
+
+  if (membership.loading || (!membership.role && platformAdmin.loading)) {
+    return <FullScreenLoader label="Cargando tu cuenta..." />;
+  }
+
+  if (!membership.role && platformAdmin.role) {
+    return <Navigate to={ROUTES.internal} replace />;
+  }
+
+  if (membership.role === 'STAFF') {
+    return <Navigate to={ROUTES.scan} replace />;
+  }
+
+  if (membership.error || !membership.role) {
+    return <AccessDenied reason={membership.error} />;
+  }
 
   const fromState = (location.state as LocationState | null)?.from;
   const fromQuery = new URLSearchParams(location.search).get('redirect');
-  return <Navigate to={resolveRedirectTarget(fromState ?? fromQuery)} replace />;
+  const candidate = fromState ?? fromQuery;
+
+  // Solo respetamos destinos que pertenezcan a /admin o /internal (rutas exactas o subrutas).
+  // Defensa en profundidad: previene open redirects y descarta candidatos no deseados como /scan.
+  const isAllowed = (p: string) =>
+    [ROUTES.admin, ROUTES.internal].some((base) => p === base || p.startsWith(`${base}/`));
+  const target =
+    candidate && isAllowed(candidate)
+      ? resolveRedirectTarget(candidate)
+      : ROUTES.dashboard;
+
+  return <Navigate to={target} replace />;
 }
 
 /**

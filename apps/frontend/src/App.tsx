@@ -18,7 +18,7 @@ import { Join } from './pages/public/Join';
 import { Terms } from './pages/public/Terms';
 import { Scan } from './pages/scanner/Scan';
 import { ToastProvider } from './components/ui/ToastProvider';
-import { RecoveryGate, RedirectIfAuthenticated, RequirePlatformAdmin, RequireRole } from './components/routing/RouteGuards';
+import { AccessDenied, RecoveryGate, RedirectIfAuthenticated, RequirePlatformAdmin, RequireRole } from './components/routing/RouteGuards';
 import { PasswordResetRoute } from './components/routing/PasswordResetRoute';
 import { ROUTES } from './components/routing/routePaths';
 import { useAuth } from './hooks/useAuth';
@@ -57,13 +57,22 @@ export default function App() {
           <Route path={ROUTES.terms} element={<Terms />} />
           <Route path={ROUTES.resetPassword} element={<PasswordResetRoute onDone={finishPasswordRecovery} />} />
 
-          <Route element={<RedirectIfAuthenticated session={session} />}>
+          <Route element={<RedirectIfAuthenticated session={session} membership={membership} platformAdmin={platformAdmin} />}>
             <Route path={ROUTES.login} element={<SupabaseAuth />} />
           </Route>
 
           {/* Scanner: requiere sesión y rol OWNER o STAFF */}
           <Route element={<RequireRole session={session} membership={membership} allow={['OWNER', 'STAFF']} platformAdmin={platformAdmin} />}>
-            <Route path={ROUTES.scan} element={session && membership.merchantId ? <Scan merchantId={membership.merchantId} session={session} role={membership.role} /> : null} />
+            <Route
+              path={ROUTES.scan}
+              element={
+                session && membership.merchantId ? (
+                  <Scan merchantId={membership.merchantId} session={session} role={membership.role} />
+                ) : (
+                  <AccessDenied reason="Tu usuario no tiene un local activo asignado." />
+                )
+              }
+            />
           </Route>
 
           {/* Panel: requiere sesión y rol OWNER */}

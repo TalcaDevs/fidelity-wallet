@@ -18,6 +18,15 @@ function prefersDark(): boolean {
     && window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
+export function applyStoredTheme(): void {
+  try {
+    const isDark = readStoredTheme() ?? prefersDark();
+    document.documentElement.classList.toggle('dark', isDark);
+  } catch {
+    // localStorage o matchMedia no disponibles en ciertos entornos
+  }
+}
+
 export function useTheme() {
   const [isDarkMode, setIsDarkMode] = useState(() => readStoredTheme() ?? prefersDark());
 

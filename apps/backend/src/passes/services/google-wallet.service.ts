@@ -8,6 +8,7 @@ import type { CardClassData, PassData } from '../interfaces/pass-data.interface.
 import { buildLoyaltyClass, buildLoyaltyObject, buildObjectState } from './google-wallet-payloads.js';
 
 const WALLET_API = 'https://walletobjects.googleapis.com/walletobjects/v1';
+export const GOOGLE_PAY_SAVE_URL = 'https://pay.google.com/gp/v/save/';
 
 interface CachedToken {
   token: string;
@@ -39,7 +40,7 @@ export class GoogleWalletService {
       try {
         const privateKey = this.getNormalizedPrivateKey() ?? '';
         const token = jwt.sign(claims, privateKey, { algorithm: 'RS256' });
-        return `https://pay.google.com/gp/v/save/${token}`;
+        return `${GOOGLE_PAY_SAVE_URL}${token}`;
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.error(`Fallo en la firma del JWT de Google Wallet: ${msg}`);
@@ -64,7 +65,7 @@ export class GoogleWalletService {
 
     // Mock fallback para desarrollo / Sandbox: JWT base64url sin firma
     const mockToken = Buffer.from(JSON.stringify(claims)).toString('base64url');
-    return `https://pay.google.com/gp/v/save/${mockToken}`;
+    return `${GOOGLE_PAY_SAVE_URL}${mockToken}`;
   }
 
   /** Saldo, textos e imagen del pase de un cliente. 404 = el cliente aún no lo guardó. */
