@@ -62,7 +62,7 @@ describe('ScanValidation', () => {
     expect(added).toEqual([{ purchaseAmount: undefined, note: undefined, receipt: undefined }]);
   });
 
-  it('attaches the receipt photo and rejects other file types', () => {
+  it('attaches the receipt photo and rejects other file types', async () => {
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:boleta');
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
     const { added } = setup();
@@ -70,11 +70,11 @@ describe('ScanValidation', () => {
     expect(input).toHaveAttribute('capture', 'environment');
 
     fireEvent.change(input, { target: { files: [new File(['%PDF'], 'boleta.pdf', { type: 'application/pdf' })] } });
-    expect(screen.getByRole('alert')).toHaveTextContent('JPG o PNG');
+    expect(await screen.findByRole('alert')).toHaveTextContent('JPG o PNG');
 
     const photo = new File(['jpeg'], 'boleta.jpg', { type: 'image/jpeg' });
     fireEvent.change(input, { target: { files: [photo] } });
-    expect(screen.getByAltText('Foto de la boleta')).toBeInTheDocument();
+    expect(await screen.findByAltText('Foto de la boleta')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Agregar sello' }));
     expect(added[0].receipt).toBe(photo);
