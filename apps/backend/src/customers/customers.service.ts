@@ -365,13 +365,8 @@ export class CustomersService {
     profile: Profile,
     termsAcceptance: { termsAcceptedAt: Date; termsVersion: string },
   ): Promise<{ customer: Customer; isNew: boolean }> {
-    const found: Customer[] = [];
-    for (const field of IDENTITY_FIELDS) {
-      const value = identity[field];
-      if (value === undefined) continue;
-      const match = await tx.customer.findUnique({ where: uniqueWhere(field, value) });
-      if (match) found.push(match);
-    }
+    // Una sola consulta por todos los identificadores: si apuntan a clientes distintos, no se mezclan.
+    const found = await tx.customer.findMany({ where: { OR: identityFilter(identity) } });
 
     if (new Set(found.map((c) => c.id)).size > 1) {
       throw new BadRequestException(IDENTITY_MISMATCH_MESSAGE);

@@ -55,6 +55,16 @@ describe('CustomersService', () => {
       },
       customer: {
         findUnique: vi.fn(),
+        // El servicio resuelve todos los identificadores en una consulta; el mock la responde con
+        // findUnique por cada uno, así los casos siguen describiendo qué cliente tiene cada dato.
+        findMany: vi.fn(async ({ where }: { where: { OR: object[] } }) => {
+          const rows: { id: string }[] = [];
+          for (const clause of where.OR) {
+            const row = await prismaMock.customer.findUnique({ where: clause });
+            if (row && !rows.some((r) => r.id === row.id)) rows.push(row);
+          }
+          return rows;
+        }),
         findFirst: vi.fn(),
         create: vi.fn(),
         update: vi.fn(),

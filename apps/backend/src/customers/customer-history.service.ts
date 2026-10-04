@@ -78,7 +78,7 @@ export class CustomerHistoryService {
     }
 
     const now = new Date();
-    const [scans, total, visits, redemptions, amount, activeStamps] = await Promise.all([
+    const [scans, totalsByType, activeStamps] = await Promise.all([
       this.prisma.scan.findMany({
         where: { passId: pass.id },
         orderBy: { createdAt: 'desc' },
@@ -90,11 +90,10 @@ export class CustomerHistoryService {
           receipt: { select: { storagePath: true } },
         },
       }),
-      this.prisma.scan.count({ where: { passId: pass.id } }),
-      this.prisma.scan.count({ where: { passId: pass.id, type: ScanType.STAMP_ADDED } }),
-      this.prisma.scan.count({ where: { passId: pass.id, type: ScanType.REWARD_REDEEMED } }),
-      this.prisma.scan.aggregate({
-        where: { passId: pass.id, type: ScanType.STAMP_ADDED },
+      this.prisma.scan.groupBy({
+        by: ['type'],
+        where: { passId: pass.id },
+        _count: { _all: true },
         _sum: { purchaseAmount: true },
       }),
       this.prisma.stamp.count({
@@ -105,6 +104,9 @@ export class CustomerHistoryService {
         },
       }),
     ]);
+
+    const byType = (type: ScanType) => totalsByType.find((g) => g.type === type);
+    const total = totalsByType.reduce((sum, g) => sum + g._count._all, 0);
 
     const redeemIds = scans.filter((s) => s.type === ScanType.REWARD_REDEEMED).map((s) => s.id);
     const consumed = redeemIds.length
@@ -140,9 +142,9 @@ export class CustomerHistoryService {
     return {
       customer: this.profile(pass, activeStamps, maskIdentifiers),
       totals: {
-        visits,
-        redemptions,
-        purchaseAmount: amount._sum.purchaseAmount ?? 0,
+        visits: byType(ScanType.STAMP_ADDED)?._count._all ?? 0,
+        redemptions: byType(ScanType.REWARD_REDEEMED)?._count._all ?? 0,
+        purchaseAmount: byType(ScanType.STAMP_ADDED)?._sum.purchaseAmount ?? 0,
       },
       history: { items, page, pageSize, total },
       maxStampsPerLoad: this.maxStampsPerLoad,
