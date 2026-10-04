@@ -73,6 +73,8 @@ function AccountEditor({ brand, onSaved }: { brand: InternalBrandDetailDto; onSa
   const [taxId, setTaxId] = useState(brand.taxId ?? '');
   const [contactEmail, setContactEmail] = useState(brand.contactEmail ?? '');
   const [contactPhone, setContactPhone] = useState(brand.contactPhone ?? '');
+  const [pointsEnabled, setPointsEnabled] = useState(brand.pointsEnabled);
+  const [pesosPerPoint, setPesosPerPoint] = useState(String(brand.pesosPerPoint));
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -104,6 +106,8 @@ function AccountEditor({ brand, onSaved }: { brand: InternalBrandDetailDto; onSa
         taxId: orNull(taxId),
         contactEmail: orNull(contactEmail),
         contactPhone: orNull(contactPhone),
+        pointsEnabled,
+        pesosPerPoint: Number(pesosPerPoint) || brand.pesosPerPoint,
         planId,
         trialEndsAt:
           trialEndsAt !== brand.trialEndsAt.slice(0, 10)
@@ -149,6 +153,19 @@ function AccountEditor({ brand, onSaved }: { brand: InternalBrandDetailDto; onSa
         <label className="text-sm font-bold space-y-1">
           <span>Teléfono de contacto</span>
           <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} className={`${INPUT} w-full`} placeholder="+56912345678" />
+        </label>
+        <label className="text-sm font-bold flex items-center gap-2">
+          <input type="checkbox" checked={pointsEnabled} onChange={(e) => setPointsEnabled(e.target.checked)} />
+          <span>Tarjetas de puntos habilitadas</span>
+        </label>
+        <label className="text-sm font-bold space-y-1">
+          <span>Pesos de compra por punto</span>
+          <input
+            inputMode="numeric"
+            value={pesosPerPoint}
+            onChange={(e) => setPesosPerPoint(e.target.value.replace(/\D/g, ''))}
+            className={`${INPUT} w-full`}
+          />
         </label>
         <label className="text-sm font-bold space-y-1 sm:col-span-2">
           <span>Motivo del cambio (queda en la auditoría)</span>
@@ -256,19 +273,22 @@ export function InternalBrandDetail() {
           </Section>
 
           <Section title="Programas y promociones">
-            {brand.programs.map((p) => (
+            {brand.programs.map((p) => {
+              const unit = p.type === 'POINTS' ? 'puntos' : 'sellos';
+              return (
               <div key={p.id} className="mb-4 last:mb-0">
-                <p className="font-bold">{p.name} <span className="text-xs text-slate-500">· {p.stampValidityDays ? `sellos vencen a los ${p.stampValidityDays} días` : 'sellos sin vencimiento'}{p.isActive ? '' : ' · inactivo'}</span></p>
+                <p className="font-bold">{p.name} <span className="text-xs text-slate-500">· {p.type === 'POINTS' ? `puntos (1 cada $${brand.pesosPerPoint.toLocaleString('es-CL')})` : 'sellos'} · {p.stampValidityDays ? `vencen a los ${p.stampValidityDays} días` : 'sin vencimiento'}{p.isActive ? '' : ' · inactivo'}</span></p>
                 <ul className="mt-2 grid gap-2 sm:grid-cols-2">
                   {p.promotions.map((pr) => (
                     <li key={pr.id} className={`rounded-xl p-3 text-sm bg-slate-50 dark:bg-slate-900/60 ${pr.isActive ? '' : 'opacity-60'}`}>
-                      <span className="font-bold">{pr.name}</span> · {pr.targetStamps} sellos → {pr.rewardName}
+                      <span className="font-bold">{pr.name}</span> · {pr.targetStamps} {unit} → {pr.rewardName}
                     </li>
                   ))}
                   {p.promotions.length === 0 && <li className="text-sm text-slate-500">Sin promociones</li>}
                 </ul>
               </div>
-            ))}
+              );
+            })}
           </Section>
 
           <Section title="Actividad reciente">

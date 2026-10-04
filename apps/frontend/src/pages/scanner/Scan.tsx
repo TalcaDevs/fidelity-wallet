@@ -245,6 +245,7 @@ export function Scan({ merchantId, session, role }: { merchantId: string, sessio
         )}
         {state === 'success' && result && (
           <ScanSuccess
+            cardType={validation?.cardType ?? 'STAMPS'}
             result={result}
             onReset={resetScanner}
             onRedeem={result.rewardUnlocked ? () => openReward('stamped') : undefined}
@@ -252,7 +253,7 @@ export function Scan({ merchantId, session, role }: { merchantId: string, sessio
         )}
         {state === 'redeemSuccess' && result && <ScanRedeemSuccess result={result} onReset={resetScanner} />}
         {state === 'alreadyScanned' && result && <ScanAlreadyScanned result={result} onReset={resetScanner} />}
-        {state === 'reward' && result && <ScanReward key={result.scanId ?? result.passId} result={result} onReset={leaveReward} onRedeem={(id) => void handleRedeem(id)} />}
+        {state === 'reward' && result && <ScanReward key={result.scanId ?? result.passId} result={result} cardType={validation?.cardType ?? 'STAMPS'} onReset={leaveReward} onRedeem={(id) => void handleRedeem(id)} />}
         {state === 'error' && <ScanError result={result} onReset={resetScanner} />}
       </main>
 

@@ -5,7 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Prisma } from '@prisma/client';
+import { Prisma, type LoyaltyProgram, type Pass } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { PassesService, passCustomerLabel } from './passes.service.js';
 import { ApplePassService } from './services/apple-pass.service.js';
@@ -66,7 +66,10 @@ describe('PassesService', () => {
   beforeEach(() => {
     prisma = {
       customer: { findUnique: vi.fn() },
-      merchant: { findUnique: vi.fn().mockResolvedValue(mockLocation) },
+      merchant: {
+        findUnique: vi.fn().mockResolvedValue(mockLocation),
+        findMany: vi.fn().mockResolvedValue([{ latitude: -33.4, longitude: -70.6 }]),
+      },
       brandMember: { findUnique: vi.fn() },
       brand: {
         findUnique: vi.fn().mockResolvedValue({ id: mockMerchantId, name: 'Cafeteria Don Tito' }),
@@ -77,8 +80,24 @@ describe('PassesService', () => {
           brandId: mockMerchantId,
           isActive: true,
         }),
+        findUnique: vi.fn().mockResolvedValue({
+          id: mockProgramId,
+          brandId: mockMerchantId,
+          type: 'STAMPS',
+          name: 'Tarjeta de sellos',
+          isActive: true,
+          design: {},
+          details: {},
+          registration: {},
+          designVersion: 1,
+          brand: { name: 'Cafeteria Don Tito' },
+        }),
       },
-      pass: { findUnique: vi.fn(), create: vi.fn() },
+      pass: {
+        findUnique: vi.fn(),
+        create: vi.fn(),
+        findMany: vi.fn<PrismaService['pass']['findMany']>().mockResolvedValue([]),
+      },
       promotion: { findFirst: vi.fn(), findMany: vi.fn() },
       stamp: { count: vi.fn(), findFirst: vi.fn() },
     } as unknown as PrismaService;
@@ -91,6 +110,8 @@ describe('PassesService', () => {
     googleWalletService = {
       generateSaveUrl: vi.fn(() => 'https://pay.google.com/gp/v/save/mock-jwt'),
       updateLoyaltyObject: vi.fn().mockResolvedValue(undefined),
+      upsertLoyaltyClass: vi.fn<GoogleWalletService['upsertLoyaltyClass']>()
+        .mockResolvedValue(undefined),
     } as unknown as GoogleWalletService;
 
     service = new PassesService(prisma, applePassService, googleWalletService);
@@ -350,6 +371,8 @@ describe('PassesService', () => {
           count: vi.fn().mockResolvedValue(0),
           findFirst: vi.fn().mockResolvedValue(null),
         },
+        loyaltyProgram: prisma.loyaltyProgram,
+        merchant: prisma.merchant,
       };
 
       const urls = await service.getWalletUrlsForPass(mockPassId, txMock);
@@ -395,12 +418,13 @@ describe('PassesService', () => {
       await service.notifyPassUpdate(mockPassId);
 
       expect(googleWalletService.updateLoyaltyObject).toHaveBeenCalledWith(
-        mockPassId,
-        3,
-        {
+        expect.objectContaining({
+          passId: mockPassId,
+          activeStamps: 3,
           targetStamps: 5,
           rewardName: 'Café',
-        },
+          cardClass: expect.objectContaining({ brandName: 'Cafeteria Don Tito', locations: [] }),
+        }),
       );
     });
 
@@ -421,11 +445,9 @@ describe('PassesService', () => {
         .mockResolvedValueOnce(5)
         .mockResolvedValueOnce(0);
 
-      vi.spyOn(googleWalletService, 'updateLoyaltyObject').mockImplementation(
-        async (_id, stamps) => {
-          executionOrder.push(`update-${stamps}`);
-        },
-      );
+      vi.spyOn(googleWalletService, 'updateLoyaltyObject').mockImplementation(async (data) => {
+        executionOrder.push(`update-${data.activeStamps}`);
+      });
 
       // Disparamos dos actualizaciones simultáneas para el mismo passId
       const p1 = service.notifyPassUpdate(mockPassId);
@@ -449,13 +471,97 @@ describe('PassesService', () => {
       await service.notifyPassUpdate(mockPassId);
 
       expect(googleWalletService.updateLoyaltyObject).toHaveBeenCalledWith(
-        mockPassId,
-        6,
         expect.objectContaining({
+          passId: mockPassId,
+          activeStamps: 6,
           targetStamps: 5,
           rewardName: 'Café',
         }),
       );
+    });
+  });
+
+  describe('publishCard', () => {
+    const publishedPass = (id: string): Pass => ({
+      id,
+      customerId: mockCustomerId,
+      ...mockTarget,
+      passToken: `token-${id}`,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+    });
+
+    it('publishes the class and refreshes every issued pass', async () => {
+      vi.mocked(prisma.pass.findMany)
+        .mockResolvedValueOnce([publishedPass('p-1'), publishedPass('p-2')])
+        .mockResolvedValueOnce([]);
+      const notify = vi.spyOn(service, 'notifyPassUpdate').mockResolvedValue(undefined);
+
+      await service.publishCard(mockProgramId);
+
+      expect(googleWalletService.upsertLoyaltyClass).toHaveBeenCalledWith(
+        expect.objectContaining({
+          programId: mockProgramId,
+          brandName: 'Cafeteria Don Tito',
+          locations: [{ latitude: -33.4, longitude: -70.6 }],
+        }),
+      );
+      expect(notify.mock.calls.map(([id]) => id)).toEqual(['p-1', 'p-2']);
+    });
+
+    it('does not overlap two publications of the same card: the second runs once, after', async () => {
+      const order: string[] = [];
+      let release!: () => void;
+      vi.mocked(googleWalletService.upsertLoyaltyClass)
+        .mockImplementationOnce(() => new Promise<void>((r) => (release = () => { order.push('first'); r(); })))
+        .mockImplementation(async () => { order.push('again'); });
+
+      const first = service.publishCard(mockProgramId);
+      await new Promise((r) => setTimeout(r, 0));
+      void service.publishCard(mockProgramId);
+      void service.publishCard(mockProgramId);
+      release();
+      await first;
+
+      expect(order).toEqual(['first', 'again']);
+    });
+
+    it('only republishes the class for location changes, and only with nearby notifications on', async () => {
+      vi.mocked(prisma.pass.findMany).mockResolvedValue([publishedPass('p-1')]);
+      const notify = vi.spyOn(service, 'notifyPassUpdate').mockResolvedValue(undefined);
+
+      await service.refreshNearbyLocations(mockMerchantId);
+      expect(googleWalletService.upsertLoyaltyClass).not.toHaveBeenCalled();
+
+      const nearbyProgram: LoyaltyProgram = {
+        id: mockProgramId,
+        brandId: mockMerchantId,
+        type: 'STAMPS',
+        scope: 'BRAND',
+        name: 'Tarjeta de sellos',
+        stampValidityDays: null,
+        isActive: true,
+        welcomeBalance: 0,
+        dailyStampLimit: true,
+        cardValidity: 'UNLIMITED',
+        cardExpiresAt: null,
+        cardValidityDays: null,
+        design: {},
+        details: { nearbyNotifications: true },
+        registration: {},
+        designVersion: 1,
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        updatedAt: new Date('2026-01-01T00:00:00Z'),
+      };
+      vi.spyOn(prisma.loyaltyProgram, 'findFirst').mockResolvedValue(nearbyProgram);
+      await service.refreshNearbyLocations(mockMerchantId);
+      expect(googleWalletService.upsertLoyaltyClass).toHaveBeenCalledTimes(1);
+      expect(notify).not.toHaveBeenCalled();
+    });
+
+    it('never throws: it runs in the background after saving', async () => {
+      vi.spyOn(prisma.loyaltyProgram, 'findUnique').mockRejectedValue(new Error('db down'));
+      await expect(service.publishCard(mockProgramId)).resolves.toBeUndefined();
     });
   });
 });

@@ -176,4 +176,3 @@ describe('RedirectIfAuthenticated', () => {
     expect(screen.getByText('pantalla interna')).toBeInTheDocument();
   });
 });
-

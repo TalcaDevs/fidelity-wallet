@@ -6,10 +6,11 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { CUSTOMER_NAME_MAX, isValidBirthday } from '@fidelity/shared';
-import { Prisma, type Customer } from '@prisma/client';
+import { CUSTOMER_NAME_MAX, isValidBirthday, type RegistrationConfig } from '@fidelity/shared';
+import { Prisma, ScanMethod, ScanType, type Customer } from '@prisma/client';
+import { toCardView, type CardView } from '../cards/card-program.js';
 import {
-  findStampsProgram,
+  findBrandProgram,
   isLocationOperational,
   locationWithBrandSelect,
   resolveLocationAccess,
@@ -41,6 +42,50 @@ interface Profile {
 }
 
 const IDENTITY_FIELDS: IdentityField[] = ['rut', 'phone', 'email'];
+
+const REQUIRED_MESSAGES = {
+  phone: 'Ingresa tu teléfono para obtener la tarjeta',
+  email: 'Ingresa tu correo para obtener la tarjeta',
+  rut: 'Ingresa tu RUT para obtener la tarjeta',
+  name: 'Ingresa tu nombre para obtener la tarjeta',
+  birthday: 'Ingresa tu cumpleaños para obtener la tarjeta',
+} as const;
+
+/**
+ * Aplica los datos que la marca pide en el registro: lo que no pide se descarta (aunque llegue)
+ * y lo obligatorio tiene que venir. Siempre queda al menos el teléfono o el correo.
+ */
+export function applyRegistration(
+  config: RegistrationConfig,
+  identity: Identity,
+  profile: Profile,
+): { identity: Identity; profile: Profile } {
+  const kept: Identity = {};
+  for (const field of IDENTITY_FIELDS) {
+    if (config[field] !== 'HIDDEN' && identity[field] !== undefined) kept[field] = identity[field];
+  }
+  const keptProfile: Profile = {};
+  if (config.name !== 'HIDDEN' && profile.name) keptProfile.name = profile.name;
+  if (config.birthday !== 'HIDDEN' && profile.birthDay !== undefined) {
+    keptProfile.birthDay = profile.birthDay;
+    keptProfile.birthMonth = profile.birthMonth;
+    if (profile.birthYear !== undefined) keptProfile.birthYear = profile.birthYear;
+  }
+
+  for (const field of IDENTITY_FIELDS) {
+    if (config[field] === 'REQUIRED' && kept[field] === undefined) {
+      throw new BadRequestException(REQUIRED_MESSAGES[field]);
+    }
+  }
+  if (config.name === 'REQUIRED' && !keptProfile.name) throw new BadRequestException(REQUIRED_MESSAGES.name);
+  if (config.birthday === 'REQUIRED' && keptProfile.birthDay === undefined) {
+    throw new BadRequestException(REQUIRED_MESSAGES.birthday);
+  }
+  if (kept.phone === undefined && kept.email === undefined) {
+    throw new BadRequestException('Ingresa tu teléfono o tu correo para emitir la tarjeta');
+  }
+  return { identity: kept, profile: keptProfile };
+}
 
 /**
  * El cliente encontrado debe tener exactamente los identificadores enviados.
@@ -104,8 +149,8 @@ export class CustomersService {
       );
     }
 
-    const identity = this.normalizeIdentity(dto);
-    const profile = this.normalizeProfile(dto);
+    const sentIdentity = this.normalizeIdentity(dto);
+    const sentProfile = this.normalizeProfile(dto);
 
     // Prueba del consentimiento: cuándo y qué versión de los términos aceptó (Ley 19.628).
     const termsAcceptance = { termsAcceptedAt: new Date(), termsVersion: TERMS_VERSION };
@@ -122,7 +167,7 @@ export class CustomersService {
           throw new NotFoundException('El comercio especificado no existe');
         }
 
-        const program = await findStampsProgram(tx, merchant.brandId);
+        const program = await findBrandProgram(tx, merchant.brandId);
         const activePromotion = program?.isActive
           ? await tx.promotion.findFirst({ where: { programId: program.id, isActive: true } })
           : null;
@@ -131,6 +176,9 @@ export class CustomersService {
           throw new BadRequestException('El comercio no tiene una promoción activa configurada');
         }
 
+        const card = toCardView(program);
+        const { identity, profile } = applyRegistration(card.registration, sentIdentity, sentProfile);
+
         // Un cliente que ya tiene la tarjeta siempre puede volver a entrar; solo las altas nuevas
         // cuentan contra el límite de clientes del plan.
         const existingPass = await tx.pass.findFirst({
@@ -138,6 +186,9 @@ export class CustomersService {
           select: { id: true },
         });
         if (!existingPass) {
+          if (card.validity.type === 'FIXED_DATE' && card.validity.expiresAt && new Date(card.validity.expiresAt) <= new Date()) {
+            throw new BadRequestException('Este programa de fidelidad ya terminó: no se entregan tarjetas nuevas');
+          }
           await assertPlanAllows(tx, merchant.brandId, 'customers', {
             publicMessage: 'Este local no puede registrar nuevos clientes por ahora. Consulta en caja.',
           });
@@ -162,6 +213,7 @@ export class CustomersService {
         // Si el pase ya existía, no se devuelven credenciales para evitar suplantación de identidad por RUT.
         let walletUrls: { appleWalletUrl: string; googleWalletUrl: string } | null = null;
         if (isNewPass) {
+          await this.grantWelcomeBalance(tx, card, pass.id, merchant.id, merchant.brandId);
           walletUrls = await this.issueWalletUrls(tx, pass.id);
         }
 
@@ -212,7 +264,7 @@ export class CustomersService {
       ownerMessage: 'Solo el dueño del comercio puede eliminar clientes',
     });
 
-    const program = await findStampsProgram(this.prisma, merchant.brandId);
+    const program = await findBrandProgram(this.prisma, merchant.brandId);
     const pass = program
       ? await this.prisma.pass.findUnique({
           where: {
@@ -281,6 +333,46 @@ export class CustomersService {
       message: 'Cliente y todos sus pases eliminados exitosamente',
       customerCompletelyDeleted: true,
     };
+  }
+
+  /**
+   * Sellos o puntos de regalo al obtener la tarjeta. Queda como un movimiento WELCOME del
+   * historial, sin usuario: no lo registró nadie del local.
+   */
+  private async grantWelcomeBalance(
+    tx: Prisma.TransactionClient,
+    card: CardView,
+    passId: string,
+    merchantId: string,
+    brandId: string,
+  ): Promise<void> {
+    if (card.welcomeBalance <= 0) return;
+    const now = new Date();
+    const expiresAt = card.stampValidityDays
+      ? new Date(now.getTime() + card.stampValidityDays * 24 * 60 * 60 * 1000)
+      : null;
+    const scan = await tx.scan.create({
+      data: {
+        passId,
+        merchantId,
+        brandId,
+        programId: card.programId,
+        type: ScanType.STAMP_ADDED,
+        method: ScanMethod.WELCOME,
+        stampCount: card.welcomeBalance,
+      },
+    });
+    await tx.stamp.createMany({
+      data: Array.from({ length: card.welcomeBalance }, () => ({
+        passId,
+        merchantId,
+        brandId,
+        programId: card.programId,
+        sourceScanId: scan.id,
+        earnedAt: now,
+        expiresAt,
+      })),
+    });
   }
 
   /** RUT opcional y al menos teléfono o correo, ya normalizados. */

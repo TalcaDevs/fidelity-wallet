@@ -1,6 +1,14 @@
 import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PassData } from '../interfaces/pass-data.interface.js';
+import { balanceUnit, linkUri } from '@fidelity/shared';
+import type { PassData } from '../interfaces/pass-data.interface.js';
+import { statusText } from './google-wallet-payloads.js';
+
+/** Apple Wallet pide los colores como rgb(r, g, b). */
+function rgb(hex: string): string {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+}
 
 @Injectable()
 export class ApplePassService {
@@ -34,75 +42,73 @@ export class ApplePassService {
       process.env.APPLE_TEAM_IDENTIFIER ||
       'TALCADEVS1';
 
+    const { card } = data.cardClass;
+    const unit = balanceUnit(card.type);
+    const { details } = card;
+    const backFields = [
+      ...details.sections.map((section, i) => ({
+        key: `section_${i}`,
+        label: section.header.toUpperCase(),
+        value: section.body,
+      })),
+      ...details.links.map((link, i) => ({
+        key: `link_${i}`,
+        label: link.label.toUpperCase(),
+        value: linkUri(link),
+      })),
+      {
+        key: 'expiryInfo',
+        label: 'VIGENCIA',
+        value: data.nextExpiryAt
+          ? `Próximo vencimiento: ${data.nextExpiryAt.toLocaleDateString('es-CL')}`
+          : `Tus ${unit} no vencen.`,
+      },
+    ];
+
     return {
       formatVersion: 1,
       passTypeIdentifier,
       serialNumber: data.serialNumber,
       teamIdentifier,
       organizationName: data.merchantName,
-      description: `Pase de Fidelidad - ${data.merchantName}`,
-      foregroundColor: data.foregroundColor || 'rgb(255, 255, 255)',
-      backgroundColor: data.backgroundColor || 'rgb(30, 41, 59)',
-      labelColor: data.labelColor || 'rgb(148, 163, 184)',
+      description: `${card.name} - ${data.merchantName}`,
+      logoText: card.design.wideLogoUrl ? undefined : card.name,
+      foregroundColor: rgb(card.design.textColor),
+      backgroundColor: rgb(card.design.backgroundColor),
+      labelColor: rgb(card.design.labelColor),
+      ...(data.cardExpiresAt ? { expirationDate: data.cardExpiresAt.toISOString() } : {}),
       storeCard: {
         headerFields: [
           {
-            key: 'stamps',
-            label: 'SELLOS',
-            value: `${data.activeStamps} / ${data.targetStamps}`,
-          },
-        ],
-        primaryFields: [
-          {
-            key: 'reward',
-            label: 'PREMIO',
-            value: data.rewardName,
-          },
-        ],
-        secondaryFields: [
-          {
-            key: 'customer',
-            label: 'CLIENTE',
-            value: data.customerLabel,
-          },
-          {
-            key: 'status',
-            label: 'ESTADO',
+            key: 'balance',
+            label: unit.toUpperCase(),
             value:
-              data.activeStamps >= data.targetStamps
-                ? '¡Premio desbloqueado!'
-                : `Faltan ${data.targetStamps - data.activeStamps} sellos`,
+              card.type === 'POINTS'
+                ? String(data.activeStamps)
+                : `${data.activeStamps} / ${data.targetStamps}`,
           },
         ],
-        backFields: [
-          {
-            key: 'terms',
-            label: 'TÉRMINOS Y CONDICIONES',
-            value: `Acumula ${data.targetStamps} sellos en ${data.merchantName} y canjea tu "${data.rewardName}". Tus sellos vigentes también sirven para cualquier otra promoción activa del local: eliges en caja cuál canjear.`,
-          },
-          {
-            key: 'expiryInfo',
-            label: 'VIGENCIA',
-            value: data.nextExpiryAt
-              ? `Próximo vencimiento: ${data.nextExpiryAt.toLocaleDateString('es-CL')}`
-              : 'Tus sellos no vencen.',
-          },
+        primaryFields: details.fields.includes('REWARD')
+          ? [{ key: 'reward', label: 'PREMIO', value: data.rewardName }]
+          : [],
+        secondaryFields: [
+          ...(details.showCustomerName
+            ? [{ key: 'customer', label: 'TITULAR', value: data.customerLabel }]
+            : []),
+          ...(details.fields.includes('PROGRESS')
+            ? [{ key: 'status', label: 'ESTADO', value: statusText(card, data.activeStamps, data.targetStamps) }]
+            : []),
         ],
+        backFields,
       },
       barcodes: [
         {
           format: 'PKBarcodeFormatQR',
           message: data.passToken,
           messageEncoding: 'iso-8859-1',
-          altText: data.customerLabel,
+          ...(details.showCustomerName ? { altText: data.customerLabel } : {}),
         },
       ],
-      barcode: {
-        format: 'PKBarcodeFormatQR',
-        message: data.passToken,
-        messageEncoding: 'iso-8859-1',
-        altText: data.customerLabel,
-      },
     };
   }
 

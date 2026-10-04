@@ -7,6 +7,8 @@ import {
 import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { DEFAULT_REGISTRATION } from '@fidelity/shared';
+import { cardViewSelect } from '../cards/card-program.js';
 import { MerchantsService } from './merchants.service.js';
 
 describe('MerchantsService', () => {
@@ -26,7 +28,18 @@ describe('MerchantsService', () => {
     brandId: merchantId,
     brand: { name: 'Cafetería Central', status: 'ACTIVE', programs: program ? [program] : [], ...brand },
   });
-  const mockMerchant = withProgram({ stampValidityDays: 90, isActive: true, promotions });
+  const program = {
+    id: 'b0000000-0000-4000-8000-000000000001',
+    type: 'STAMPS',
+    name: 'Tarjeta de sellos',
+    stampValidityDays: 90,
+    isActive: true,
+    design: {},
+    details: {},
+    registration: {},
+    promotions,
+  };
+  const mockMerchant = withProgram(program, { pesosPerPoint: 1000 });
 
   const mockLocation = {
     id: merchantId,
@@ -63,7 +76,25 @@ describe('MerchantsService', () => {
         stampValidityDays: 90,
         activePromotion: promotions[0],
         activePromotions: promotions,
+        card: expect.objectContaining({
+          type: 'STAMPS',
+          name: 'Tarjeta de sellos',
+          pesosPerPoint: 1000,
+          registration: DEFAULT_REGISTRATION,
+          closed: false,
+        }),
       });
+    });
+
+    it('marks a fixed-term card that already ended as closed', async () => {
+      vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue(
+        withProgram({
+          ...program,
+          cardValidity: 'FIXED_DATE',
+          cardExpiresAt: new Date('2020-01-01T00:00:00Z'),
+        }) as any,
+      );
+      expect((await service.findPublicBySlug('cafeteria-central')).card?.closed).toBe(true);
     });
 
     it('only selects storefront fields (never the owner email) and only active promotions, newest first', async () => {
@@ -82,12 +113,12 @@ describe('MerchantsService', () => {
             select: {
               name: true,
               status: true,
+              pesosPerPoint: true,
               programs: {
-                where: { type: 'STAMPS' },
                 orderBy: { createdAt: 'asc' },
                 take: 1,
                 select: {
-                  stampValidityDays: true,
+                  ...cardViewSelect,
                   isActive: true,
                   promotions: {
                     where: { isActive: true },

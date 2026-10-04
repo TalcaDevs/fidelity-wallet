@@ -89,7 +89,14 @@ describe('ScanService: validación en caja', () => {
         })),
       },
       loyaltyProgram: {
-        findFirst: vi.fn().mockResolvedValue({ id: programId, brandId, isActive: true, stampValidityDays: null }),
+        findFirst: vi.fn().mockResolvedValue({
+          id: programId,
+          brandId,
+          type: 'STAMPS',
+          isActive: true,
+          stampValidityDays: null,
+          dailyStampLimit: false,
+        }),
       },
       pass: {
         findUnique: vi.fn().mockResolvedValue(pass),
@@ -101,6 +108,10 @@ describe('ScanService: validación en caja', () => {
         create: vi.fn().mockResolvedValue({ id: 'scan-1' }),
       },
       stamp: {
+        createMany: vi.fn(async function (this: { create: (args: unknown) => unknown }, { data }: { data: unknown[] }) {
+          for (const row of data) await this.create({ data: row });
+          return { count: data.length };
+        }),
         count: vi.fn().mockResolvedValue(3),
         findFirst: vi.fn().mockResolvedValue(null),
         create: vi.fn().mockResolvedValue({ id: 'stamp-1' }),

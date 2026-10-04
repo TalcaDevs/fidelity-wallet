@@ -5,6 +5,8 @@ import {
   PURCHASE_AMOUNT_MAX,
   PURCHASE_NOTE_MAX,
   RECEIPT_MIME_TYPES,
+  balanceUnit,
+  type CardType,
   type PanelStampsResultDto,
 } from '@fidelity/shared';
 import { Modal } from '../../../../components/ui/Modal';
@@ -19,6 +21,7 @@ interface AddStampsModalProps {
   customerId: string;
   customerName: string;
   homeLocationId: string;
+  cardType: CardType;
   maxStampsPerLoad: number;
   onClose: () => void;
   onAdded: (result: PanelStampsResultDto) => void;
@@ -38,10 +41,13 @@ export function AddStampsModal({
   customerId,
   customerName,
   homeLocationId,
+  cardType,
   maxStampsPerLoad,
   onClose,
   onAdded,
 }: AddStampsModalProps) {
+  const isPoints = cardType === 'POINTS';
+  const unit = balanceUnit(cardType);
   const ids = useId();
   const [stampCount, setStampCount] = useState(1);
   const [reason, setReason] = useState('');
@@ -101,20 +107,35 @@ export function AddStampsModal({
       });
       onAdded(result);
     } catch (err) {
-      setError(errorMessage(err, 'No pudimos sumar los sellos.'));
+      setError(errorMessage(err, `No pudimos sumar los ${unit}.`));
       setBusy(false);
     }
   };
 
   return (
     <Modal
-      title="Sumar sellos"
+      title={`Sumar ${unit}`}
       description={`A ${customerName}. Queda en su historial como sumado desde el panel.`}
       onClose={() => !busy && onClose()}
     >
       <form onSubmit={(e) => void handleSubmit(e)} className="space-y-5">
         <div>
-          <span id={`${ids}-count`} className={LABEL}>Sellos a sumar</span>
+          <span id={`${ids}-count`} className={LABEL}>{isPoints ? 'Puntos a sumar' : 'Sellos a sumar'}</span>
+          {isPoints ? (
+            <div className="flex items-center gap-3">
+              <input
+                aria-labelledby={`${ids}-count`}
+                inputMode="numeric"
+                value={String(stampCount)}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, '');
+                  setStampCount(Math.max(1, Math.min(maxStampsPerLoad, digits ? Number(digits) : 1)));
+                }}
+                className={`${INPUT} w-36 text-xl font-black tabular-nums`}
+              />
+              <span className="text-sm text-slate-500 dark:text-slate-400">Máximo {clp.format(maxStampsPerLoad)} por vez</span>
+            </div>
+          ) : (
           <div role="group" aria-labelledby={`${ids}-count`} className="flex items-center gap-3">
             <button
               type="button"
@@ -139,6 +160,7 @@ export function AddStampsModal({
             </button>
             <span className="text-sm text-slate-500 dark:text-slate-400">Máximo {maxStampsPerLoad} por vez</span>
           </div>
+          )}
         </div>
 
         <div>
@@ -235,7 +257,7 @@ export function AddStampsModal({
             disabled={busy || preparingReceipt}
             className="px-5 py-3 rounded-xl font-bold text-white bg-brand-blue hover:bg-blue-600 shadow-lg shadow-brand-blue/20 disabled:opacity-50"
           >
-            {busy ? 'Sumando…' : stampCount === 1 ? 'Sumar 1 sello' : `Sumar ${stampCount} sellos`}
+            {busy ? 'Sumando…' : `Sumar ${clp.format(stampCount)} ${balanceUnit(cardType, stampCount)}`}
           </button>
         </div>
       </form>

@@ -83,6 +83,7 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
         id: mockProgramId,
         brandId: mockMerchantId,
         stampValidityDays: 30,
+        dailyStampLimit: false,
         isActive: true,
       }),
     },
@@ -103,6 +104,10 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
         create: vi.fn().mockResolvedValue({ id: 'scan-1' }),
       },
       stamp: {
+        createMany: vi.fn(async function (this: { create: (args: unknown) => unknown }, { data }: { data: unknown[] }) {
+          for (const row of data) await this.create({ data: row });
+          return { count: data.length };
+        }),
         create: vi.fn().mockResolvedValue({ id: 'stamp-1' }),
         count: vi.fn().mockResolvedValue(1),
         findFirst: vi.fn().mockResolvedValue(null),
@@ -174,6 +179,10 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
           }),
         },
         stamp: {
+          createMany: vi.fn(async function (this: { create: (args: unknown) => unknown }, { data }: { data: unknown[] }) {
+            for (const row of data) await this.create({ data: row });
+            return { count: data.length };
+          }),
           count: vi.fn(async () => {
             return stampsInDb.filter((s) => s.consumedAt === null).length;
           }),
@@ -283,6 +292,10 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
         }),
       },
       stamp: {
+        createMany: vi.fn(async function (this: { create: (args: unknown) => unknown }, { data }: { data: unknown[] }) {
+          for (const row of data) await this.create({ data: row });
+          return { count: data.length };
+        }),
         create: vi.fn(async ({ data }) => {
           stampCreates.push(data.sourceScanId);
           return { id: `stamp-${stampCreates.length}` };

@@ -50,6 +50,8 @@ export interface InternalBrandDetailDto extends InternalBrandSummaryDto {
   contactEmail: string | null;
   contactPhone: string | null;
   subscription: SubscriptionMock;
+  pointsEnabled: boolean;
+  pesosPerPoint: number;
   locationsList: LocationDto[];
   programs: InternalProgramDto[];
   members: InternalBrandMemberDto[];
@@ -73,6 +75,8 @@ export interface InternalBrandUpdateInput {
   status?: BrandStatus;
   planId?: PlanId;
   trialEndsAt?: string;
+  pointsEnabled?: boolean;
+  pesosPerPoint?: number;
 }
 
 export interface InternalLocationPinDto {

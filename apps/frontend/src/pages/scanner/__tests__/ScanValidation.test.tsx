@@ -18,6 +18,10 @@ const base: Validation = {
   canStamp: true,
   maxStampsPerLoad: 1,
   reasonRequired: false,
+  cardType: 'STAMPS',
+  pesosPerPoint: 1000,
+  amountRequired: false,
+  receiptRequired: false,
 };
 
 function setup(overrides: Partial<Validation> = {}) {
@@ -138,5 +142,89 @@ describe('ScanValidation', () => {
     fireEvent.change(screen.getByLabelText('Motivo'), { target: { value: 'Segunda compra' } });
     fireEvent.click(screen.getByRole('button', { name: 'Agregar sello' }));
     expect(added).toEqual([expect.objectContaining({ stampCount: 1, reason: 'Segunda compra' })]);
+  });
+
+  describe('tarjeta de puntos', () => {
+    const points = { cardType: 'POINTS' as const, amountRequired: true, receiptRequired: true, stampsCount: 40, targetStamps: 100 };
+    const receipt = () => new File(['x'], 'boleta.png', { type: 'image/png' });
+
+    it('derives OWNER points only from the amount even when multiple loads are allowed', () => {
+      const { added } = setup({ ...points, maxStampsPerLoad: 10000, receiptRequired: false });
+
+      expect(screen.queryByRole('group', { name: 'Sellos a sumar' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Un sello más' })).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Motivo')).not.toBeInTheDocument();
+
+      fireEvent.change(screen.getByLabelText(/Monto de la compra/), { target: { value: '12500' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Sumar 12 puntos' }));
+
+      expect(added).toEqual([{ purchaseAmount: 12500, note: undefined, receipt: undefined }]);
+      expect(added[0]).not.toHaveProperty('stampCount');
+      expect(added[0]).not.toHaveProperty('reason');
+    });
+
+    it('still requires the OWNER cooldown reason for points without sending stampCount', () => {
+      const { added } = setup({
+        ...points,
+        maxStampsPerLoad: 10000,
+        receiptRequired: false,
+        reasonRequired: true,
+        nextStampAvailableAt: '2026-10-03T15:30:00.000Z',
+      });
+
+      expect(screen.queryByRole('group', { name: 'Sellos a sumar' })).not.toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText(/Monto de la compra/), { target: { value: '5000' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Sumar 5 puntos' }));
+
+      expect(added).toEqual([]);
+      expect(screen.getByRole('alert')).toHaveTextContent(/indica el motivo/i);
+
+      fireEvent.change(screen.getByLabelText('Motivo'), { target: { value: 'Segunda compra' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Sumar 5 puntos' }));
+
+      expect(added).toEqual([{
+        purchaseAmount: 5000,
+        note: undefined,
+        receipt: undefined,
+        reason: 'Segunda compra',
+      }]);
+      expect(added[0]).not.toHaveProperty('stampCount');
+    });
+
+    it('requires the amount and shows the points it gives', () => {
+      const { added } = setup(points);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Sumar puntos' }));
+      expect(added).toEqual([]);
+      expect(screen.getAllByRole('alert')[0]).toHaveTextContent(/monto de la compra/);
+
+      fireEvent.change(screen.getByLabelText(/Monto de la compra/), { target: { value: '12500' } });
+      expect(screen.getByText(/Suma 12 puntos/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Sumar 12 puntos' })).toBeInTheDocument();
+    });
+
+    it('asks the STAFF for the receipt photo', async () => {
+      vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:boleta');
+      vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+      const { added } = setup(points);
+      fireEvent.change(screen.getByLabelText(/Monto de la compra/), { target: { value: '5000' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Sumar 5 puntos' }));
+
+      expect(added).toEqual([]);
+      expect(screen.getByRole('alert')).toHaveTextContent(/foto de la boleta/);
+
+      fireEvent.change(screen.getByLabelText(/Foto de la boleta|Tomar foto/, { selector: 'input' }), {
+        target: { files: [receipt()] },
+      });
+      await screen.findByAltText('Foto de la boleta');
+      fireEvent.click(screen.getByRole('button', { name: 'Sumar 5 puntos' }));
+      expect(added).toEqual([expect.objectContaining({ purchaseAmount: 5000, receipt: expect.any(File) })]);
+    });
+
+    it('rejects an amount below one point', () => {
+      setup(points);
+      fireEvent.change(screen.getByLabelText(/Monto de la compra/), { target: { value: '900' } });
+      expect(screen.getByRole('alert')).toHaveTextContent('1 punto cada $1.000');
+    });
   });
 });

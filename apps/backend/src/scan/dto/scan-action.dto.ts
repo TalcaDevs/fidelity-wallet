@@ -1,6 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ScanMethod } from '@prisma/client';
 import {
+  CARD_TYPES,
+  type CardType,
   OWNER_STAMP_REASON_MAX,
   OWNER_STAMP_REASON_MIN,
   PURCHASE_AMOUNT_MAX,
@@ -169,7 +171,8 @@ export class ScanActionDto {
   reason?: string;
 
   @ApiPropertyOptional({
-    description: 'Solo STAMP: monto de la compra en pesos chilenos. Solo se registra',
+    description:
+      'Solo STAMP: monto de la compra en pesos chilenos. Con tarjeta de puntos es obligatorio y define los puntos; con sellos solo se registra',
     example: 12500,
   })
   @Transform(optionalNumber)
@@ -359,4 +362,16 @@ export class ScanValidationDto {
     description: 'Verdadero si sumar ahora exige motivo (OWNER dentro del bloqueo entre sellos)',
   })
   reasonRequired: boolean;
+
+  @ApiProperty({ enum: CARD_TYPES, description: 'Tarjeta de sellos (por visita) o de puntos (por monto)' })
+  cardType: CardType;
+
+  @ApiProperty({ description: 'Pesos de compra por cada punto (solo se usa con puntos)', example: 1000 })
+  pesosPerPoint: number;
+
+  @ApiProperty({ description: 'Con puntos el monto es obligatorio: define los puntos' })
+  amountRequired: boolean;
+
+  @ApiProperty({ description: 'Con puntos el STAFF debe adjuntar la foto de la boleta' })
+  receiptRequired: boolean;
 }

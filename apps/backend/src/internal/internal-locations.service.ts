@@ -4,14 +4,18 @@ import type { Prisma } from '@prisma/client';
 import { diffFields, recordAudit } from '../common/audit/audit.js';
 import type { UpdateLocationDto } from '../locations/dto/location.dto.js';
 import { toLocationDto } from '../locations/location-mapper.js';
-import { locationChanges } from '../locations/locations.service.js';
+import { changesNearbyLocations, locationChanges } from '../locations/locations.service.js';
+import { PassesService } from '../passes/passes.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { ListLocationPinsQueryDto } from './dto/internal.dto.js';
 
 /** Locales de todas las marcas para /internal: edición auditada y pines del mapa. */
 @Injectable()
 export class InternalLocationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly passes: PassesService,
+  ) {}
 
   async update(
     locationId: string,
@@ -39,6 +43,7 @@ export class InternalLocationsService {
         after: diff.after as Prisma.InputJsonObject,
       }),
     ]);
+    if (changesNearbyLocations(dto)) void this.passes.refreshNearbyLocations(updated.brandId);
     return toLocationDto(updated);
   }
 

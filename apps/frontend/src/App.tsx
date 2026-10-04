@@ -4,7 +4,7 @@ import { Dashboard } from './pages/admin/Dashboard';
 import { Analytics } from './pages/admin/Analytics';
 import { SupabaseAuth } from './auth/SupabaseAuth';
 import { Layout } from './components/Layout';
-import { PromotionsModule } from './pages/admin/PromotionsModule';
+import { CardEditor } from './pages/admin/card/CardEditor';
 import { Customers } from './pages/admin/Customers';
 import { CustomerDetail } from './pages/admin/CustomerDetail';
 import { Team } from './pages/admin/Team';
@@ -85,7 +85,9 @@ export default function App() {
               <Route path={ROUTES.locations} element={<Suspense fallback={null}><Locations brandId={membership.brandId} /></Suspense>} />
               {isBillingEnabled && <Route path={ROUTES.billing} element={<Billing brandId={membership.brandId} />} />}
               <Route path={ROUTES.support} element={<Support brandId={membership.brandId} />} />
-              <Route path={ROUTES.promotions} element={<PromotionsModule programId={membership.programId} />} />
+              <Route path={ROUTES.card} element={<CardEditor brandId={membership.brandId} />} />
+              {/* Las promociones ahora son las recompensas del editor de la tarjeta. */}
+              <Route path={ROUTES.promotions} element={<Navigate to={ROUTES.card} replace />} />
               <Route path={ROUTES.customers} element={<Customers brandId={membership.brandId} merchantId={membership.merchantId} />} />
               <Route path={ROUTES.customerDetail} element={<CustomerDetail brandId={membership.brandId} />} />
               <Route path={ROUTES.settings} element={<Settings session={session} brandId={membership.brandId} />} />
@@ -112,7 +114,7 @@ export default function App() {
               viejos siguen funcionando en vez de caer en el 404. */}
           <Route path="/dashboard" element={<Navigate to={ROUTES.dashboard} replace />} />
           <Route path="/analytics" element={<Navigate to={ROUTES.analytics} replace />} />
-          <Route path="/promotions" element={<Navigate to={ROUTES.promotions} replace />} />
+          <Route path="/promotions" element={<Navigate to={ROUTES.card} replace />} />
           <Route path="/customers" element={<Navigate to={ROUTES.customers} replace />} />
           <Route path="/settings" element={<Navigate to={ROUTES.settings} replace />} />
 

@@ -104,6 +104,70 @@ describe('CustomersService', () => {
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
+  describe('lo que pide la tarjeta', () => {
+    beforeEach(() => {
+      prismaMock.merchant.findUnique.mockResolvedValue(activeLocation);
+      prismaMock.customer.findUnique.mockResolvedValue(null);
+      prismaMock.customer.create.mockResolvedValue({ id: 'c-1' });
+      prismaMock.scan = { create: vi.fn().mockResolvedValue({ id: 'scan-welcome' }) };
+      prismaMock.stamp = { createMany: vi.fn().mockResolvedValue({ count: 0 }) };
+    });
+
+    it('rejects a signup without a required field', async () => {
+      prismaMock.loyaltyProgram.findFirst.mockResolvedValue({
+        ...stampsProgram,
+        registration: { name: 'REQUIRED', email: 'REQUIRED' },
+      });
+      await expect(service.createOrFindCustomer(validDto())).rejects.toThrow('Ingresa tu correo');
+      await expect(service.createOrFindCustomer(validDto({ email: 'ana@gmail.com' }))).rejects.toThrow(
+        'Ingresa tu nombre',
+      );
+      expect(prismaMock.customer.create).not.toHaveBeenCalled();
+    });
+
+    it('drops what the brand does not ask for', async () => {
+      prismaMock.loyaltyProgram.findFirst.mockResolvedValue({
+        ...stampsProgram,
+        registration: { rut: 'HIDDEN', birthday: 'HIDDEN' },
+      });
+      await service.createOrFindCustomer(validDto({ birthDay: 3, birthMonth: 4 }));
+      const { data } = prismaMock.customer.create.mock.calls[0][0];
+      expect(data.rut).toBeUndefined();
+      expect(data.birthDay).toBeUndefined();
+      expect(data.phone).toBe('+56912345678');
+    });
+
+    it('gives the welcome balance only with a new card', async () => {
+      prismaMock.loyaltyProgram.findFirst.mockResolvedValue({ ...stampsProgram, welcomeBalance: 2 });
+      await service.createOrFindCustomer(validDto());
+
+      expect(prismaMock.scan.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ passId: 'p-1', method: 'WELCOME', stampCount: 2, type: 'STAMP_ADDED' }),
+      });
+      const [{ data: rows }] = prismaMock.stamp.createMany.mock.calls[0];
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toMatchObject({ sourceScanId: 'scan-welcome', expiresAt: expect.any(Date) });
+      // El saldo se da antes de armar el pase, para que la tarjeta nazca con él.
+      expect(prismaMock.stamp.createMany.mock.invocationCallOrder[0]).toBeLessThan(
+        passesServiceMock.getWalletUrlsForPass.mock.invocationCallOrder[0],
+      );
+
+      passesServiceMock.findOrCreatePass.mockResolvedValue({ pass: { id: 'p-1' }, isNew: false });
+      prismaMock.scan.create.mockClear();
+      await service.createOrFindCustomer(validDto());
+      expect(prismaMock.scan.create).not.toHaveBeenCalled();
+    });
+
+    it('does not hand out new cards once a fixed-term card ended', async () => {
+      prismaMock.loyaltyProgram.findFirst.mockResolvedValue({
+        ...stampsProgram,
+        cardValidity: 'FIXED_DATE',
+        cardExpiresAt: new Date('2020-01-01T00:00:00Z'),
+      });
+      await expect(service.createOrFindCustomer(validDto())).rejects.toThrow('ya terminó');
+    });
+  });
+
   it('creates the customer with only an email, a name and a birthday without year', async () => {
     prismaMock.merchant.findUnique.mockResolvedValue(activeLocation);
     prismaMock.customer.findUnique.mockResolvedValue(null);

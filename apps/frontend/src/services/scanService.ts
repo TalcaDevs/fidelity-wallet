@@ -1,3 +1,4 @@
+import type { CardType } from '@fidelity/shared';
 import { authenticatedFetch } from '../lib/api';
 import { extractApiError } from '../lib/apiError';
 
@@ -46,6 +47,11 @@ export interface ScanValidation {
   canStamp: boolean;
   maxStampsPerLoad: number;
   reasonRequired: boolean;
+  /** Sellos por visita o puntos por monto: con puntos el monto es obligatorio. */
+  cardType: CardType;
+  pesosPerPoint: number;
+  amountRequired: boolean;
+  receiptRequired: boolean;
 }
 
 export type ValidationResult =
@@ -87,6 +93,10 @@ const mockValidate = (): Promise<ValidationResult> => {
     canStamp: true,
     maxStampsPerLoad: 1,
     reasonRequired: false,
+    cardType: 'STAMPS',
+    pesosPerPoint: 1000,
+    amountRequired: false,
+    receiptRequired: false,
   });
 };
 
@@ -127,6 +137,10 @@ interface ValidationApiResponse {
   canStamp: boolean;
   maxStampsPerLoad: number;
   reasonRequired: boolean;
+  cardType?: CardType;
+  pesosPerPoint?: number;
+  amountRequired?: boolean;
+  receiptRequired?: boolean;
 }
 
 /** A quién se busca: el QR del pase o, en el ingreso manual, el RUT, teléfono o correo. */
@@ -197,6 +211,10 @@ export const validateScan = async (params: { merchantId: string; target: LookupT
       canStamp: data.canStamp,
       maxStampsPerLoad: data.maxStampsPerLoad,
       reasonRequired: data.reasonRequired,
+      cardType: data.cardType ?? 'STAMPS',
+      pesosPerPoint: data.pesosPerPoint ?? 1000,
+      amountRequired: data.amountRequired ?? false,
+      receiptRequired: data.receiptRequired ?? false,
     };
   } catch {
     return { ok: false, error: 'Error de red o de servidor' };

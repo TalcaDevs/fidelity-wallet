@@ -330,17 +330,28 @@ describe('triggers de consistencia', () => {
     });
   });
 
-  it('permite un solo programa de sellos por marca', async () => {
+  it('permite una sola tarjeta por marca, del tipo que sea', async () => {
     await inRollback(async (tx) => {
       const a = await createBrand(tx, 'a');
       await expectDbError(
         tx,
         () =>
           tx.loyaltyProgram.create({
-            data: { brandId: a.brandId, name: 'Otro' },
+            data: { brandId: a.brandId, name: 'Otra', type: 'POINTS' },
           }),
         'P2002',
       );
+    });
+  });
+
+  it('la tarjeta puede pasar de sellos a puntos', async () => {
+    await inRollback(async (tx) => {
+      const a = await createBrand(tx, 'a');
+      const updated = await tx.loyaltyProgram.update({
+        where: { id: a.programId },
+        data: { type: 'POINTS' },
+      });
+      expect(updated.type).toBe('POINTS');
     });
   });
 

@@ -25,13 +25,21 @@ function birthdayError(day: string, month: string, year: string): string | null 
   return valid ? null : 'Esa fecha no existe';
 }
 
-/** Cumpleaños opcional: día y mes, y el año solo si el cliente quiere darlo. */
-export function BirthdayField({ onChange, showErrors }: { onChange: (value: BirthdayValue) => void; showErrors: boolean }) {
+/** Cumpleaños: día y mes, y el año solo si el cliente quiere darlo. Obligatorio si la marca lo pide. */
+export function BirthdayField({
+  onChange,
+  showErrors,
+  required = false,
+}: {
+  onChange: (value: BirthdayValue) => void;
+  showErrors: boolean;
+  required?: boolean;
+}) {
   const id = useId();
   const [day, setDay] = useState('');
   const [month, setMonth] = useState('');
   const [year, setYear] = useState('');
-  const error = birthdayError(day, month, year);
+  const error = birthdayError(day, month, year) ?? (required && !day && !month ? 'Indica tu cumpleaños' : null);
   // Mientras escribe el año no se queja; sí al completar la fecha o al enviar.
   const complete = Boolean(day && month) && (year.length === 0 || year.length === 4);
   const visibleError = showErrors || complete ? error : null;
@@ -47,14 +55,14 @@ export function BirthdayField({ onChange, showErrors }: { onChange: (value: Birt
       day: d ? Number(d) : undefined,
       month: m ? Number(m) : undefined,
       year: y ? Number(y) : undefined,
-      isValid: birthdayError(d, m, y) === null,
+      isValid: birthdayError(d, m, y) === null && !(required && !d && !m),
     });
   };
 
   return (
     <fieldset aria-describedby={visibleError ? `${id}-error` : undefined}>
       <legend className="block text-sm font-bold mb-2 px-1 text-slate-700">
-        Cumpleaños <span className="font-medium text-slate-400">(opcional)</span>
+        Cumpleaños {!required && <span className="font-medium text-slate-400">(opcional)</span>}
       </legend>
       <div className="grid grid-cols-[1fr_1.6fr_1.2fr] gap-2">
         <label className="sr-only" htmlFor={`${id}-day`}>Día</label>

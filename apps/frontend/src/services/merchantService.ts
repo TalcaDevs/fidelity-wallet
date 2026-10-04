@@ -1,3 +1,4 @@
+import type { PublicCardDto } from '@fidelity/shared';
 import { supabase } from '../lib/supabase';
 import { apiUrl } from '../lib/api';
 import { extractApiError } from '../lib/apiError';
@@ -6,6 +7,8 @@ export interface MerchantWithPromo {
   id: string;
   name: string;
   stampValidityDays: number | null;
+  /** null con mocks o si la marca aún no tiene tarjeta: se usa lo de siempre (sellos, todo opcional). */
+  card: PublicCardDto | null;
   Promotion: {
     id: string;
     name: string;
@@ -24,6 +27,7 @@ interface PublicMerchantResponse {
   stampValidityDays: number | null;
   activePromotion: ApiPromotion | null;
   activePromotions?: ApiPromotion[];
+  card?: PublicCardDto | null;
 }
 
 export async function getMerchantWithActivePromo(merchantName: string): Promise<MerchantWithPromo | null> {
@@ -33,6 +37,7 @@ export async function getMerchantWithActivePromo(merchantName: string): Promise<
       id: 'mock-merchant-id',
       name: merchantName || 'Mi Local (Mock)',
       stampValidityDays: 30,
+      card: null,
       Promotion: [
         {
           id: 'mock-promo-id',
@@ -66,6 +71,7 @@ export async function getMerchantWithActivePromo(merchantName: string): Promise<
     id: data.id,
     name: data.name,
     stampValidityDays: data.stampValidityDays,
+    card: data.card ?? null,
     Promotion: promotions.map((p) => ({
       id: p.id,
       name: p.name || 'Promoción Activa',

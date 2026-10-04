@@ -51,7 +51,9 @@ export default defineConfig(({ mode }) => {
   ],
   server: {
     host: enableHttps ? true : false,
-    allowedHosts: enableHttps ? true : undefined,
+    // Túnel de Cloudflare (cloudflared tunnel --url http://localhost:5173): HTTPS público para
+    // probar en el celular y para que Google Wallet descargue las imágenes de la tarjeta.
+    allowedHosts: enableHttps ? true : ['.trycloudflare.com'],
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:3000',

@@ -9,6 +9,7 @@ import type {
   RetentionReportDto,
   WeeklyRetentionPointDto,
 } from '../dto/reports-response.dto.js';
+import { VISIT_SCANS } from '../reports.types.js';
 import { formatDateInTz, getMondayOfWeek } from '../utils/reports-date.util.js';
 import type { ReportScope } from './reports-overview.service.js';
 
@@ -41,7 +42,7 @@ export class RetentionAnalyticsService {
     // 1. Consultar pases y scans de los últimos 60 días
     const [scansInPeriod, passes] = await Promise.all([
       this.prisma.scan.findMany({
-        where: { ...scopeFilter, createdAt: { gte: periodFrom, lte: now } },
+        where: { ...scopeFilter, ...VISIT_SCANS, createdAt: { gte: periodFrom, lte: now } },
         select: {
           id: true,
           createdAt: true,
@@ -174,7 +175,7 @@ export class RetentionAnalyticsService {
       const minCohortDate = new Date(Date.UTC(earlyY, earlyM - 1, 1));
 
       allScansForCohorts = await this.prisma.scan.findMany({
-        where: { ...scopeFilter, createdAt: { gte: minCohortDate } },
+        where: { ...scopeFilter, ...VISIT_SCANS, createdAt: { gte: minCohortDate } },
         select: {
           createdAt: true,
           pass: { select: { customerId: true } },

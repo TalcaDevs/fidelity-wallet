@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RECEIPT_MAX_BYTES, RECEIPT_MIME_TYPES } from '@fidelity/shared';
-import { PrivateBucketStorage } from '../common/storage/private-bucket-storage.js';
+import { PrivateBucketStorage } from '../common/storage/bucket-storage.js';
 
 export const RECEIPTS_BUCKET = 'purchase-receipts';
 

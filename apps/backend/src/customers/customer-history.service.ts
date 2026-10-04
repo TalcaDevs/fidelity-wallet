@@ -1,8 +1,8 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { CustomerHistoryDto, PurchaseHistoryEntryDto } from '@fidelity/shared';
-import { ScanType, type Customer } from '@prisma/client';
-import { findStampsProgram, requireActiveBrandOwner } from '../common/access/brand-access.js';
+import { POINTS_PER_SCAN_MAX, type CustomerHistoryDto, type PurchaseHistoryEntryDto } from '@fidelity/shared';
+import { ScanMethod, ScanType, type Customer } from '@prisma/client';
+import { findBrandProgram, requireActiveBrandOwner } from '../common/access/brand-access.js';
 import { recordAudit } from '../common/audit/audit.js';
 import { UserDirectoryService } from '../common/users/user-directory.service.js';
 import { maskEmail, maskPhone, maskRut } from '../common/utils/mask.util.js';
@@ -66,14 +66,14 @@ export class CustomerHistoryService {
     { brandId, page, pageSize }: CustomerHistoryQueryDto,
     maskIdentifiers: boolean,
   ): Promise<CustomerHistoryDto> {
-    const program = await findStampsProgram(this.prisma, brandId);
+    const program = await findBrandProgram(this.prisma, brandId);
     const pass = program
       ? await this.prisma.pass.findUnique({
           where: { customerId_programId: { customerId, programId: program.id } },
           include: { customer: true },
         })
       : null;
-    if (!pass) {
+    if (!program || !pass) {
       throw new NotFoundException('El cliente no tiene una tarjeta en esta marca');
     }
 
@@ -91,7 +91,7 @@ export class CustomerHistoryService {
         },
       }),
       this.prisma.scan.groupBy({
-        by: ['type'],
+        by: ['type', 'method'],
         where: { passId: pass.id },
         _count: { _all: true },
         _sum: { purchaseAmount: true },
@@ -105,8 +105,12 @@ export class CustomerHistoryService {
       }),
     ]);
 
-    const byType = (type: ScanType) => totalsByType.find((g) => g.type === type);
     const total = totalsByType.reduce((sum, g) => sum + g._count._all, 0);
+    // El saldo de bienvenida no es una visita ni una compra.
+    const purchases = totalsByType.filter(
+      (g) => g.type === ScanType.STAMP_ADDED && g.method !== ScanMethod.WELCOME,
+    );
+    const redemptions = totalsByType.filter((g) => g.type === ScanType.REWARD_REDEEMED);
 
     const redeemIds = scans.filter((s) => s.type === ScanType.REWARD_REDEEMED).map((s) => s.id);
     const consumed = redeemIds.length
@@ -142,12 +146,13 @@ export class CustomerHistoryService {
     return {
       customer: this.profile(pass, activeStamps, maskIdentifiers),
       totals: {
-        visits: byType(ScanType.STAMP_ADDED)?._count._all ?? 0,
-        redemptions: byType(ScanType.REWARD_REDEEMED)?._count._all ?? 0,
-        purchaseAmount: byType(ScanType.STAMP_ADDED)?._sum.purchaseAmount ?? 0,
+        visits: purchases.reduce((sum, g) => sum + g._count._all, 0),
+        redemptions: redemptions.reduce((sum, g) => sum + g._count._all, 0),
+        purchaseAmount: purchases.reduce((sum, g) => sum + (g._sum.purchaseAmount ?? 0), 0),
       },
       history: { items, page, pageSize, total },
-      maxStampsPerLoad: this.maxStampsPerLoad,
+      cardType: program.type,
+      maxStampsPerLoad: program.type === 'POINTS' ? POINTS_PER_SCAN_MAX : this.maxStampsPerLoad,
     };
   }
 

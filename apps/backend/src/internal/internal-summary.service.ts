@@ -101,7 +101,7 @@ export class InternalSummaryService {
     >`
       WITH scans AS (
         SELECT to_char(("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'America/Santiago', 'YYYY-MM-DD') AS day,
-               count(*) FILTER (WHERE type = 'STAMP_ADDED')::int AS stamps,
+               count(*) FILTER (WHERE type = 'STAMP_ADDED' AND method <> 'WELCOME')::int AS stamps,
                count(*) FILTER (WHERE type = 'REWARD_REDEEMED')::int AS redemptions
         FROM "Scan" WHERE "createdAt" >= ${since}
         GROUP BY 1

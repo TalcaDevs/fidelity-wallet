@@ -87,6 +87,27 @@ const BRANDS = [
     customers: 5,
     tickets: [],
   },
+  {
+    // Tarjeta de puntos y sin clientes: sirve para probar los puntos y para cambiar el tipo de
+    // tarjeta en /admin/card (con clientes con saldo el cambio está bloqueado).
+    owner: { email: 'libreria@example.com', fullName: 'Dueña Librería Puntos' },
+    name: 'Librería Puntos',
+    planId: 'TRIAL',
+    trialEndsInDays: 20,
+    stampValidityDays: 365,
+    pointsEnabled: true,
+    card: { type: 'POINTS', name: 'Club Librería' },
+    locations: [
+      { key: 'valparaiso', name: 'Librería Puntos', slug: 'libreria-puntos', address: 'Av. Pedro Montt 2030', commune: 'Valparaíso', region: 'Valparaíso', latitude: -33.0458, longitude: -71.6197 },
+    ],
+    promotions: [
+      { name: 'Marcapáginas', targetStamps: 20, rewardName: 'Marcapáginas de regalo' },
+      { name: 'Libro', targetStamps: 150, rewardName: 'Libro de bolsillo gratis' },
+    ],
+    staff: [{ email: 'libreria.caja@example.com', fullName: 'Caja Librería', location: 'valparaiso' }],
+    customers: 0,
+    tickets: [],
+  },
 ];
 
 const PLATFORM_ADMIN = { email: 'admin@example.com', fullName: 'Admin interno' };
@@ -162,6 +183,7 @@ async function seedBrand(spec) {
         name: spec.name,
         planId: spec.planId,
         status: spec.status ?? 'ACTIVE',
+        ...(spec.pointsEnabled && { pointsEnabled: true }),
         ...(spec.trialEndsInDays !== undefined && { trialEndsAt: new Date(NOW + spec.trialEndsInDays * DAY_MS).toISOString() }),
       })
       .eq('id', brandId),
@@ -176,7 +198,11 @@ async function seedBrand(spec) {
   }
 
   const [program] = await check(
-    supabase.from('LoyaltyProgram').update({ stampValidityDays: spec.stampValidityDays }).eq('brandId', brandId).select('id'),
+    supabase
+      .from('LoyaltyProgram')
+      .update({ stampValidityDays: spec.stampValidityDays, ...spec.card })
+      .eq('brandId', brandId)
+      .select('id'),
   );
   const promotions = await check(
     supabase
