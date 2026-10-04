@@ -1,3 +1,4 @@
+import type { CardType } from './card.js';
 import type { ScanMethodName } from './scan.js';
 import type { Paginated } from './support.js';
 
@@ -38,7 +39,7 @@ export interface PurchaseHistoryEntryDto {
   id: string;
   type: PurchaseHistoryEntryType;
   createdAt: string;
-  /** PANEL: el dueño sumó sellos desde la ficha del cliente. */
+  /** PANEL: el dueño sumó sellos desde la ficha del cliente. WELCOME: saldo de bienvenida. */
   method: ScanMethodName;
   locationName: string;
   /** Correo de quien registró el movimiento; null si la cuenta ya no existe. */
@@ -73,7 +74,9 @@ export interface CustomerHistoryDto {
   customer: CustomerProfileDto;
   totals: { visits: number; redemptions: number; purchaseAmount: number };
   history: Paginated<PurchaseHistoryEntryDto>;
-  /** Tope de sellos por carga del dueño (OWNER_MAX_STAMPS_PER_LOAD). */
+  /** Sellos o puntos: define cómo se muestra el saldo y qué suma el dueño desde el panel. */
+  cardType: CardType;
+  /** Tope por carga del dueño: OWNER_MAX_STAMPS_PER_LOAD con sellos, POINTS_PER_SCAN_MAX con puntos. */
   maxStampsPerLoad: number;
 }
 
