@@ -23,6 +23,7 @@ const history = (page = 1): CustomerHistoryDto => ({
     homeLocationId: 'loc-1',
   },
   totals: { visits: 21, redemptions: 1, purchaseAmount: 45000 },
+  cardType: 'STAMPS',
   maxStampsPerLoad: 10,
   history: {
     page,

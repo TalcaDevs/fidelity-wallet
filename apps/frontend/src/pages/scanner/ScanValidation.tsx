@@ -6,6 +6,8 @@ import {
   PURCHASE_NOTE_MAX,
   RECEIPT_MAX_BYTES,
   RECEIPT_MIME_TYPES,
+  balanceUnit,
+  pointsForAmount,
 } from '@fidelity/shared';
 import type { ScanValidation as Validation, StampExtras } from '../../services/scanService';
 
@@ -32,6 +34,20 @@ function receiptError(file: File): string | null {
   return null;
 }
 
+function blockedText(validation: Validation, isPoints: boolean): string {
+  if (validation.canStamp) {
+    return isPoints
+      ? 'Se sumaron puntos hace un momento. Si es otra compra, indica el motivo.'
+      : 'Ya sumó un sello hace poco. Puedes sumar otro indicando el motivo.';
+  }
+  const at = validation.nextStampAvailableAt!;
+  if (isPoints) return `Se sumaron puntos hace un momento. Podrás sumar de nuevo a las ${timeOf(at)}.`;
+  // El límite diario desbloquea a medianoche: decir "a las 00:00" confunde, se dice "mañana".
+  return new Date(at).toDateString() !== new Date().toDateString()
+    ? 'Este cliente ya recibió su sello de hoy. Podrá sumar otro mañana.'
+    : `Este cliente ya recibió un sello. Podrá sumar otro a las ${timeOf(at)}.`;
+}
+
 /**
  * Paso entre el escaneo y el sello: el cajero ve a quién escaneó y puede registrar la compra.
  * Nada se suma hasta "Agregar sello"; "Escanear otro" descarta y vuelve a la cámara (una mesa
@@ -40,6 +56,7 @@ function receiptError(file: File): string | null {
 export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem }: ScanValidationProps) {
   const ids = useId();
   const isOwnerLoad = validation.maxStampsPerLoad > 1;
+  const isPoints = validation.cardType === 'POINTS';
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [receipt, setReceipt] = useState<File | null>(null);
@@ -53,15 +70,23 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
     if (previewUrl) URL.revokeObjectURL(previewUrl);
   }, [previewUrl]);
 
-  const needsReason = isOwnerLoad && (stampCount > 1 || validation.reasonRequired);
+  const needsReason = validation.reasonRequired || (isOwnerLoad && stampCount > 1);
   const reasonText = reason.trim();
   const reasonProblem =
     needsReason && reasonText.length < OWNER_STAMP_REASON_MIN
       ? `Indica el motivo (al menos ${OWNER_STAMP_REASON_MIN} caracteres): queda registrado`
       : null;
   const amountValue = amount ? Number(amount) : undefined;
+  const points = isPoints && amountValue !== undefined ? pointsForAmount(amountValue, validation.pesosPerPoint) : 0;
   const amountProblem =
-    amountValue !== undefined && amountValue > PURCHASE_AMOUNT_MAX ? 'El monto es demasiado alto' : null;
+    amountValue !== undefined && amountValue > PURCHASE_AMOUNT_MAX
+      ? 'El monto es demasiado alto'
+      : validation.amountRequired && amountValue === undefined
+        ? 'Ingresa el monto de la compra: con él se calculan los puntos'
+        : isPoints && points < 1
+          ? `El monto no alcanza para un punto (1 punto cada $${clp.format(validation.pesosPerPoint)})`
+          : null;
+  const receiptMissing = validation.receiptRequired && !receipt ? 'Adjunta la foto de la boleta: es obligatoria para sumar puntos' : null;
   const progress = Math.min(100, Math.round((validation.stampsCount / Math.max(1, validation.targetStamps)) * 100));
 
   const handleReceipt = (file: File | undefined) => {
@@ -73,12 +98,13 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
 
   const handleAdd = () => {
     setSubmitted(true);
-    if (!validation.canStamp || reasonProblem || amountProblem) return;
+    if (!validation.canStamp || reasonProblem || amountProblem || receiptMissing) return;
     onAddStamp({
       purchaseAmount: amountValue,
       note: note.trim() || undefined,
       receipt: receipt ?? undefined,
-      ...(isOwnerLoad ? { stampCount, reason: reasonText || undefined } : {}),
+      ...(isOwnerLoad ? { stampCount } : {}),
+      ...(needsReason ? { reason: reasonText || undefined } : {}),
     });
   };
 
@@ -104,7 +130,7 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
 
           <div className="mt-5">
             <div className="flex items-baseline justify-between mb-2">
-              <span className="text-slate-400 text-sm font-bold">Sellos</span>
+              <span className="text-slate-400 text-sm font-bold">{isPoints ? 'Puntos' : 'Sellos'}</span>
               <span className="text-2xl font-black">
                 {validation.stampsCount} <span className="text-slate-500 text-lg">/ {validation.targetStamps}</span>
               </span>
@@ -137,9 +163,7 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
 
         {validation.nextStampAvailableAt && (
           <p role="status" className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-bold text-amber-200">
-            {validation.canStamp
-              ? `Ya sumó un sello hace poco. Puedes sumar otro indicando el motivo.`
-              : `Este cliente ya recibió un sello. Podrá sumar otro a las ${timeOf(validation.nextStampAvailableAt)}.`}
+            {blockedText(validation, isPoints)}
           </p>
         )}
 
@@ -194,7 +218,8 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
 
           <div>
             <label htmlFor={`${ids}-amount`} className="block text-sm font-bold text-slate-300 mb-2 px-1">
-              Monto de la compra <span className="font-medium text-slate-500">(opcional)</span>
+              Monto de la compra{' '}
+              {!validation.amountRequired && <span className="font-medium text-slate-500">(opcional)</span>}
             </label>
             <div className="flex items-center bg-slate-800 border-2 border-slate-700 focus-within:border-blue-500 rounded-2xl">
               <span aria-hidden="true" className="pl-4 pr-2 text-lg font-bold text-slate-400">$</span>
@@ -210,7 +235,14 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
                 className="w-full min-w-0 bg-transparent pr-4 py-3 text-lg font-bold text-white outline-none placeholder:text-slate-500"
               />
             </div>
-            {amountProblem && <p role="alert" className="text-sm font-bold text-red-400 mt-2 px-1">{amountProblem}</p>}
+            {isPoints && points > 0 && !amountProblem && (
+              <p className="text-sm font-bold text-emerald-300 mt-2 px-1">
+                Suma {clp.format(points)} {balanceUnit('POINTS', points)} (1 punto cada ${clp.format(validation.pesosPerPoint)})
+              </p>
+            )}
+            {amountProblem && (submitted || amountValue !== undefined) && (
+              <p role="alert" className="text-sm font-bold text-red-400 mt-2 px-1">{amountProblem}</p>
+            )}
           </div>
 
           <div>
@@ -230,7 +262,8 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
 
           <div>
             <span className="block text-sm font-bold text-slate-300 mb-2 px-1">
-              Foto de la boleta <span className="font-medium text-slate-500">(opcional)</span>
+              Foto de la boleta{' '}
+              {!validation.receiptRequired && <span className="font-medium text-slate-500">(opcional)</span>}
             </span>
             {receipt && previewUrl ? (
               <div className="flex items-center gap-3 rounded-2xl bg-slate-800 border-2 border-slate-700 p-2">
@@ -268,6 +301,9 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
               }}
             />
             {receiptProblem && <p role="alert" className="text-sm font-bold text-red-400 mt-2 px-1">{receiptProblem}</p>}
+            {!receiptProblem && submitted && receiptMissing && (
+              <p role="alert" className="text-sm font-bold text-red-400 mt-2 px-1">{receiptMissing}</p>
+            )}
           </div>
         </section>
       </div>
@@ -279,14 +315,16 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
           disabled={!validation.canStamp}
           className="w-full py-4 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:hover:bg-blue-600 rounded-2xl font-black text-xl shadow-lg shadow-blue-600/30 transition-all active:scale-[0.98]"
         >
-          {stampCount > 1 ? `Agregar ${stampCount} sellos` : 'Agregar sello'}
+          {isPoints
+            ? points > 0 ? `Sumar ${clp.format(points)} ${balanceUnit('POINTS', points)}` : 'Sumar puntos'
+            : stampCount > 1 ? `Agregar ${stampCount} sellos` : 'Agregar sello'}
         </button>
         <button
           type="button"
           onClick={onScanAnother}
           className="w-full py-4 bg-slate-800 hover:bg-slate-700 rounded-2xl font-bold text-lg transition-colors"
         >
-          Escanear otro sello
+          {isPoints ? 'Escanear otro cliente' : 'Escanear otro sello'}
         </button>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import type { PanelStampsResultDto } from '@fidelity/shared';
+import { balanceUnit, type PanelStampsResultDto } from '@fidelity/shared';
 import { PurchaseHistory } from '../../components/customers/PurchaseHistory';
 import { ROUTES } from '../../components/routing/routePaths';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
@@ -25,8 +25,9 @@ export function CustomerDetail({ brandId }: { brandId: string | null }) {
 
   const handleAdded = (result: PanelStampsResultDto) => {
     setAdding(false);
+    const cardType = data?.cardType ?? 'STAMPS';
     notifySuccess(
-      `${result.stampsAdded === 1 ? 'Sumamos 1 sello' : `Sumamos ${result.stampsAdded} sellos`}. Ahora tiene ${result.activeStamps}.` +
+      `Sumamos ${result.stampsAdded} ${balanceUnit(cardType, result.stampsAdded)}. Ahora tiene ${result.activeStamps}.` +
         (result.rewardUnlocked ? ' Ya puede canjear un premio.' : ''),
     );
     // La carga nueva queda arriba en el historial: se vuelve a la primera página.
@@ -55,7 +56,7 @@ export function CustomerDetail({ brandId }: { brandId: string | null }) {
             <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 5v14m-7-7h14" />
             </svg>
-            Sumar sellos
+            Sumar {balanceUnit(data.cardType)}
           </button>
         )}
       </header>
@@ -77,6 +78,7 @@ export function CustomerDetail({ brandId }: { brandId: string | null }) {
           customerId={customerId}
           customerName={customerName}
           homeLocationId={data.customer.homeLocationId}
+          cardType={data.cardType}
           maxStampsPerLoad={data.maxStampsPerLoad}
           onClose={() => setAdding(false)}
           onAdded={handleAdded}

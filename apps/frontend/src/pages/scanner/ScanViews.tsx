@@ -1,5 +1,8 @@
 import { useState } from 'react';
+import { balanceUnit, type CardType } from '@fidelity/shared';
 import { ScanResult } from '../../services/scanService';
+
+const clp = new Intl.NumberFormat('es-CL');
 
 export function ScanLoading() {
   return (
@@ -12,8 +15,12 @@ export function ScanLoading() {
   );
 }
 
-export function ScanSuccess({ result, onReset, onRedeem }: { result: ScanResult, onReset: () => void, onRedeem?: () => void }) {
+export function ScanSuccess({ result, cardType = 'STAMPS', onReset, onRedeem }: { result: ScanResult, cardType?: CardType, onReset: () => void, onRedeem?: () => void }) {
   const added = result.stampsAdded ?? 1;
+  const isPoints = cardType === 'POINTS';
+  const title = isPoints
+    ? `¡${clp.format(added)} ${balanceUnit('POINTS', added)} ${added === 1 ? 'agregado' : 'agregados'}!`
+    : added > 1 ? `¡${added} sellos agregados!` : '¡Sello agregado!';
   return (
     <div className="flex-1 flex flex-col items-center justify-center duration-300 px-6 text-center">
       <div className="w-28 h-28 bg-emerald-500 rounded-full flex items-center justify-center shadow-[0_0_60px_rgba(16,185,129,0.3)] mb-8">
@@ -21,13 +28,13 @@ export function ScanSuccess({ result, onReset, onRedeem }: { result: ScanResult,
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
         </svg>
       </div>
-      <h2 className="text-4xl font-black mb-2">{added > 1 ? `¡${added} sellos agregados!` : '¡Sello agregado!'}</h2>
+      <h2 className="text-4xl font-black mb-2">{title}</h2>
       <p className="text-slate-400 text-xl font-medium mb-8">Cliente {result.customerLabel}</p>
 
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-sm mb-10">
-        <p className="text-slate-500 font-bold uppercase tracking-widest text-sm mb-2">Sellos Acumulados</p>
+        <p className="text-slate-500 font-bold uppercase tracking-widest text-sm mb-2">{isPoints ? 'Puntos' : 'Sellos'} acumulados</p>
         <div className="text-5xl font-black">
-          {result.stampsCount} <span className="text-slate-600 text-3xl">/ {result.targetStamps}</span>
+          {clp.format(result.stampsCount ?? 0)} <span className="text-slate-600 text-3xl">/ {clp.format(result.targetStamps ?? 0)}</span>
         </div>
       </div>
 
@@ -53,7 +60,7 @@ export function ScanAlreadyScanned({ result, onReset }: { result?: ScanResult | 
       </div>
       <h2 className="text-4xl font-black mb-2 text-amber-500">Ya Escaneado</h2>
       <p className="text-slate-400 text-xl font-medium mb-8">
-        {result?.message ?? 'Este cliente ya recibió un sello hace poco'}
+        {result?.message ?? 'Este cliente ya sumó hace poco'}
       </p>
 
       <button onClick={onReset} className="w-full max-w-sm py-5 bg-slate-800 hover:bg-slate-700 rounded-2xl font-bold text-xl transition-colors">
@@ -67,7 +74,8 @@ export function ScanAlreadyScanned({ result, onReset }: { result?: ScanResult | 
  * El saldo del cliente alcanza para al menos un premio. Los sellos sirven para cualquier
  * promoción activa, así que el cliente elige cuál canjear, o ninguna, y sigue juntando.
  */
-export function ScanReward({ result, onReset, onRedeem }: { result: ScanResult, onReset: () => void, onRedeem?: (promotionId?: string) => void }) {
+export function ScanReward({ result, cardType = 'STAMPS', onReset, onRedeem }: { result: ScanResult, cardType?: CardType, onReset: () => void, onRedeem?: (promotionId?: string) => void }) {
+  const unit = balanceUnit(cardType);
   const promotions = result.availablePromotions ?? [];
   const redeemable = promotions.filter((p) => p.canRedeem);
   // Con una sola opción canjeable no hay nada que elegir.
@@ -89,12 +97,12 @@ export function ScanReward({ result, onReset, onRedeem }: { result: ScanResult, 
         // El cliente está en el bloqueo de 30 min: le alcanza para un premio, pero el sello de
         // esta visita NO se sumó. Sin este aviso, el cajero cree que registró la visita.
         <p role="status" className="w-full max-w-sm mt-2 mb-1 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-200">
-          Sello de esta visita no sumado. {result.message}
+          {cardType === 'POINTS' ? 'Puntos de esta compra no sumados.' : 'Sello de esta visita no sumado.'} {result.message}
         </p>
       )}
       <p className="text-slate-300 text-lg font-medium mb-6">
         {result.customerLabel && <>Cliente {result.customerLabel} · </>}
-        <span className="font-black text-white">{stamps} sellos</span>
+        <span className="font-black text-white">{clp.format(stamps)} {unit}</span>
       </p>
 
       {promotions.length > 0 ? (
@@ -122,7 +130,7 @@ export function ScanReward({ result, onReset, onRedeem }: { result: ScanResult, 
                   <span className="block text-sm text-slate-400">{p.name}</span>
                 </span>
                 <span className={`shrink-0 text-sm font-black ${p.canRedeem ? 'text-amber-300' : 'text-slate-500'}`}>
-                  {p.canRedeem ? `${p.targetStamps} sellos` : `Faltan ${p.targetStamps - stamps}`}
+                  {p.canRedeem ? `${clp.format(p.targetStamps)} ${unit}` : `Faltan ${clp.format(p.targetStamps - stamps)}`}
                 </span>
               </button>
             );

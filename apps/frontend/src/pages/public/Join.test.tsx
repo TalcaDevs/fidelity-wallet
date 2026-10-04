@@ -198,4 +198,77 @@ describe('datos del alta', () => {
       expect(posts).toEqual([]);
     });
   });
+
+  describe('lo que pide la tarjeta', () => {
+    const merchantWith = (card: object) => async (url: string, init?: RequestInit) => {
+      if (url.includes('/api/merchants/by-slug/')) {
+        return new Response(
+          JSON.stringify({
+            id: 'm1',
+            name: 'Café Puntos',
+            slug: 'test-merchant',
+            stampValidityDays: null,
+            activePromotions: [{ id: 'p1', name: 'Postre', targetStamps: 500, rewardName: 'Postre gratis' }],
+            card: {
+              type: 'POINTS',
+              name: 'Club',
+              backgroundColor: '#A3472F',
+              textColor: '#FFFFFF',
+              logoUrl: null,
+              heroImageUrl: null,
+              pesosPerPoint: 1000,
+              welcomeBalance: 50,
+              registration: { phone: 'OPTIONAL', email: 'OPTIONAL', name: 'OPTIONAL', birthday: 'OPTIONAL', rut: 'OPTIONAL' },
+              closed: false,
+              ...card,
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes('/api/customers')) {
+        lastBody = JSON.parse(String(init?.body));
+        return new Response(JSON.stringify({ googleWalletUrl: 'https://pay.google.com/x' }), { status: 201 });
+      }
+      return new Response('{}', { status: 404 });
+    };
+    let lastBody: Record<string, unknown> | null = null;
+
+    it('talks about points and the welcome gift', async () => {
+      currentFetchHandler = merchantWith({});
+      renderJoin();
+      expect(await screen.findByText('Junta 500 puntos, llévate Postre gratis')).toBeInTheDocument();
+      expect(screen.getByText(/te regalamos 50 puntos/i)).toBeInTheDocument();
+    });
+
+    it('hides what the brand does not ask for and requires what it does', async () => {
+      currentFetchHandler = merchantWith({
+        registration: { phone: 'REQUIRED', email: 'HIDDEN', name: 'REQUIRED', birthday: 'HIDDEN', rut: 'HIDDEN' },
+      });
+      const user = userEvent.setup();
+      renderJoin();
+
+      await screen.findByText('Junta 500 puntos, llévate Postre gratis');
+      expect(screen.queryByLabelText(/Correo electrónico/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Cumpleaños/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/al menos uno/)).not.toBeInTheDocument();
+
+      await user.type(screen.getByLabelText(/Teléfono celular/), '912345678');
+      await user.click(screen.getByRole('checkbox'));
+      await user.click(screen.getByRole('button', { name: 'Obtener mi Tarjeta' }));
+      expect(screen.getByText('Ingresa tu nombre.')).toBeInTheDocument();
+      expect(lastBody).toBeNull();
+
+      await user.type(screen.getByLabelText(/Nombre/), 'Ana');
+      await user.click(screen.getByRole('button', { name: 'Obtener mi Tarjeta' }));
+      await waitFor(() => expect(lastBody).toMatchObject({ name: 'Ana', phone: expect.any(String) }));
+      expect(lastBody).not.toHaveProperty('email');
+    });
+
+    it('does not offer new cards once the program ended', async () => {
+      currentFetchHandler = merchantWith({ closed: true });
+      renderJoin();
+      expect(await screen.findByText(/ya terminó/)).toBeInTheDocument();
+    });
+  });
 });
