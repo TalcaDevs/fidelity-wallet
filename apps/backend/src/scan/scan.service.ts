@@ -7,12 +7,21 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { DEFAULT_OWNER_MAX_STAMPS, firstName, type PanelStampsResultDto } from '@fidelity/shared';
+import {
+  DEFAULT_OWNER_MAX_STAMPS,
+  DEFAULT_PESOS_PER_POINT,
+  POINTS_PER_SCAN_MAX,
+  balanceUnit,
+  firstName,
+  pointsForAmount,
+  type PanelStampsResultDto,
+} from '@fidelity/shared';
 import type { Customer, LoyaltyProgram, Pass, Promotion, Scan } from '@prisma/client';
 import { MerchantRole, ScanMethod, ScanType } from '@prisma/client';
+import { passExpiresAt, toCardView, type CardView } from '../cards/card-program.js';
 import {
   assertLocationOperational,
-  findStampsProgram,
+  findBrandProgram,
   locationWithBrandSelect,
   requireActiveBrandOwner,
   resolveLocationAccess,
@@ -21,6 +30,7 @@ import {
 } from '../common/access/brand-access.js';
 import { recordAudit } from '../common/audit/audit.js';
 import { sanitizeImage, type UploadedImage, type ValidatedImage } from '../common/storage/image.js';
+import { CHILE_TIME_ZONE, chileDay, nextChileMidnight } from '../common/utils/chile-time.js';
 import { normalizeEmail } from '../common/utils/email.util.js';
 import { maskEmail, maskPhone, maskRut } from '../common/utils/mask.util.js';
 import { normalizePhone } from '../common/utils/phone.util.js';
@@ -49,6 +59,10 @@ export const REDEEM_DUPLICATE_WINDOW_MS = 90 * 1000; // 90 seconds
 // otro durante este tiempo. Evita que un mismo cliente acumule varios sellos en una visita.
 export const DEFAULT_STAMP_COOLDOWN_MINUTES = 30;
 
+// Puntos: el monto de cada compra da sus puntos y un cliente puede comprar dos veces seguidas.
+// Solo se frena el doble envío de la misma compra.
+export const POINTS_DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
+
 /**
  * Convierte STAMP_COOLDOWN_MINUTES a milisegundos. Función pura: sin valor por defecto
  * tomado del entorno, para que el resultado dependa solo del argumento (y los tests no
@@ -71,10 +85,18 @@ type PassWithRelations = Pass & {
   customer: Customer | null;
 };
 
-interface ScanContext {
-  merchant: LocationWithBrand;
+/** La tarjeta de la marca y lo que vale cada punto. */
+interface BrandCard {
   program: LoyaltyProgram;
+  card: CardView;
+  pesosPerPoint: number;
 }
+
+interface ScanContext extends BrandCard {
+  merchant: LocationWithBrand;
+}
+
+type StampSource = 'SCANNER' | 'PANEL';
 
 interface ResolvedTarget {
   pass: PassWithRelations;
@@ -101,6 +123,8 @@ interface StampOptions {
 type Tx = Db;
 
 const RECEIPT_LABEL = { label: 'La foto de la boleta', fallbackName: 'boleta' };
+
+const clp = new Intl.NumberFormat('es-CL');
 
 /** Sellos que cuentan en el saldo: no consumidos y no vencidos, de cualquier promoción. */
 const activeStampsWhere = (passId: string, now: Date) => ({
@@ -174,16 +198,18 @@ export class ScanService {
       this.manualLookupLimiter.consume(callerUserId);
     }
 
-    const program = await this.requireActiveProgram(merchant.brandId);
+    const brandCard = await this.requireActiveProgram(merchant.brandId);
+    const { program, card } = brandCard;
     const pass = await this.resolvePass(dto, program);
+    const now = new Date();
+    this.assertCardValid(card, pass, now);
     const activePromotions = await this.findActivePromotions(program.id);
     const featured = activePromotions[0];
     const method: ScanMethod = dto.passToken ? ScanMethod.QR : ScanMethod.MANUAL;
 
-    const now = new Date();
     const { activeStamps, nextExpiryAt } = await this.readBalance(this.prisma, pass.id, now);
     const latestStamp = await this.findLatestStamp(this.prisma, pass.id);
-    const nextStampAvailableAt = this.cooldownUntil(latestStamp, now);
+    const nextStampAvailableAt = this.cooldownUntil(card, latestStamp, now);
     const availablePromotions = toPromotionOptions(activePromotions, activeStamps);
     const isOwner = membership.role === MerchantRole.OWNER;
 
@@ -208,8 +234,12 @@ export class ScanService {
       nextExpiryAt,
       nextStampAvailableAt,
       canStamp: isOwner || nextStampAvailableAt === null,
-      maxStampsPerLoad: isOwner ? this.ownerMaxStamps : 1,
+      maxStampsPerLoad: isOwner && card.type === 'STAMPS' ? this.ownerMaxStamps : 1,
       reasonRequired: isOwner && nextStampAvailableAt !== null,
+      cardType: card.type,
+      pesosPerPoint: brandCard.pesosPerPoint,
+      amountRequired: card.type === 'POINTS',
+      receiptRequired: card.type === 'POINTS' && !isOwner,
     };
   }
 
@@ -235,9 +265,11 @@ export class ScanService {
       this.manualLookupLimiter.consume(callerUserId);
     }
 
-    const program = await this.requireActiveProgram(merchant.brandId);
-    const context: ScanContext = { merchant, program };
+    const brandCard = await this.requireActiveProgram(merchant.brandId);
+    const { program } = brandCard;
+    const context: ScanContext = { merchant, ...brandCard };
     const { pass, method } = await this.resolveTarget(dto, program, callerUserId);
+    this.assertCardValid(brandCard.card, pass, new Date());
 
     // Los sellos son un saldo único del pase: cualquier sello vigente sirve para cualquier
     // promoción activa. La más reciente es la "de referencia" (la que muestran landing y pase).
@@ -248,9 +280,10 @@ export class ScanService {
       const options = await this.buildStampOptions(
         dto,
         membership.role === MerchantRole.OWNER,
-        merchant.brandId,
+        context,
         pass.id,
         receiptFile,
+        'SCANNER',
       );
       const result = await this.executeStampAction(
         pass,
@@ -269,7 +302,9 @@ export class ScanService {
 
     if (dto.action === ScanActionType.REDEEM) {
       if (receiptFile) {
-        throw new BadRequestException('La foto de la boleta solo se adjunta al sumar un sello');
+        throw new BadRequestException(
+          `La foto de la boleta solo se adjunta al sumar ${balanceUnit(brandCard.card.type)}`,
+        );
       }
       const chosen = this.resolveRedeemPromotion(activePromotions, dto.promotionId);
       const result = await this.executeRedeemAction(
@@ -303,7 +338,8 @@ export class ScanService {
     receiptFile?: UploadedImage,
   ): Promise<PanelStampsResultDto> {
     await requireActiveBrandOwner(this.prisma, callerUserId, dto.brandId);
-    const program = await this.requireActiveProgram(dto.brandId);
+    const brandCard = await this.requireActiveProgram(dto.brandId);
+    const { program } = brandCard;
 
     const pass = await this.prisma.pass.findUnique({
       where: { customerId_programId: { customerId, programId: program.id } },
@@ -321,12 +357,14 @@ export class ScanService {
       throw new ForbiddenException('El local no pertenece a tu marca');
     }
     assertLocationOperational(merchant);
+    this.assertCardValid(brandCard.card, pass, new Date());
 
+    const context: ScanContext = { merchant, ...brandCard };
     const activePromotions = await this.findActivePromotions(program.id);
-    const options = await this.buildStampOptions(dto, true, dto.brandId, pass.id, receiptFile);
+    const options = await this.buildStampOptions(dto, true, context, pass.id, receiptFile, 'PANEL');
     const result = await this.executeStampAction(
       pass,
-      { merchant, program },
+      context,
       activePromotions,
       callerUserId,
       toCashierCustomer(pass.customer),
@@ -343,12 +381,27 @@ export class ScanService {
     };
   }
 
-  private async requireActiveProgram(brandId: string): Promise<LoyaltyProgram> {
-    const program = await findStampsProgram(this.prisma, brandId);
+  private async requireActiveProgram(brandId: string): Promise<BrandCard> {
+    const program = await findBrandProgram(this.prisma, brandId);
     if (!program || !program.isActive) {
       throw new BadRequestException('El comercio no tiene una promoción activa válida');
     }
-    return program;
+    const card = toCardView(program);
+    const brand =
+      card.type === 'POINTS'
+        ? await this.prisma.brand.findUnique({ where: { id: brandId }, select: { pesosPerPoint: true } })
+        : null;
+    return { program, card, pesosPerPoint: brand?.pesosPerPoint ?? DEFAULT_PESOS_PER_POINT };
+  }
+
+  /** Una tarjeta vencida (término fijo o plazo tras obtenerla) no suma ni canjea. */
+  private assertCardValid(card: CardView, pass: Pick<Pass, 'createdAt'>, now: Date): void {
+    const expiresAt = passExpiresAt(card, pass.createdAt);
+    if (expiresAt && expiresAt.getTime() <= now.getTime()) {
+      throw new BadRequestException(
+        `La tarjeta de este cliente venció el ${expiresAt.toLocaleDateString('es-CL', { timeZone: CHILE_TIME_ZONE })}`,
+      );
+    }
   }
 
   private async findActivePromotions(programId: string): Promise<Promotion[]> {
@@ -363,30 +416,25 @@ export class ScanService {
   }
 
   /**
-   * STAFF: siempre 1 sello y con el bloqueo entre sellos. OWNER: hasta ownerMaxStamps por
-   * carga; varios sellos exigen motivo (queda en AuditLog). La foto se valida y recodifica
-   * antes de abrir la transacción.
+   * Sellos. STAFF: siempre 1 y con el bloqueo entre sellos. OWNER: hasta ownerMaxStamps por
+   * carga; varios exigen motivo (queda en AuditLog).
+   * Puntos. En caja salen del monto, y el STAFF debe adjuntar la boleta: sin ella podría inflar
+   * el monto. Desde el panel el dueño indica los puntos directamente, con motivo.
+   * La foto se valida y recodifica antes de abrir la transacción.
    */
   private async buildStampOptions(
     dto: StampInput,
     isOwner: boolean,
-    brandId: string,
+    context: ScanContext,
     passId: string,
-    receiptFile?: UploadedImage,
+    receiptFile: UploadedImage | undefined,
+    source: StampSource,
   ): Promise<StampOptions> {
-    const stampCount = dto.stampCount ?? 1;
-
-    if (!isOwner && stampCount !== 1) {
-      throw new ForbiddenException('Solo el dueño puede cargar varios sellos de una vez');
-    }
-    if (stampCount > this.ownerMaxStamps) {
-      throw new BadRequestException(
-        `Puedes cargar hasta ${this.ownerMaxStamps} sellos de una vez`,
-      );
-    }
-    if (stampCount > 1 && !dto.reason) {
-      throw new BadRequestException('Indica el motivo para cargar varios sellos');
-    }
+    const stampCount =
+      context.card.type === 'POINTS'
+        ? this.pointsToAdd(dto, isOwner, context.pesosPerPoint, receiptFile, source)
+        : this.stampsToAdd(dto, isOwner);
+    const brandId = context.merchant.brandId;
 
     const image = receiptFile ? await sanitizeImage(receiptFile, RECEIPT_LABEL) : null;
 
@@ -400,6 +448,55 @@ export class ScanService {
         ? { path: `${brandId}/${passId}/${randomUUID()}.${image.extension}`, image }
         : null,
     };
+  }
+
+  private stampsToAdd(dto: StampInput, isOwner: boolean): number {
+    const stampCount = dto.stampCount ?? 1;
+    if (!isOwner && stampCount !== 1) {
+      throw new ForbiddenException('Solo el dueño puede cargar varios sellos de una vez');
+    }
+    if (stampCount > this.ownerMaxStamps) {
+      throw new BadRequestException(
+        `Puedes cargar hasta ${this.ownerMaxStamps} sellos de una vez`,
+      );
+    }
+    if (stampCount > 1 && !dto.reason) {
+      throw new BadRequestException('Indica el motivo para cargar varios sellos');
+    }
+    return stampCount;
+  }
+
+  private pointsToAdd(
+    dto: StampInput,
+    isOwner: boolean,
+    pesosPerPoint: number,
+    receiptFile: UploadedImage | undefined,
+    source: StampSource,
+  ): number {
+    const tooMany = `Puedes sumar hasta ${clp.format(POINTS_PER_SCAN_MAX)} puntos de una vez`;
+    if (source === 'PANEL') {
+      const points = dto.stampCount ?? 0;
+      if (points > POINTS_PER_SCAN_MAX) throw new BadRequestException(tooMany);
+      return points;
+    }
+
+    if (dto.stampCount !== undefined && dto.stampCount !== 1) {
+      throw new BadRequestException('Los puntos se calculan con el monto de la compra');
+    }
+    if (dto.purchaseAmount === undefined) {
+      throw new BadRequestException('Ingresa el monto de la compra: con él se calculan los puntos');
+    }
+    if (!isOwner && !receiptFile) {
+      throw new BadRequestException('Adjunta la foto de la boleta: es obligatoria para sumar puntos');
+    }
+    const points = pointsForAmount(dto.purchaseAmount, pesosPerPoint);
+    if (points < 1) {
+      throw new BadRequestException(
+        `El monto no alcanza para un punto (1 punto cada $${clp.format(pesosPerPoint)})`,
+      );
+    }
+    if (points > POINTS_PER_SCAN_MAX) throw new BadRequestException(tooMany);
+    return points;
   }
 
   /**
@@ -537,17 +634,43 @@ export class ScanService {
   }
 
   private findLatestStamp(db: Tx, passId: string): Promise<Scan | null> {
+    // El saldo de bienvenida no es una visita: no bloquea el primer sello en caja.
     return db.scan.findFirst({
-      where: { passId, type: ScanType.STAMP_ADDED },
+      where: { passId, type: ScanType.STAMP_ADDED, method: { not: ScanMethod.WELCOME } },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  /** null si el pase puede sumar ya; si no, desde cuándo podrá. */
-  private cooldownUntil(latestStamp: Scan | null, now: Date): Date | null {
-    if (this.stampCooldownMs <= 0 || !latestStamp) return null;
-    const until = new Date(latestStamp.createdAt.getTime() + this.stampCooldownMs);
+  /**
+   * null si el pase puede sumar ya; si no, desde cuándo podrá. Sellos con límite diario: uno por
+   * día calendario de Chile. Sin límite: STAMP_COOLDOWN_MINUTES. Puntos: solo el doble envío.
+   */
+  private cooldownUntil(card: CardView, latestStamp: Scan | null, now: Date): Date | null {
+    if (!latestStamp) return null;
+    if (card.type === 'STAMPS' && card.dailyStampLimit) {
+      return chileDay(latestStamp.createdAt) === chileDay(now) ? nextChileMidnight(now) : null;
+    }
+    const windowMs = card.type === 'POINTS' ? POINTS_DUPLICATE_WINDOW_MS : this.stampCooldownMs;
+    if (windowMs <= 0) return null;
+    const until = new Date(latestStamp.createdAt.getTime() + windowMs);
     return until.getTime() > now.getTime() ? until : null;
+  }
+
+  private blockedMessage(card: CardView, isOwner: boolean, until: Date, now: Date): string {
+    if (card.type === 'STAMPS' && card.dailyStampLimit) {
+      return isOwner
+        ? 'Este cliente ya recibió su sello de hoy. Para sumar otro indica el motivo'
+        : 'Este cliente ya recibió su sello de hoy. Podrá sumar otro mañana';
+    }
+    const minutesLeft = Math.max(1, Math.ceil((until.getTime() - now.getTime()) / 60000));
+    if (card.type === 'POINTS') {
+      return isOwner
+        ? `Esta compra parece repetida: se sumaron puntos hace un momento. Para sumar de nuevo antes de ${minutesLeft} min indica el motivo`
+        : `Esta compra parece repetida: se sumaron puntos hace un momento. Espera ${minutesLeft} min`;
+    }
+    return isOwner
+      ? `Este cliente ya recibió un sello hace poco. Para sumar otro antes de ${minutesLeft} min indica el motivo`
+      : `Este cliente ya recibió un sello. Podrá sumar otro en ${minutesLeft} min`;
   }
 
   private async executeStampAction(
@@ -585,7 +708,7 @@ export class ScanService {
 
   private stampInTransaction(
     pass: PassWithRelations,
-    { merchant, program }: ScanContext,
+    { merchant, program, card }: ScanContext,
     activePromotions: Promotion[],
     callerUserId: string,
     maskedCustomer: MaskedCustomerDto | undefined,
@@ -611,14 +734,10 @@ export class ScanService {
       // así que dos cajeros escaneando a la vez no pueden colar un segundo sello. Es por marca:
       // sellar en un local también bloquea sellar en otro. El OWNER lo puede saltar dando motivo.
       const latestScan = await this.findLatestStamp(tx, pass.id);
-      const nextStampAvailableAt = this.cooldownUntil(latestScan, now);
+      const nextStampAvailableAt = this.cooldownUntil(card, latestScan, now);
       const overridesCooldown = nextStampAvailableAt !== null && options.isOwner && !!options.reason;
 
       if (latestScan && nextStampAvailableAt && !overridesCooldown) {
-        const minutesLeft = Math.max(
-          1,
-          Math.ceil((nextStampAvailableAt.getTime() - now.getTime()) / 60000),
-        );
         const { activeStamps, nextExpiryAt } = await this.readBalance(tx, pass.id, now);
         const availablePromotions = toPromotionOptions(activePromotions, activeStamps);
 
@@ -637,9 +756,7 @@ export class ScanService {
           scanId: latestScan.id,
           customer: maskedCustomer,
           nextStampAvailableAt,
-          message: options.isOwner
-            ? `Este cliente ya recibió un sello hace poco. Para sumar otro antes de ${minutesLeft} min indica el motivo`
-            : `Este cliente ya recibió un sello. Podrá sumar otro en ${minutesLeft} min`,
+          message: this.blockedMessage(card, options.isOwner, nextStampAvailableAt, now),
         };
       }
 
@@ -659,21 +776,20 @@ export class ScanService {
         },
       });
 
-      // El sello no se atribuye a ninguna promoción (promotionId queda NULL): es saldo del pase.
-      for (let i = 0; i < options.stampCount; i++) {
-        await tx.stamp.create({
-          data: {
-            passId: pass.id,
-            merchantId: merchant.id,
-            brandId: merchant.brandId,
-            programId: program.id,
-            sourceScanId: scan.id,
-            createdByUserId: callerUserId,
-            earnedAt: now,
-            expiresAt,
-          },
-        });
-      }
+      // El sello (o punto) no se atribuye a ninguna promoción (promotionId queda NULL): es saldo
+      // del pase. Una fila por unidad: así vence y se consume igual que un sello.
+      await tx.stamp.createMany({
+        data: Array.from({ length: options.stampCount }, () => ({
+          passId: pass.id,
+          merchantId: merchant.id,
+          brandId: merchant.brandId,
+          programId: program.id,
+          sourceScanId: scan.id,
+          createdByUserId: callerUserId,
+          earnedAt: now,
+          expiresAt,
+        })),
+      });
 
       if (options.receipt) {
         await tx.scanReceipt.create({
@@ -708,8 +824,14 @@ export class ScanService {
       const { activeStamps, nextExpiryAt } = await this.readBalance(tx, pass.id, now);
       const availablePromotions = toPromotionOptions(activePromotions, activeStamps);
       const rewardUnlocked = availablePromotions.some((p) => p.canRedeem);
+      const count = options.stampCount;
+      const unit = balanceUnit(card.type);
       const added =
-        options.stampCount === 1 ? 'Sello agregado' : `${options.stampCount} sellos agregados`;
+        card.type === 'POINTS'
+          ? `${clp.format(count)} ${balanceUnit('POINTS', count)} ${count === 1 ? 'agregado' : 'agregados'}`
+          : count === 1
+            ? 'Sello agregado'
+            : `${count} sellos agregados`;
 
       return {
         success: true,
@@ -727,7 +849,7 @@ export class ScanService {
         stampsAdded: options.stampCount,
         customer: maskedCustomer,
         message: rewardUnlocked
-          ? `¡${added}! El cliente ya puede canjear un premio (${activeStamps} sellos)`
+          ? `¡${added}! El cliente ya puede canjear un premio (${clp.format(activeStamps)} ${unit})`
           : `${added} exitosamente (${activeStamps}/${featured.targetStamps})`,
       };
     });
@@ -789,8 +911,9 @@ export class ScanService {
       });
 
       if (activeStampsList.length < promotion.targetStamps) {
+        const unit = program.type === 'POINTS' ? 'Puntos' : 'Sellos';
         throw new BadRequestException(
-          `Sellos activos insuficientes para canjear "${promotion.name}". Tiene ${activeStampsList.length}, requiere ${promotion.targetStamps}`,
+          `${unit} activos insuficientes para canjear "${promotion.name}". Tiene ${activeStampsList.length}, requiere ${promotion.targetStamps}`,
         );
       }
 

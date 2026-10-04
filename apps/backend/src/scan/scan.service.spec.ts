@@ -72,6 +72,8 @@ describe('ScanService', () => {
     scope: 'BRAND',
     name: 'Tarjeta de sellos',
     stampValidityDays: 30 as number | null,
+    // Estos casos prueban el bloqueo de STAMP_COOLDOWN_MINUTES; el límite diario tiene los suyos.
+    dailyStampLimit: false,
     isActive: true,
     createdAt: new Date(),
   };
@@ -118,6 +120,10 @@ describe('ScanService', () => {
         create: vi.fn(),
       },
       stamp: {
+        createMany: vi.fn(async function (this: { create: (args: unknown) => unknown }, { data }: { data: unknown[] }) {
+          for (const row of data) await this.create({ data: row });
+          return { count: data.length };
+        }),
         count: vi.fn(),
         findMany: vi.fn(),
         findFirst: vi.fn(),
@@ -852,7 +858,7 @@ describe('ScanService', () => {
       );
 
       expect(prisma.scan.findFirst).toHaveBeenCalledWith({
-        where: { passId: mockPassId, type: ScanType.STAMP_ADDED },
+        where: { passId: mockPassId, type: ScanType.STAMP_ADDED, method: { not: ScanMethod.WELCOME } },
         orderBy: { createdAt: 'desc' },
       });
       // Saldo: vigentes y no consumidos, sin filtrar por promoción

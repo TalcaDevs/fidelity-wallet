@@ -1,8 +1,8 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { CustomerHistoryDto, PurchaseHistoryEntryDto } from '@fidelity/shared';
-import { ScanType, type Customer } from '@prisma/client';
-import { findStampsProgram, requireActiveBrandOwner } from '../common/access/brand-access.js';
+import { POINTS_PER_SCAN_MAX, type CustomerHistoryDto, type PurchaseHistoryEntryDto } from '@fidelity/shared';
+import { ScanMethod, ScanType, type Customer } from '@prisma/client';
+import { findBrandProgram, requireActiveBrandOwner } from '../common/access/brand-access.js';
 import { recordAudit } from '../common/audit/audit.js';
 import { UserDirectoryService } from '../common/users/user-directory.service.js';
 import { maskEmail, maskPhone, maskRut } from '../common/utils/mask.util.js';
@@ -66,14 +66,14 @@ export class CustomerHistoryService {
     { brandId, page, pageSize }: CustomerHistoryQueryDto,
     maskIdentifiers: boolean,
   ): Promise<CustomerHistoryDto> {
-    const program = await findStampsProgram(this.prisma, brandId);
+    const program = await findBrandProgram(this.prisma, brandId);
     const pass = program
       ? await this.prisma.pass.findUnique({
           where: { customerId_programId: { customerId, programId: program.id } },
           include: { customer: true },
         })
       : null;
-    if (!pass) {
+    if (!program || !pass) {
       throw new NotFoundException('El cliente no tiene una tarjeta en esta marca');
     }
 
@@ -91,7 +91,9 @@ export class CustomerHistoryService {
         },
       }),
       this.prisma.scan.count({ where: { passId: pass.id } }),
-      this.prisma.scan.count({ where: { passId: pass.id, type: ScanType.STAMP_ADDED } }),
+      this.prisma.scan.count({
+        where: { passId: pass.id, type: ScanType.STAMP_ADDED, method: { not: ScanMethod.WELCOME } },
+      }),
       this.prisma.scan.count({ where: { passId: pass.id, type: ScanType.REWARD_REDEEMED } }),
       this.prisma.scan.aggregate({
         where: { passId: pass.id, type: ScanType.STAMP_ADDED },
@@ -145,7 +147,8 @@ export class CustomerHistoryService {
         purchaseAmount: amount._sum.purchaseAmount ?? 0,
       },
       history: { items, page, pageSize, total },
-      maxStampsPerLoad: this.maxStampsPerLoad,
+      cardType: program.type,
+      maxStampsPerLoad: program.type === 'POINTS' ? POINTS_PER_SCAN_MAX : this.maxStampsPerLoad,
     };
   }
 

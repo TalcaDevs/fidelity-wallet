@@ -14,7 +14,7 @@ import {
   resolveDateRange,
   type ResolvedDateRange,
 } from '../utils/reports-date.util.js';
-import { type ReportScope, scopeWhere } from '../reports.types.js';
+import { type ReportScope, VISIT_SCANS, scopeWhere } from '../reports.types.js';
 
 export type { ReportScope };
 
@@ -70,7 +70,7 @@ export class ReportsOverviewService {
       prevExpiredStamps,
     ] = await Promise.all([
       this.prisma.scan.findMany({
-        where: { ...filter, createdAt: { gte: from, lt: toExclusive } },
+        where: { ...filter, ...VISIT_SCANS, createdAt: { gte: from, lt: toExclusive } },
         select: {
           type: true,
           createdAt: true,
@@ -84,7 +84,7 @@ export class ReportsOverviewService {
         where: { ...filter, expiresAt: { gte: from, lt: toExclusive }, consumedAt: null },
       }),
       this.prisma.scan.findMany({
-        where: { ...filter, createdAt: { gte: prevFrom, lt: prevToExclusive } },
+        where: { ...filter, ...VISIT_SCANS, createdAt: { gte: prevFrom, lt: prevToExclusive } },
         select: {
           type: true,
           createdAt: true,
@@ -151,7 +151,7 @@ export class ReportsOverviewService {
     range: ResolvedDateRange,
   ): Promise<TimeSeriesPointDto[]> {
     const scans = await this.prisma.scan.findMany({
-      where: { ...filter, createdAt: { gte: range.from, lt: range.toExclusive } },
+      where: { ...filter, ...VISIT_SCANS, createdAt: { gte: range.from, lt: range.toExclusive } },
       select: {
         type: true,
         createdAt: true,
