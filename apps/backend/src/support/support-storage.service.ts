@@ -4,7 +4,7 @@ import {
   TICKET_ATTACHMENT_MAX_BYTES,
   TICKET_ATTACHMENT_MIME_TYPES,
 } from '@fidelity/shared';
-import { PrivateBucketStorage } from '../common/storage/private-bucket-storage.js';
+import { PrivateBucketStorage } from '../common/storage/bucket-storage.js';
 
 export const SUPPORT_BUCKET = 'support-attachments';
 
