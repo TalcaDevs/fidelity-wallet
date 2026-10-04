@@ -1,5 +1,6 @@
 import type {
   AuditLogEntryDto,
+  CustomerHistoryDto,
   InternalBrandDetailDto,
   InternalBrandSummaryDto,
   InternalBrandUpdateInput,
@@ -96,6 +97,19 @@ export function revealCustomer(customerId: string, reason: string): Promise<Reve
     `/api/internal/customers/${customerId}/reveal`,
     { method: 'POST', ...jsonBody({ reason }) },
     'No se pudo mostrar el dato',
+  );
+}
+
+/** Solo SUPERADMIN. Cada consulta queda en la auditoría. */
+export function getInternalCustomerHistory(
+  customerId: string,
+  brandId: string,
+  page = 1,
+): Promise<CustomerHistoryDto> {
+  return requestJson(
+    `/api/internal/customers/${customerId}/history${query({ brandId, page, pageSize: INTERNAL_PAGE_SIZE })}`,
+    undefined,
+    'No se pudo cargar el historial del cliente',
   );
 }
 

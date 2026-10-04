@@ -4,20 +4,24 @@ import {
   PHONE_PREFIX,
   formatPhoneLocal,
   formatRutInput,
+  isValidEmail,
   isValidPhoneLocal,
+  normalizeEmailInput,
   phoneLocalDigits,
   rutLength,
   toFullPhone,
   validateRUT,
 } from '../../utils/validators';
 
-export type IdentifierKind = 'rut' | 'phone';
+export type IdentifierKind = 'rut' | 'phone' | 'email';
 
 /** Valor de un campo: listo para enviar, o vacío si todavía no es válido. */
 export interface FieldValue {
   /** RUT "12.345.678-5" o teléfono "+56912345678". Vacío si no es válido. */
   value: string;
   isValid: boolean;
+  /** Sin nada escrito: en un campo opcional distingue "no lo dio" de "lo escribió mal". */
+  isEmpty?: boolean;
 }
 
 export interface IdentifierValue extends FieldValue {
@@ -36,6 +40,8 @@ interface FieldProps {
   label?: string;
   /** Autocompletado del navegador. Por defecto "off" (caja); el alta pública usa "tel-national". */
   autoComplete?: string;
+  /** Sin dato no es error (el alta: RUT opcional, teléfono o correo). Mal escrito sigue siéndolo. */
+  optional?: boolean;
 }
 
 const isRutChar = (ch: string) => /[0-9kK]/.test(ch);
@@ -88,10 +94,10 @@ const STYLES = {
 } as const;
 
 /** Error a mostrar, o null. Solo se queja cuando el dato ya está completo o si se pide explícitamente. */
-function rutError(display: string, force: boolean): string | null {
+function rutError(display: string, force: boolean, optional: boolean): string | null {
   if (validateRUT(display)) return null;
   const len = rutLength(display);
-  if (len === 0) return force ? 'Ingresa tu RUT' : null;
+  if (len === 0) return force && !optional ? 'Ingresa tu RUT' : null;
   if (len >= 9 || force) {
     // Con 8 caracteres no se distingue un RUT de 7 dígitos con DV malo de uno de 8 a medio escribir.
     if (len < 8) return 'El RUT está incompleto';
@@ -100,11 +106,17 @@ function rutError(display: string, force: boolean): string | null {
   return null;
 }
 
-function phoneError(digits: string, force: boolean): string | null {
+function phoneError(digits: string, force: boolean, optional: boolean): string | null {
   if (digits.length > 0 && !digits.startsWith('9')) return 'El celular debe comenzar con 9';
   if (isValidPhoneLocal(digits)) return null;
-  if (digits.length === 0) return force ? 'Ingresa tu teléfono' : null;
+  if (digits.length === 0) return force && !optional ? 'Ingresa tu teléfono' : null;
   return force ? 'El teléfono debe tener 9 dígitos (9 XXXX XXXX)' : null;
+}
+
+function emailError(value: string, force: boolean, optional: boolean): string | null {
+  if (isValidEmail(value)) return null;
+  if (value.trim().length === 0) return force && !optional ? 'Ingresa tu correo' : null;
+  return force ? 'Revisa el correo: falta la @ o el dominio' : null;
 }
 
 interface ShellProps {
@@ -147,11 +159,11 @@ const inputClass = (variant: Variant) =>
   `w-full min-w-0 bg-transparent px-5 py-4 text-lg font-medium outline-none ${STYLES[variant].placeholder}`;
 
 /** RUT con autoformato "12.345.678-5" y validación de módulo 11. */
-export function RutField({ onChange, showErrors = false, variant = 'light', autoFocus = false, label, autoComplete = 'off' }: FieldProps) {
+export function RutField({ onChange, showErrors = false, variant = 'light', autoFocus = false, label, autoComplete = 'off', optional = false }: FieldProps) {
   const [display, setDisplay] = useState('');
   const [touched, setTouched] = useState(false);
   const { ref, setPendingCaret } = useCaretRestore(display);
-  const error = rutError(display, showErrors || touched);
+  const error = rutError(display, showErrors || touched, optional);
 
   return (
     <FieldShell
@@ -180,7 +192,7 @@ export function RutField({ onChange, showErrors = false, variant = 'light', auto
             setPendingCaret(caret);
             setDisplay(next);
             const isValid = validateRUT(next);
-            onChange({ value: isValid ? next : '', isValid });
+            onChange({ value: isValid ? next : '', isValid, isEmpty: rutLength(next) === 0 });
           }}
           onBlur={() => display && setTouched(true)}
           placeholder="12.345.678-9"
@@ -194,12 +206,12 @@ export function RutField({ onChange, showErrors = false, variant = 'light', auto
 }
 
 /** Celular chileno: el +56 es fijo y el usuario escribe solo los 9 dígitos. */
-export function PhoneField({ onChange, showErrors = false, variant = 'light', autoFocus = false, label, autoComplete = 'off' }: FieldProps) {
+export function PhoneField({ onChange, showErrors = false, variant = 'light', autoFocus = false, label, autoComplete = 'off', optional = false }: FieldProps) {
   const [digits, setDigits] = useState('');
   const [touched, setTouched] = useState(false);
   const display = formatPhoneLocal(digits);
   const { ref, setPendingCaret } = useCaretRestore(display);
-  const error = phoneError(digits, showErrors || touched);
+  const error = phoneError(digits, showErrors || touched, optional);
 
   return (
     <FieldShell
@@ -230,7 +242,7 @@ export function PhoneField({ onChange, showErrors = false, variant = 'light', au
             setPendingCaret(caret);
             setDigits(next);
             const isValid = isValidPhoneLocal(next);
-            onChange({ value: isValid ? toFullPhone(next) : '', isValid });
+            onChange({ value: isValid ? toFullPhone(next) : '', isValid, isEmpty: next.length === 0 });
           }}
           onBlur={() => digits && setTouched(true)}
           placeholder="9 1234 5678"
@@ -243,15 +255,55 @@ export function PhoneField({ onChange, showErrors = false, variant = 'light', au
   );
 }
 
-const KIND_LABEL: Record<IdentifierKind, string> = { rut: 'RUT', phone: 'Teléfono' };
+/** Correo: se envía sin espacios y en minúsculas, igual que lo guarda el backend. */
+export function EmailField({ onChange, showErrors = false, variant = 'light', autoFocus = false, label, autoComplete = 'off', optional = false }: FieldProps) {
+  const [value, setValue] = useState('');
+  const [touched, setTouched] = useState(false);
+  const error = emailError(value, showErrors || touched, optional);
+
+  return (
+    <FieldShell
+      label={label}
+      srLabel="Correo electrónico"
+      variant={variant}
+      error={error}
+      input={({ id, describedBy }) => (
+        <input
+          id={id}
+          type="email"
+          inputMode="email"
+          autoComplete={autoComplete}
+          autoCapitalize="none"
+          spellCheck={false}
+          autoFocus={autoFocus}
+          value={value}
+          onChange={(e) => {
+            const next = e.target.value;
+            setValue(next);
+            const isValid = isValidEmail(next);
+            onChange({ value: isValid ? normalizeEmailInput(next) : '', isValid, isEmpty: next.trim().length === 0 });
+          }}
+          onBlur={() => value && setTouched(true)}
+          placeholder="nombre@correo.cl"
+          aria-invalid={Boolean(error)}
+          aria-describedby={describedBy}
+          className={inputClass(variant)}
+        />
+      )}
+    />
+  );
+}
+
+const KIND_LABEL: Record<IdentifierKind, string> = { rut: 'RUT', phone: 'Teléfono', email: 'Correo' };
+const FIELD_BY_KIND = { rut: RutField, phone: PhoneField, email: EmailField } as const;
 
 interface IdentifierInputProps extends Omit<FieldProps, 'onChange' | 'label'> {
   onChange: (identifier: IdentifierValue) => void;
 }
 
 /**
- * Selector RUT / Teléfono para buscar a un cliente por cualquiera de los dos
- * (ingreso manual del escáner). El alta del cliente usa RutField + PhoneField juntos.
+ * Selector RUT / Teléfono / Correo para buscar a un cliente por cualquiera de ellos
+ * (ingreso manual del escáner). El alta del cliente usa los campos por separado.
  */
 export function IdentifierInput({ onChange, variant = 'light', ...fieldProps }: IdentifierInputProps) {
   const [kind, setKind] = useState<IdentifierKind>('rut');
@@ -263,12 +315,12 @@ export function IdentifierInput({ onChange, variant = 'light', ...fieldProps }: 
     onChange({ kind: next, value: '', isValid: false });
   };
 
-  const Field = kind === 'rut' ? RutField : PhoneField;
+  const Field = FIELD_BY_KIND[kind];
 
   return (
     <div>
-      <div role="group" aria-label="Tipo de identificación" className={`grid grid-cols-2 gap-1 p-1 rounded-2xl mb-3 ${s.tabs}`}>
-        {(['rut', 'phone'] as const).map((k) => (
+      <div role="group" aria-label="Tipo de identificación" className={`grid grid-cols-3 gap-1 p-1 rounded-2xl mb-3 ${s.tabs}`}>
+        {(['rut', 'phone', 'email'] as const).map((k) => (
           <button
             key={k}
             type="button"
@@ -281,7 +333,7 @@ export function IdentifierInput({ onChange, variant = 'light', ...fieldProps }: 
         ))}
       </div>
       {/* key: al cambiar de tipo el campo se monta de nuevo, vacío y sin errores previos */}
-      <Field key={kind} variant={variant} {...fieldProps} onChange={(f) => onChange({ kind, ...f })} />
+      <Field key={kind} variant={variant} {...fieldProps} onChange={({ value, isValid }) => onChange({ kind, value, isValid })} />
     </div>
   );
 }

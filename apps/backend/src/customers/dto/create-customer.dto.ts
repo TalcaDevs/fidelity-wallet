@@ -1,5 +1,27 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Equals, IsBoolean, IsNotEmpty, IsString, IsUUID } from 'class-validator';
+import { CUSTOMER_EMAIL_MAX, CUSTOMER_NAME_MAX } from '@fidelity/shared';
+import { Transform } from 'class-transformer';
+import {
+  Equals,
+  IsBoolean,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+  ValidateIf,
+} from 'class-validator';
+
+const optionalText = ({ value }: { value: unknown }) => {
+  if (typeof value !== 'string') return value;
+  const text = value.trim();
+  return text === '' ? undefined : text;
+};
+
+const CONTACT_REQUIRED = 'Ingresa tu teléfono o tu correo';
 
 export class CreateCustomerDto {
   @ApiProperty({
@@ -9,21 +31,63 @@ export class CreateCustomerDto {
   @IsUUID('4', { message: 'El merchantId debe ser un UUID v4 válido' })
   merchantId: string;
 
-  @ApiProperty({
-    description: 'RUT chileno del cliente (con o sin puntos/guion). Obligatorio',
+  @ApiPropertyOptional({
+    description: 'RUT chileno del cliente (con o sin puntos/guion). Opcional',
     example: '12.345.678-5',
   })
+  @Transform(optionalText)
+  @IsOptional()
   @IsString({ message: 'El RUT debe ser una cadena de texto' })
-  @IsNotEmpty({ message: 'El RUT es obligatorio' })
-  rut: string;
+  rut?: string;
 
-  @ApiProperty({
-    description: 'Teléfono celular chileno del cliente. Obligatorio',
+  @ApiPropertyOptional({
+    description: 'Teléfono celular chileno. Obligatorio si no se envía email',
     example: '+56912345678',
   })
+  @Transform(optionalText)
+  @ValidateIf((o: CreateCustomerDto) => !o.email)
   @IsString({ message: 'El teléfono debe ser una cadena de texto' })
-  @IsNotEmpty({ message: 'El teléfono es obligatorio' })
-  phone: string;
+  @IsNotEmpty({ message: CONTACT_REQUIRED })
+  phone?: string;
+
+  @ApiPropertyOptional({
+    description: 'Correo del cliente. Obligatorio si no se envía phone',
+    example: 'maria@gmail.com',
+  })
+  @Transform(optionalText)
+  @ValidateIf((o: CreateCustomerDto) => !o.phone)
+  @IsString({ message: 'El correo debe ser una cadena de texto' })
+  @IsNotEmpty({ message: CONTACT_REQUIRED })
+  @MaxLength(CUSTOMER_EMAIL_MAX, { message: 'El correo es demasiado largo' })
+  email?: string;
+
+  @ApiPropertyOptional({ description: 'Nombre del cliente. Opcional', example: 'María Pérez' })
+  @Transform(optionalText)
+  @IsOptional()
+  @IsString({ message: 'El nombre debe ser una cadena de texto' })
+  @MaxLength(CUSTOMER_NAME_MAX, {
+    message: `El nombre no puede superar los ${CUSTOMER_NAME_MAX} caracteres`,
+  })
+  name?: string;
+
+  @ApiPropertyOptional({ description: 'Día del cumpleaños (1-31). Va junto con birthMonth', example: 14 })
+  @IsOptional()
+  @IsInt({ message: 'El día del cumpleaños debe ser un número' })
+  @Min(1)
+  @Max(31)
+  birthDay?: number;
+
+  @ApiPropertyOptional({ description: 'Mes del cumpleaños (1-12). Va junto con birthDay', example: 2 })
+  @IsOptional()
+  @IsInt({ message: 'El mes del cumpleaños debe ser un número' })
+  @Min(1)
+  @Max(12)
+  birthMonth?: number;
+
+  @ApiPropertyOptional({ description: 'Año de nacimiento. Opcional aunque se dé el cumpleaños', example: 1990 })
+  @IsOptional()
+  @IsInt({ message: 'El año de nacimiento debe ser un número' })
+  birthYear?: number;
 
   @ApiProperty({
     description: 'El cliente aceptó los términos y condiciones (/terminos). Debe ser true',
@@ -65,4 +129,3 @@ export class CustomerResponseDto {
   })
   googleWalletUrl?: string;
 }
-

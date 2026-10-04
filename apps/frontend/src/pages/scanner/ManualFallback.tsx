@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { IdentifierInput, IdentifierValue } from '../../components/ui/IdentifierInput';
 
 interface ManualFallbackProps {
-  /** Recibe el tipo y el valor: RUT formateado ("12.345.678-5") o teléfono completo ("+56912345678"). */
+  /** Recibe el tipo y el valor: RUT formateado ("12.345.678-5"), teléfono completo ("+56912345678") o correo. */
   onSubmit: (identifier: IdentifierValue) => void;
   onCancel: () => void;
 }
@@ -28,7 +28,7 @@ export function ManualFallback({ onSubmit, onCancel }: ManualFallbackProps) {
             </svg>
           </div>
           <h2 className="text-3xl font-black mb-2">Ingreso Manual</h2>
-          <p className="text-slate-400 font-medium text-lg">Busca al cliente por RUT o Teléfono.</p>
+          <p className="text-slate-400 font-medium text-lg">Busca al cliente por RUT, teléfono o correo.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

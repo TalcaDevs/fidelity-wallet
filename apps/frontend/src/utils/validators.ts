@@ -65,3 +65,10 @@ export const isValidPhoneLocal = (digits: string): boolean => /^9\d{8}$/.test(di
 
 /** Número completo en el formato que espera el backend: +569XXXXXXXX. */
 export const toFullPhone = (digits: string): string => `${PHONE_PREFIX}${digits}`;
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Mismo criterio que el backend (normalizeEmail): se compara sin espacios y en minúsculas. */
+export const isValidEmail = (raw: string): boolean => EMAIL_PATTERN.test(raw.trim());
+
+export const normalizeEmailInput = (raw: string): string => raw.trim().toLowerCase();

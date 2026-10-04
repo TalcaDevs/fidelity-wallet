@@ -62,9 +62,15 @@ const SECTIONS: Section[] = [
           código QR.
         </p>
         <p>
-          Para registrarte debes entregar tu <strong>RUT y tu número de teléfono celular</strong>, y ambos deben ser
-          verdaderos y tuyos. Existe una sola tarjeta por persona en cada Comercio. La tarjeta es personal e
-          intransferible.
+          Para registrarte debes entregar <strong>tu número de teléfono celular o tu correo electrónico</strong> (al
+          menos uno). Además puedes indicar, si quieres, tu RUT, tu nombre y tu cumpleaños (día y mes; el año es
+          opcional). Todos los datos que entregues deben ser verdaderos y tuyos. Existe una sola tarjeta por persona
+          en cada Comercio. La tarjeta es personal e intransferible.
+        </p>
+        <p>
+          Tu nombre y tus datos de contacto son los mismos en todos los Comercios donde tengas una tarjeta. Si ya
+          estabas registrado, un nuevo registro solo completa los datos que faltaban: no reemplaza los que ya
+          entregaste. Para corregirlos, escríbenos (ver “Tus datos personales”).
         </p>
       </>
     ),
@@ -73,8 +79,9 @@ const SECTIONS: Section[] = [
     title: 'Cómo se ganan los sellos',
     body: (
       <ul>
-        <li>Recibes un sello cuando el personal del Comercio escanea tu tarjeta o te busca por tu RUT o teléfono, de acuerdo con las condiciones que el Comercio informe (por ejemplo, un sello por visita o por compra).</li>
-        <li>Para evitar el uso indebido, <strong>una tarjeta puede recibir como máximo un sello cada 30 minutos</strong> en un mismo Comercio.</li>
+        <li>Recibes un sello cuando el personal del Comercio escanea tu tarjeta o te busca por tu RUT, teléfono o correo y confirma tu compra, de acuerdo con las condiciones que el Comercio informe (por ejemplo, un sello por visita o por compra).</li>
+        <li>Al confirmar la compra, el Comercio puede registrar, para validarla, el <strong>monto</strong>, una <strong>nota</strong> y una <strong>foto de la boleta</strong>. El monto solo se registra: no cambia la cantidad de sellos que recibes.</li>
+        <li>Para evitar el uso indebido, <strong>una tarjeta puede recibir como máximo un sello cada 30 minutos</strong> en un mismo Comercio. Solo el dueño o administrador del Comercio puede sumar sellos adicionales o varios sellos a la vez (por ejemplo, para compensar un reclamo), indicando siempre el motivo, que queda registrado.</li>
         <li>Los sellos <strong>no tienen valor monetario</strong>: no se pueden canjear por dinero, vender, transferir a otra persona ni traspasar entre Comercios.</li>
       </ul>
     ),
@@ -136,9 +143,9 @@ const SECTIONS: Section[] = [
           aplicable.
         </p>
         <ul>
-          <li><strong>Qué datos:</strong> tu RUT, tu número de teléfono celular y el historial de sellos y canjes de tu tarjeta (fecha, hora y Comercio).</li>
-          <li><strong>Para qué:</strong> identificarte, emitir y actualizar tu tarjeta, registrar tus sellos y canjes, prevenir el uso indebido y, de forma agregada, entregar al Comercio estadísticas de su programa.</li>
-          <li><strong>Con quién se comparten:</strong> con el Comercio donde te registraste: su personal de caja ve tu RUT y teléfono parcialmente ocultos al escanear tu tarjeta, y su dueño o administrador puede ver y exportar tu RUT y teléfono completos para gestionar su programa. También con los proveedores tecnológicos necesarios para operar el servicio (alojamiento y Apple o Google para tu tarjeta digital). <strong>No vendemos ni cedemos tus datos</strong> a terceros para publicidad.</li>
+          <li><strong>Qué datos:</strong> tu teléfono celular y/o tu correo electrónico; si decides entregarlos, tu RUT, tu nombre y tu cumpleaños; y el historial de sellos y canjes de tu tarjeta (fecha, hora y Comercio), junto con el monto, la nota y la foto de la boleta cuando el Comercio los registre al validar tu compra. La foto de la boleta puede mostrar el detalle de lo que compraste.</li>
+          <li><strong>Para qué:</strong> identificarte, emitir y actualizar tu tarjeta, registrar tus sellos y canjes, validar tus compras, prevenir el uso indebido y, de forma agregada, entregar al Comercio estadísticas de su programa. Tu nombre se usa para reconocerte en caja y en tu tarjeta digital, y tu cumpleaños para que el Comercio pueda saludarte u ofrecerte beneficios de cumpleaños.</li>
+          <li><strong>Con quién se comparten:</strong> con cada Comercio donde tengas una tarjeta: su personal de caja ve solo tu primer nombre y tus datos de contacto parcialmente ocultos al escanear tu tarjeta, y su dueño o administrador puede ver tus datos completos, tu historial de compras en su Comercio (incluidas las fotos de boletas) y exportarlos para gestionar su programa. El equipo de la Plataforma puede acceder a ellos solo para dar soporte y prevenir el uso indebido, y cada acceso queda registrado. También se comparten con los proveedores tecnológicos necesarios para operar el servicio (alojamiento y Apple o Google para tu tarjeta digital). <strong>No vendemos ni cedemos tus datos</strong> a terceros para publicidad.</li>
           <li><strong>Cuánto tiempo:</strong> mientras tengas una tarjeta activa y, después, solo el tiempo que exija la ley.</li>
           <li><strong>Tus derechos:</strong> puedes pedir acceso, rectificación, cancelación u oposición al tratamiento de tus datos, y solicitar la eliminación de tu tarjeta, escribiendo a {LEGAL.contactEmail}. Eliminar la tarjeta borra también sus sellos.</li>
         </ul>

@@ -1,10 +1,12 @@
 import { useState, FormEvent, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { FieldValue, PhoneField, RutField } from '../../components/ui/IdentifierInput';
+import { CUSTOMER_NAME_MAX } from '@fidelity/shared';
+import { EmailField, FieldValue, PhoneField, RutField } from '../../components/ui/IdentifierInput';
 import { ROUTES } from '../../components/routing/routePaths';
 import { getMerchantWithActivePromo, MerchantWithPromo } from '../../services/merchantService';
 import { JoinNotFound } from './JoinNotFound';
 import { JoinSuccess } from './JoinSuccess';
+import { BirthdayField, type BirthdayValue } from './BirthdayField';
 import { apiUrl } from '../../lib/api';
 import { extractApiError } from '../../lib/apiError';
 
@@ -21,9 +23,12 @@ export function Join() {
   const [loadingData, setLoadingData] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
-  // El alta exige RUT **y** teléfono, más la aceptación de los términos.
-  const [rut, setRut] = useState<FieldValue>({ value: '', isValid: false });
-  const [phone, setPhone] = useState<FieldValue>({ value: '', isValid: false });
+  // Teléfono o correo (al menos uno) y la aceptación de los términos; lo demás es opcional.
+  const [name, setName] = useState('');
+  const [rut, setRut] = useState<FieldValue>({ value: '', isValid: false, isEmpty: true });
+  const [phone, setPhone] = useState<FieldValue>({ value: '', isValid: false, isEmpty: true });
+  const [email, setEmail] = useState<FieldValue>({ value: '', isValid: false, isEmpty: true });
+  const [birthday, setBirthday] = useState<BirthdayValue>({ isValid: true });
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -56,13 +61,16 @@ export function Join() {
     fetchMerchant();
   }, [merchantName, reloadKey]);
 
+  const hasContact = phone.isValid || email.isValid;
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     
     setSubmitted(true);
-    // Los errores de formato los muestra cada campo; el de términos, el checkbox.
-    if (!rut.isValid || !phone.isValid || !acceptedTerms) return;
+    // Los errores de formato los muestra cada campo; el de contacto y el de términos, abajo.
+    const typedWrong = [rut, phone, email].some((f) => !f.isEmpty && !f.isValid);
+    if (typedWrong || !hasContact || !birthday.isValid || !acceptedTerms) return;
 
     setLoading(true);
     
@@ -79,8 +87,13 @@ export function Join() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             merchantId: merchant?.id,
-            rut: rut.value,
-            phone: phone.value,
+            ...(name.trim() ? { name: name.trim() } : {}),
+            ...(rut.isValid ? { rut: rut.value } : {}),
+            ...(phone.isValid ? { phone: phone.value } : {}),
+            ...(email.isValid ? { email: email.value } : {}),
+            ...(birthday.day && birthday.month
+              ? { birthDay: birthday.day, birthMonth: birthday.month, ...(birthday.year ? { birthYear: birthday.year } : {}) }
+              : {}),
             acceptedTerms
           })
         });
@@ -250,16 +263,57 @@ export function Join() {
         {/* Formulario */}
         <form onSubmit={handleSubmit} className="w-full bg-white p-1">
           <div className="space-y-4 mb-2">
+            <div>
+              <label htmlFor="join-name" className="block text-sm font-bold mb-2 px-1 text-slate-700">
+                Nombre <span className="font-medium text-slate-400">(opcional)</span>
+              </label>
+              <input
+                id="join-name"
+                type="text"
+                autoComplete="name"
+                maxLength={CUSTOMER_NAME_MAX}
+                value={name}
+                onChange={(e) => { setName(e.target.value); setError(''); }}
+                placeholder="María Pérez"
+                className="w-full bg-white border-2 border-slate-300 focus:border-blue-600 focus:ring-4 focus:ring-blue-600/10 rounded-2xl px-5 py-4 text-lg font-medium text-slate-900 outline-none shadow-sm placeholder:text-slate-400"
+              />
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 space-y-4">
+              <p className="text-sm font-bold text-slate-700 px-1">
+                Tu teléfono o tu correo <span className="font-medium text-slate-500">(al menos uno)</span>
+              </p>
+              <PhoneField
+                label="Teléfono celular"
+                autoComplete="tel-national"
+                optional
+                onChange={(next) => { setPhone(next); setError(''); }}
+                showErrors={submitted}
+              />
+              <EmailField
+                label="Correo electrónico"
+                autoComplete="email"
+                optional
+                onChange={(next) => { setEmail(next); setError(''); }}
+                showErrors={submitted}
+              />
+              {submitted && !hasContact && phone.isEmpty && email.isEmpty && (
+                <p role="alert" className="text-red-500 text-sm font-bold px-1">
+                  Ingresa tu teléfono o tu correo para recibir tu tarjeta.
+                </p>
+              )}
+            </div>
+
             <RutField
-              label="RUT"
+              label="RUT (opcional)"
+              optional
               onChange={(next) => { setRut(next); setError(''); }}
               showErrors={submitted}
             />
-            <PhoneField
-              label="Teléfono celular"
-              autoComplete="tel-national"
-              onChange={(next) => { setPhone(next); setError(''); }}
+
+            <BirthdayField
               showErrors={submitted}
+              onChange={(next) => { setBirthday(next); setError(''); }}
             />
 
             <label className="flex items-start gap-3 px-1 pt-1 cursor-pointer">
@@ -313,7 +367,7 @@ export function Join() {
         </form>
 
         <p className="text-[11px] text-slate-400 mt-8 text-center max-w-xs leading-relaxed font-medium">
-          Usamos tu RUT y teléfono únicamente para identificar tu tarjeta y gestionar tus sellos, conforme a la Ley 19.628 de Protección de la Vida Privada. Puedes pedir su eliminación cuando quieras.
+          Usamos tus datos únicamente para identificar tu tarjeta y gestionar tus sellos, conforme a la Ley 19.628 de Protección de la Vida Privada. Puedes pedir su eliminación cuando quieras.
         </p>
       </div>
     </div>
