@@ -1,12 +1,13 @@
 import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import jwt from 'jsonwebtoken';
-import { PassData } from '../interfaces/pass-data.interface.js';
+import { CARD_IMAGE_KINDS, IMAGE_FIELD_OF } from '@fidelity/shared';
+import { backendBaseUrl } from '../../cards/card-urls.js';
+import { publicStorageUrl } from '../../common/storage/storage-url.js';
+import type { CardClassData, PassData } from '../interfaces/pass-data.interface.js';
+import { buildLoyaltyClass, buildLoyaltyObject, buildObjectState } from './google-wallet-payloads.js';
 
-export interface UpdateLoyaltyObjectOptions {
-  targetStamps?: number;
-  rewardName?: string;
-}
+const WALLET_API = 'https://walletobjects.googleapis.com/walletobjects/v1';
 
 interface CachedToken {
   token: string;
@@ -32,7 +33,7 @@ export class GoogleWalletService {
   // --- MÉTODOS PÚBLICOS DE NEGOCIO ---
 
   public generateSaveUrl(data: PassData): string {
-    const claims = this.buildSaveClaims(data);
+    const claims = this.buildSaveClaims(this.withPublicPassImages(data));
 
     if (this.hasCredentials()) {
       try {
@@ -66,33 +67,15 @@ export class GoogleWalletService {
     return `https://pay.google.com/gp/v/save/${mockToken}`;
   }
 
-  public async updateLoyaltyObject(
-    passId: string,
-    activeStamps: number,
-    options?: UpdateLoyaltyObjectOptions,
-  ): Promise<void> {
-    if (!this.hasCredentials()) {
-      if (this.isMockAllowed()) {
-        this.logger.log(
-          `[Google Wallet API Mock] Pass ${passId} points updated to ${activeStamps} (mock mode: no credentials)`,
-        );
-        return;
-      }
-      this.logger.warn(
-        `[Google Wallet API] Missing credentials, skipping live update for pass ${passId}`,
-      );
-      return;
-    }
+  /** Saldo, textos e imagen del pase de un cliente. 404 = el cliente aún no lo guardó. */
+  public async updateLoyaltyObject(data: PassData): Promise<void> {
+    const { passId, activeStamps } = data;
+    const accessToken = await this.liveAccessToken(`pass ${passId} points updated to ${activeStamps}`);
+    if (!accessToken) return;
 
     try {
-      const accessToken = await this.getAccessToken();
-      if (!accessToken) {
-        this.logger.warn(`[Google Wallet API] Could not obtain OAuth2 token for pass ${passId}`);
-        return;
-      }
-
       const resourceId = this.resolveResourceId(passId);
-      const payload = this.buildPatchPayload(activeStamps, options);
+      const payload = buildObjectState(this.withPublicPassImages(data), this.baseUrl());
       const res = await this.executePatchRequest(resourceId, payload, accessToken);
 
       await this.handlePatchResponse(res, passId, activeStamps);
@@ -102,6 +85,72 @@ export class GoogleWalletService {
         `[Google Wallet API] Error updating loyaltyObject for pass ${passId}: ${msg}`,
       );
     }
+  }
+
+  /**
+   * Publica el diseño de la tarjeta en su clase. Google la aplica a todos los pases ya guardados.
+   * La clase se crea sola con el primer pase (va en el JWT); si aún no existe, se inserta.
+   */
+  public async upsertLoyaltyClass(data: CardClassData): Promise<void> {
+    const accessToken = await this.liveAccessToken(`class of program ${data.programId} published`);
+    if (!accessToken) return;
+
+    const classId = this.resolveClassId(data.programId);
+    const payload = buildLoyaltyClass(classId, this.withPublicImages(data), this.baseUrl());
+    try {
+      let res = await this.walletRequest('PATCH', `/loyaltyClass/${classId}`, payload, accessToken);
+      if (res.status === 404) {
+        res = await this.walletRequest('POST', '/loyaltyClass', payload, accessToken);
+      }
+      if (res.ok) {
+        this.logger.log(`[Google Wallet API] Published loyaltyClass ${classId}`);
+        return;
+      }
+      const errBody = await res.text().catch(() => '');
+      this.logger.warn(`[Google Wallet API] Failed to publish class ${classId} (${res.status}): ${errBody}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`[Google Wallet API] Error publishing class ${classId}: ${msg}`);
+    }
+  }
+
+  /** Token para llamar a la API real; null en modo mock o sin credenciales (solo se registra). */
+  private async liveAccessToken(action: string): Promise<string | null> {
+    if (!this.hasCredentials()) {
+      if (this.isMockAllowed()) {
+        this.logger.log(`[Google Wallet API Mock] ${action} (mock mode: no credentials)`);
+      } else {
+        this.logger.warn(`[Google Wallet API] Missing credentials, skipping: ${action}`);
+      }
+      return null;
+    }
+    try {
+      const token = await this.getAccessToken();
+      if (!token) this.logger.warn(`[Google Wallet API] Could not obtain OAuth2 token: ${action}`);
+      return token;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`[Google Wallet API] OAuth2 error (${action}): ${msg}`);
+      return null;
+    }
+  }
+
+  /** Las imágenes subidas con la URL interna del Storage se publican con su origen público. */
+  private withPublicImages(cardClass: CardClassData): CardClassData {
+    const design = { ...cardClass.card.design };
+    for (const kind of CARD_IMAGE_KINDS) {
+      const url = design[IMAGE_FIELD_OF[kind]];
+      if (url) design[IMAGE_FIELD_OF[kind]] = publicStorageUrl(url, this.configService);
+    }
+    return { ...cardClass, card: { ...cardClass.card, design } };
+  }
+
+  private withPublicPassImages(data: PassData): PassData {
+    return { ...data, cardClass: this.withPublicImages(data.cardClass) };
+  }
+
+  private baseUrl(): string {
+    return backendBaseUrl(this.configService.get<string>('BACKEND_URL') || process.env.BACKEND_URL);
   }
 
   private async getAccessToken(): Promise<string | null> {
@@ -199,6 +248,8 @@ export class GoogleWalletService {
     const classId = this.resolveClassId(data.programId);
     const email =
       this.getServiceAccountEmail() || 'service-account@fidelity-wallet.iam.gserviceaccount.com';
+    const baseUrl = this.baseUrl();
+    const loyaltyClass = buildLoyaltyClass(classId, data.cardClass, baseUrl);
 
     return {
       iss: email,
@@ -206,78 +257,12 @@ export class GoogleWalletService {
       origins: [],
       typ: 'savetowallet',
       payload: {
-        loyaltyObjects: [
-          {
-            id: objectId,
-            classId,
-            state: 'ACTIVE',
-            accountId: data.customerLabel,
-            accountName: data.merchantName,
-            barcode: {
-              type: 'QR_CODE',
-              value: data.passToken,
-              alternateText: data.customerLabel,
-            },
-            loyaltyPoints: {
-              balance: {
-                int: data.activeStamps,
-              },
-              label: 'Sellos',
-            },
-            secondaryLoyaltyPoints: {
-              balance: {
-                int: data.targetStamps,
-              },
-              label: 'Meta',
-            },
-            textModulesData: [
-              {
-                header: 'Premio',
-                body: data.rewardName,
-              },
-            ],
-          },
-        ],
+        // Si la clase ya existe Google la deja como está: los cambios de diseño se publican aparte.
+        // Sin logo público no se puede crear, así que en ese caso solo va el objeto.
+        ...(loyaltyClass.programLogo ? { loyaltyClasses: [loyaltyClass] } : {}),
+        loyaltyObjects: [buildLoyaltyObject(objectId, classId, data, baseUrl)],
       },
     };
-  }
-
-  private buildPatchPayload(
-    activeStamps: number,
-    options?: UpdateLoyaltyObjectOptions,
-  ): Record<string, unknown> {
-    const payload: Record<string, unknown> = {
-      loyaltyPoints: {
-        balance: {
-          int: activeStamps,
-        },
-        label: 'Sellos',
-      },
-    };
-
-    if (typeof options?.targetStamps === 'number') {
-      payload.secondaryLoyaltyPoints = {
-        balance: {
-          int: options.targetStamps,
-        },
-        label: 'Meta',
-      };
-
-      payload.textModulesData = [
-        ...(options.rewardName ? [{ header: 'Premio', body: options.rewardName }] : []),
-        { header: 'Estado', body: this.buildStatusText(activeStamps, options.targetStamps) },
-      ];
-    }
-
-    return payload;
-  }
-
-  private buildStatusText(activeStamps: number, targetStamps: number): string {
-    if (activeStamps >= targetStamps) {
-      return '¡Premio desbloqueado!';
-    }
-    const remaining = targetStamps - activeStamps;
-    return remaining === 1 ? 'Falta 1 sello' : `Faltan ${remaining} sellos`;
   }
 
   // --- MÉTODOS PRIVADOS: HTTP Y COMUNICACIÓN EXTERNA ---
@@ -318,14 +303,22 @@ export class GoogleWalletService {
     return (await response.json()) as { access_token: string; expires_in?: number };
   }
 
-  private async executePatchRequest(
+  private executePatchRequest(
     resourceId: string,
     payload: Record<string, unknown>,
     accessToken: string,
   ): Promise<Response> {
-    const patchUrl = `https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/${resourceId}`;
-    return fetch(patchUrl, {
-      method: 'PATCH',
+    return this.walletRequest('PATCH', `/loyaltyObject/${resourceId}`, payload, accessToken);
+  }
+
+  private walletRequest(
+    method: 'PATCH' | 'POST',
+    path: string,
+    payload: Record<string, unknown>,
+    accessToken: string,
+  ): Promise<Response> {
+    return fetch(`${WALLET_API}${path}`, {
+      method,
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
