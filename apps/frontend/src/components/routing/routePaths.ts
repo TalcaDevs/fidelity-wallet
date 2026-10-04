@@ -10,6 +10,7 @@ export const ROUTES = {
   billing: '/admin/billing',
   support: '/admin/support',
   promotions: '/admin/promotions',
+  card: '/admin/card',
   customers: '/admin/customers',
   customerDetail: '/admin/customers/:customerId',
   settings: '/admin/settings',
