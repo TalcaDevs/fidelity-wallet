@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { QRCam } from './QRCam';
 import { ManualFallback } from './ManualFallback';
@@ -48,16 +48,6 @@ export function Scan({ merchantId, session, role }: { merchantId: string, sessio
   
   const isOnline = useOnlineStatus();
   const [isSessionExpired, setIsSessionExpired] = useState(false);
-
-  // Monitor Supabase auth state for unexpected session invalidation
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT') {
-        setIsSessionExpired(true);
-      }
-    });
-    return () => subscription.unsubscribe();
-  }, []);
 
   const handleFailure = useCallback((res: { errorCode?: string }) => {
     triggerFeedback('error');
@@ -137,6 +127,7 @@ export function Scan({ merchantId, session, role }: { merchantId: string, sessio
   }, [validation, merchantId, handleFailure, triggerFeedback]);
 
   const handleManual = useCallback((identifier: IdentifierValue) => {
+    resumeAudio();
     const customer =
       identifier.kind === 'rut'
         ? { rut: identifier.value }
@@ -144,7 +135,7 @@ export function Scan({ merchantId, session, role }: { merchantId: string, sessio
           ? { phone: identifier.value }
           : { email: identifier.value };
     void handleLookup({ customer });
-  }, [handleLookup]);
+  }, [handleLookup, resumeAudio]);
 
   const resetScanner = () => {
     setResult(null);
@@ -171,11 +162,24 @@ export function Scan({ merchantId, session, role }: { merchantId: string, sessio
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {state === 'camera' && (
-            <button onClick={() => setState('manual')} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 transition-colors rounded-full text-sm font-bold shadow-sm">
+          {state === 'camera' ? (
+            <button
+              onClick={() => {
+                resumeAudio();
+                setState('manual');
+              }}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 transition-colors rounded-full text-sm font-bold shadow-sm"
+            >
               Manual
             </button>
-          )}
+          ) : state === 'manual' ? (
+            <button
+              onClick={resetScanner}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 transition-colors rounded-full text-sm font-bold shadow-sm"
+            >
+              Cámara
+            </button>
+          ) : null}
           {/* El dueño también escanea, pero su casa es el panel: sin esto quedaba atrapado acá. */}
           {role === 'OWNER' && (
             <Link to={ROUTES.dashboard} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 transition-colors rounded-full text-sm font-bold shadow-sm">
@@ -189,7 +193,11 @@ export function Scan({ merchantId, session, role }: { merchantId: string, sessio
       </header>
 
       <main className="flex-1 min-h-0 relative w-full h-full pb-8 px-4 flex flex-col">
-        {!isStarted ? (
+        {state === 'manual' && (
+          <ManualFallback onSubmit={handleManual} onCancel={resetScanner} />
+        )}
+
+        {state === 'camera' && !isStarted && (
           <div className="flex-1 flex flex-col items-center justify-center text-center">
             <div className="w-24 h-24 bg-blue-600/20 rounded-full flex items-center justify-center mb-6">
               <svg className="w-12 h-12 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -206,7 +214,9 @@ export function Scan({ merchantId, session, role }: { merchantId: string, sessio
               Comenzar a escanear
             </button>
           </div>
-        ) : state === 'camera' && (
+        )}
+
+        {state === 'camera' && isStarted && (
           <div className="flex-1 relative duration-300 flex flex-col">
             <div className="flex-1 w-full relative">
               {!isOnline ? (
@@ -223,7 +233,6 @@ export function Scan({ merchantId, session, role }: { merchantId: string, sessio
           </div>
         )}
 
-        {isStarted && state === 'manual' && <ManualFallback onSubmit={handleManual} onCancel={resetScanner} />}
         {state === 'loading' && <ScanLoading />}
         {state === 'validation' && validation && (
           <ScanValidation

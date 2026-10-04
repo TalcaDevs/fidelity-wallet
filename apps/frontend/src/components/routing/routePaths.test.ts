@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ROUTES, buildLoginUrl, resolveRedirectTarget, passwordResetUrl } from './routePaths';
+import { ROUTES, buildLoginUrl, isReturnableRoute, resolveRedirectTarget, passwordResetUrl } from './routePaths';
 
 describe('resolveRedirectTarget', () => {
   it('keeps an internal path', () => {
@@ -23,6 +23,18 @@ describe('resolveRedirectTarget', () => {
   });
 });
 
+describe('isReturnableRoute', () => {
+  it('returns true for administrative and internal routes', () => {
+    expect(isReturnableRoute('/admin/dashboard')).toBe(true);
+    expect(isReturnableRoute('/internal/tickets')).toBe(true);
+  });
+
+  it('returns false for /scan and /admin/login', () => {
+    expect(isReturnableRoute(ROUTES.scan)).toBe(false);
+    expect(isReturnableRoute(ROUTES.login)).toBe(false);
+  });
+});
+
 describe('buildLoginUrl', () => {
   it('carries the destination in the query string', () => {
     expect(buildLoginUrl('/admin/settings')).toBe('/admin/login?redirect=%2Fadmin%2Fsettings');
@@ -30,6 +42,10 @@ describe('buildLoginUrl', () => {
 
   it('does not point the login back at itself', () => {
     expect(buildLoginUrl(ROUTES.login)).toBe(ROUTES.login);
+  });
+
+  it('does not append redirect query parameter when coming from scan', () => {
+    expect(buildLoginUrl(ROUTES.scan)).toBe(ROUTES.login);
   });
 });
 

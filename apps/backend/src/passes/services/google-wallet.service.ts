@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import jwt from 'jsonwebtoken';
 import { PassData } from '../interfaces/pass-data.interface.js';
 
+export const GOOGLE_PAY_SAVE_URL = 'https://pay.google.com/gp/v/save/';
+
 export interface UpdateLoyaltyObjectOptions {
   targetStamps?: number;
   rewardName?: string;
@@ -38,7 +40,7 @@ export class GoogleWalletService {
       try {
         const privateKey = this.getNormalizedPrivateKey() ?? '';
         const token = jwt.sign(claims, privateKey, { algorithm: 'RS256' });
-        return `https://pay.google.com/gp/v/save/${token}`;
+        return `${GOOGLE_PAY_SAVE_URL}${token}`;
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.error(`Fallo en la firma del JWT de Google Wallet: ${msg}`);
@@ -63,7 +65,7 @@ export class GoogleWalletService {
 
     // Mock fallback para desarrollo / Sandbox: JWT base64url sin firma
     const mockToken = Buffer.from(JSON.stringify(claims)).toString('base64url');
-    return `https://pay.google.com/gp/v/save/${mockToken}`;
+    return `${GOOGLE_PAY_SAVE_URL}${mockToken}`;
   }
 
   public async updateLoyaltyObject(

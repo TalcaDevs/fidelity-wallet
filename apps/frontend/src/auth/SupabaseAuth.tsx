@@ -63,7 +63,7 @@ export function SupabaseAuth() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#15202b] flex flex-col justify-center py-12 sm:px-6 lg:px-8 transition-colors duration-300">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#15202b] flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
         <div className="inline-flex justify-center mb-6">
           <div className="w-16 h-16 rounded-2xl bg-brand-blue flex items-center justify-center text-white font-black text-3xl shadow-xl shadow-brand-blue/30">

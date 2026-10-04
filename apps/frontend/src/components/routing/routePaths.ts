@@ -36,8 +36,19 @@ export function resolveRedirectTarget(
   return candidate;
 }
 
+/**
+ * Determina si una ruta es un destino de retorno administrativo válido después del login.
+ * /scan y /login no son destinos de retorno:
+ * - /scan es una ruta operativa del cajero; el destino tras login lo resuelve
+ *   RedirectIfAuthenticated según el rol (STAFF -> /scan, OWNER -> /admin/dashboard).
+ * - /login es el propio formulario.
+ */
+export function isReturnableRoute(from: string): boolean {
+  return from !== ROUTES.login && from !== ROUTES.scan;
+}
+
 export function buildLoginUrl(from: string): string {
-  if (from === ROUTES.login) return ROUTES.login;
+  if (!isReturnableRoute(from)) return ROUTES.login;
   return `${ROUTES.login}?redirect=${encodeURIComponent(from)}`;
 }
 
