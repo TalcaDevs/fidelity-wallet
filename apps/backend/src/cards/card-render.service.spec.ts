@@ -76,7 +76,10 @@ describe('CardRenderService', () => {
     const { service } = setup({ heroImageUrl: `${bucket}/${brandId}/hero.jpg` });
 
     const png = await service.strip(programId, 2, 5, 1);
-    expect(fetch).toHaveBeenCalledWith(`${bucket}/${brandId}/hero.jpg`, expect.anything());
+    expect(fetch).toHaveBeenCalledWith(
+      `${bucket}/${brandId}/hero.jpg`,
+      expect.objectContaining({ redirect: 'error', signal: expect.any(AbortSignal) }),
+    );
     const { data } = await sharp(png).raw().toBuffer({ resolveWithObject: true });
     // Esquina superior izquierda: verde de la foto oscurecido por la capa, no el color de la tarjeta.
     expect(data[1]).toBeGreaterThan(data[0]);

@@ -76,12 +76,12 @@ model BrandMember {
   @@index([merchantId])
 }
 
-/// La tarjeta de la marca: un programa por marca (trigger loyalty_program_single_per_brand).
+/// La tarjeta de la marca: un programa por marca (UNIQUE brandId).
 /// Con type POINTS cada fila de Stamp es un punto: el saldo, el vencimiento y el canje FIFO
 /// funcionan igual que con sellos.
 model LoyaltyProgram {
   id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  brandId           String       @db.Uuid
+  brandId           String       @unique @db.Uuid
   brand             Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
   type              ProgramType  @default(STAMPS)
   /// LOCATION está reservado y no se implementa.

@@ -5,7 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Prisma } from '@prisma/client';
+import { Prisma, type LoyaltyProgram, type Pass } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { PassesService, passCustomerLabel } from './passes.service.js';
 import { ApplePassService } from './services/apple-pass.service.js';
@@ -93,7 +93,11 @@ describe('PassesService', () => {
           brand: { name: 'Cafeteria Don Tito' },
         }),
       },
-      pass: { findUnique: vi.fn(), create: vi.fn() },
+      pass: {
+        findUnique: vi.fn(),
+        create: vi.fn(),
+        findMany: vi.fn<PrismaService['pass']['findMany']>().mockResolvedValue([]),
+      },
       promotion: { findFirst: vi.fn(), findMany: vi.fn() },
       stamp: { count: vi.fn(), findFirst: vi.fn() },
     } as unknown as PrismaService;
@@ -106,6 +110,8 @@ describe('PassesService', () => {
     googleWalletService = {
       generateSaveUrl: vi.fn(() => 'https://pay.google.com/gp/v/save/mock-jwt'),
       updateLoyaltyObject: vi.fn().mockResolvedValue(undefined),
+      upsertLoyaltyClass: vi.fn<GoogleWalletService['upsertLoyaltyClass']>()
+        .mockResolvedValue(undefined),
     } as unknown as GoogleWalletService;
 
     service = new PassesService(prisma, applePassService, googleWalletService);
@@ -476,12 +482,19 @@ describe('PassesService', () => {
   });
 
   describe('publishCard', () => {
+    const publishedPass = (id: string): Pass => ({
+      id,
+      customerId: mockCustomerId,
+      ...mockTarget,
+      passToken: `token-${id}`,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+    });
+
     it('publishes the class and refreshes every issued pass', async () => {
-      (prisma.pass as any).findMany = vi
-        .fn()
-        .mockResolvedValueOnce([{ id: 'p-1' }, { id: 'p-2' }])
+      vi.mocked(prisma.pass.findMany)
+        .mockResolvedValueOnce([publishedPass('p-1'), publishedPass('p-2')])
         .mockResolvedValueOnce([]);
-      (googleWalletService as any).upsertLoyaltyClass = vi.fn().mockResolvedValue(undefined);
       const notify = vi.spyOn(service, 'notifyPassUpdate').mockResolvedValue(undefined);
 
       await service.publishCard(mockProgramId);
@@ -497,11 +510,9 @@ describe('PassesService', () => {
     });
 
     it('does not overlap two publications of the same card: the second runs once, after', async () => {
-      (prisma.pass as any).findMany = vi.fn().mockResolvedValue([]);
       const order: string[] = [];
       let release!: () => void;
-      (googleWalletService as any).upsertLoyaltyClass = vi
-        .fn()
+      vi.mocked(googleWalletService.upsertLoyaltyClass)
         .mockImplementationOnce(() => new Promise<void>((r) => (release = () => { order.push('first'); r(); })))
         .mockImplementation(async () => { order.push('again'); });
 
@@ -516,18 +527,33 @@ describe('PassesService', () => {
     });
 
     it('only republishes the class for location changes, and only with nearby notifications on', async () => {
-      (prisma.pass as any).findMany = vi.fn().mockResolvedValue([{ id: 'p-1' }]);
-      (googleWalletService as any).upsertLoyaltyClass = vi.fn().mockResolvedValue(undefined);
+      vi.mocked(prisma.pass.findMany).mockResolvedValue([publishedPass('p-1')]);
       const notify = vi.spyOn(service, 'notifyPassUpdate').mockResolvedValue(undefined);
 
       await service.refreshNearbyLocations(mockMerchantId);
       expect(googleWalletService.upsertLoyaltyClass).not.toHaveBeenCalled();
 
-      vi.spyOn(prisma.loyaltyProgram, 'findFirst').mockResolvedValue({
+      const nearbyProgram: LoyaltyProgram = {
         id: mockProgramId,
         brandId: mockMerchantId,
+        type: 'STAMPS',
+        scope: 'BRAND',
+        name: 'Tarjeta de sellos',
+        stampValidityDays: null,
+        isActive: true,
+        welcomeBalance: 0,
+        dailyStampLimit: true,
+        cardValidity: 'UNLIMITED',
+        cardExpiresAt: null,
+        cardValidityDays: null,
+        design: {},
         details: { nearbyNotifications: true },
-      } as any);
+        registration: {},
+        designVersion: 1,
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        updatedAt: new Date('2026-01-01T00:00:00Z'),
+      };
+      vi.spyOn(prisma.loyaltyProgram, 'findFirst').mockResolvedValue(nearbyProgram);
       await service.refreshNearbyLocations(mockMerchantId);
       expect(googleWalletService.upsertLoyaltyClass).toHaveBeenCalledTimes(1);
       expect(notify).not.toHaveBeenCalled();

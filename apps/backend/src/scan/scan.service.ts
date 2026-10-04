@@ -120,6 +120,17 @@ interface StampOptions {
   receipt: { path: string; image: ValidatedImage } | null;
 }
 
+interface StampResponseContext {
+  passId: string;
+  card: CardView;
+  promotions: Promotion[];
+  customer: MaskedCustomerDto | undefined;
+  options: StampOptions;
+  scan: Pick<Scan, 'id' | 'method'>;
+  now: Date;
+  blockedUntil?: Date;
+}
+
 type Tx = Db;
 
 const RECEIPT_LABEL = { label: 'La foto de la boleta', fallbackName: 'boleta' };
@@ -715,8 +726,6 @@ export class ScanService {
     method: ScanMethod,
     options: StampOptions,
   ): Promise<ScanResultDto> {
-    const featured = activePromotions[0];
-
     return this.prisma.$transaction(async (tx) => {
       // Bloqueo pesimista de fila en Pass para serializar operaciones sobre el mismo pase
       await tx.$queryRaw`SELECT id FROM "Pass" WHERE id = ${pass.id}::uuid FOR UPDATE`;
@@ -736,28 +745,10 @@ export class ScanService {
       const latestScan = await this.findLatestStamp(tx, pass.id);
       const nextStampAvailableAt = this.cooldownUntil(card, latestScan, now);
       const overridesCooldown = nextStampAvailableAt !== null && options.isOwner && !!options.reason;
+      const responseContext = { passId: pass.id, card, promotions: activePromotions, customer: maskedCustomer, options, now };
 
       if (latestScan && nextStampAvailableAt && !overridesCooldown) {
-        const { activeStamps, nextExpiryAt } = await this.readBalance(tx, pass.id, now);
-        const availablePromotions = toPromotionOptions(activePromotions, activeStamps);
-
-        return {
-          success: true,
-          alreadyScanned: true,
-          action: ScanActionType.STAMP,
-          method: latestScan.method,
-          passId: pass.id,
-          activeStamps,
-          targetStamps: featured.targetStamps,
-          rewardUnlocked: availablePromotions.some((p) => p.canRedeem),
-          rewardName: featured.rewardName,
-          availablePromotions,
-          nextExpiryAt,
-          scanId: latestScan.id,
-          customer: maskedCustomer,
-          nextStampAvailableAt,
-          message: this.blockedMessage(card, options.isOwner, nextStampAvailableAt, now),
-        };
+        return this.stampResponse(tx, { ...responseContext, scan: latestScan, blockedUntil: nextStampAvailableAt });
       }
 
       // brandId y programId los vuelve a fijar el trigger ledger_derive_from_pass.
@@ -803,56 +794,77 @@ export class ScanService {
         });
       }
 
-      if (options.isOwner && options.reason) {
-        await recordAudit(tx, {
-          actorUserId: callerUserId,
-          actorType: 'OWNER',
-          action: 'pass.stamps_added',
-          entity: 'Pass',
-          entityId: pass.id,
-          after: {
-            scanId: scan.id,
-            merchantId: merchant.id,
-            method,
-            stampCount: options.stampCount,
-            overridesCooldown,
-          },
-          reason: options.reason,
-        });
-      }
-
-      const { activeStamps, nextExpiryAt } = await this.readBalance(tx, pass.id, now);
-      const availablePromotions = toPromotionOptions(activePromotions, activeStamps);
-      const rewardUnlocked = availablePromotions.some((p) => p.canRedeem);
-      const count = options.stampCount;
-      const unit = balanceUnit(card.type);
-      const added =
-        card.type === 'POINTS'
-          ? `${clp.format(count)} ${balanceUnit('POINTS', count)} ${count === 1 ? 'agregado' : 'agregados'}`
-          : count === 1
-            ? 'Sello agregado'
-            : `${count} sellos agregados`;
-
-      return {
-        success: true,
-        alreadyScanned: false,
-        action: ScanActionType.STAMP,
-        method,
-        passId: pass.id,
-        activeStamps,
-        targetStamps: featured.targetStamps,
-        rewardUnlocked,
-        rewardName: featured.rewardName,
-        availablePromotions,
-        nextExpiryAt,
-        scanId: scan.id,
-        stampsAdded: options.stampCount,
-        customer: maskedCustomer,
-        message: rewardUnlocked
-          ? `¡${added}! El cliente ya puede canjear un premio (${clp.format(activeStamps)} ${unit})`
-          : `${added} exitosamente (${activeStamps}/${featured.targetStamps})`,
-      };
+      const createdScan = { id: scan.id, method };
+      await this.auditOwnerStamp(tx, { passId: pass.id, merchantId: merchant.id, callerUserId, scan: createdScan, options, overridesCooldown });
+      return this.stampResponse(tx, { ...responseContext, scan: createdScan });
     });
+  }
+
+  private async auditOwnerStamp(
+    tx: Tx,
+    { passId, merchantId, callerUserId, scan, options, overridesCooldown }: {
+      passId: string;
+      merchantId: string;
+      callerUserId: string;
+      scan: Pick<Scan, 'id' | 'method'>;
+      options: StampOptions;
+      overridesCooldown: boolean;
+    },
+  ): Promise<void> {
+    if (!options.isOwner || !options.reason) return;
+    await recordAudit(tx, {
+      actorUserId: callerUserId,
+      actorType: 'OWNER',
+      action: 'pass.stamps_added',
+      entity: 'Pass',
+      entityId: passId,
+      after: { scanId: scan.id, merchantId, method: scan.method, stampCount: options.stampCount, overridesCooldown },
+      reason: options.reason,
+    });
+  }
+
+  private async stampResponse(
+    tx: Tx,
+    { passId, card, promotions, customer, options, scan, now, blockedUntil }: StampResponseContext,
+  ): Promise<ScanResultDto> {
+    const featured = promotions[0];
+    const { activeStamps, nextExpiryAt } = await this.readBalance(tx, passId, now);
+    const availablePromotions = toPromotionOptions(promotions, activeStamps);
+    const rewardUnlocked = availablePromotions.some((p) => p.canRedeem);
+    const result = {
+      success: true,
+      action: ScanActionType.STAMP,
+      method: scan.method,
+      passId,
+      activeStamps,
+      targetStamps: featured.targetStamps,
+      rewardUnlocked,
+      rewardName: featured.rewardName,
+      availablePromotions,
+      nextExpiryAt,
+      scanId: scan.id,
+      customer,
+    };
+    if (blockedUntil) {
+      return {
+        ...result,
+        alreadyScanned: true,
+        nextStampAvailableAt: blockedUntil,
+        message: this.blockedMessage(card, options.isOwner, blockedUntil, now),
+      };
+    }
+    const count = options.stampCount;
+    const added = card.type === 'POINTS'
+      ? `${clp.format(count)} ${balanceUnit('POINTS', count)} ${count === 1 ? 'agregado' : 'agregados'}`
+      : count === 1 ? 'Sello agregado' : `${count} sellos agregados`;
+    return {
+      ...result,
+      alreadyScanned: false,
+      stampsAdded: count,
+      message: rewardUnlocked
+        ? `¡${added}! El cliente ya puede canjear un premio (${clp.format(activeStamps)} ${balanceUnit(card.type)})`
+        : `${added} exitosamente (${activeStamps}/${featured.targetStamps})`,
+    };
   }
 
   private async executeRedeemAction(

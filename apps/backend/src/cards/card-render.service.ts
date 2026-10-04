@@ -94,7 +94,10 @@ export class CardRenderService {
     if (hit) return hit;
     const pending = (async () => {
       try {
-        const res = await fetch(this.storage.downloadUrl(url), { signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS) });
+        const res = await fetch(this.storage.downloadUrl(url), {
+          signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
+          redirect: 'error',
+        });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const type = res.headers.get('content-type') ?? 'image/png';
         const buffer = Buffer.from(await res.arrayBuffer());

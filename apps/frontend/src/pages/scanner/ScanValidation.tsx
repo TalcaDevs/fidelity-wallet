@@ -48,8 +48,8 @@ function blockedText(validation: Validation, isPoints: boolean): string {
  */
 export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem }: ScanValidationProps) {
   const ids = useId();
-  const isOwnerLoad = validation.maxStampsPerLoad > 1;
   const isPoints = validation.cardType === 'POINTS';
+  const isOwnerLoad = !isPoints && validation.maxStampsPerLoad > 1;
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [receiptPreview, setReceiptFile] = useFilePreview();

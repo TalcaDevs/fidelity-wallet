@@ -9,6 +9,7 @@ import { TypeStep } from './TypeStep';
 import { useCardEditor } from './useCardEditor';
 
 const STEPS = ['Tipo', 'Información', 'Diseño', 'Detalles'] as const;
+const STEP_INDEX = { TYPE: 0, INFO: 1, DESIGN: 2, DETAILS: 3 } as const;
 
 const TYPE_LABEL = { STAMPS: 'Sellos / Visitas', POINTS: 'Puntos por compra' } as const;
 
@@ -171,7 +172,15 @@ function CardEditorPage({ brandId }: { brandId: string }) {
           {problems.length > 0 && (
             <ul className="list-disc pl-5 mt-1 text-sm space-y-0.5">
               {problems.map((p) => (
-                <li key={p}>{p}</li>
+                <li key={p.message}>
+                  <button
+                    type="button"
+                    onClick={() => goTo(STEP_INDEX[p.step])}
+                    className="text-left underline underline-offset-2 hover:no-underline"
+                  >
+                    <span className="font-bold">{STEPS[STEP_INDEX[p.step]]}:</span> {p.message}
+                  </button>
+                </li>
               ))}
             </ul>
           )}

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  cardConfigProblems,
+  cardConfigIssues,
   type CardConfig,
+  type CardConfigIssue,
   type CardConfigDto,
   type CardDesign,
   type CardDetails,
@@ -29,7 +30,7 @@ export function useCardEditor(brandId: string) {
   const fetcher = useCallback(() => getCard(brandId), [brandId]);
   const { data: saved, loading, error: loadError, setData: setSaved } = useAsyncData(fetcher);
   const [draft, setDraft] = useState<CardConfig | null>(null);
-  const [problems, setProblems] = useState<string[]>([]);
+  const [problems, setProblems] = useState<CardConfigIssue[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -72,7 +73,7 @@ export function useCardEditor(brandId: string) {
   /** Guarda si pasa las mismas reglas que aplica el backend; si no, devuelve los problemas. */
   const save = useCallback(async (): Promise<boolean> => {
     if (!config || !saved) return false;
-    const found = cardConfigProblems(config, { pointsEnabled: saved.points.enabled });
+    const found = cardConfigIssues(config, { pointsEnabled: saved.points.enabled });
     setProblems(found);
     if (found.length > 0) return false;
 

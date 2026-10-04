@@ -59,7 +59,7 @@
 | `Brand` | Marca. `status` (`ACTIVE` \| `SUSPENDED`), `planId`/`trialEndsAt` (asignados a mano desde `/internal`), `pointsEnabled`/`pesosPerPoint`. Para marcas registradas solas, `Brand.id` = id de su primer local |
 | `Merchant` (local) | `brandId`, `slug` (público y **estable**: ya puede estar impreso en un QR), dirección, coordenadas, `isActive` |
 | `BrandMember` | Membresía: `OWNER` sin local, `STAFF` con `merchantId`. **Es la fuente de los permisos** |
-| `LoyaltyProgram` | **La tarjeta de la marca, una por marca** (trigger `loyalty_program_single_per_brand`). `type` `STAMPS` \| `POINTS`; reglas (`welcomeBalance`, `dailyStampLimit`, `stampValidityDays`, vigencia de la tarjeta) y `design`/`details`/`registration` en JSONB, tipados en `packages/shared/src/card.ts`; `designVersion` sube con cada guardado |
+| `LoyaltyProgram` | **La tarjeta de la marca, una por marca** (`UNIQUE(brandId)`). `type` `STAMPS` \| `POINTS`; reglas (`welcomeBalance`, `dailyStampLimit`, `stampValidityDays`, vigencia de la tarjeta) y `design`/`details`/`registration` en JSONB, tipados en `packages/shared/src/card.ts`; `designVersion` sube con cada guardado |
 | `Promotion` | Las **recompensas** de la tarjeta (`targetStamps` = costo en sellos o puntos). Varias activas a la vez |
 | `Customer` | Global, compartido entre marcas. `phone?`, `email?`, `rut?` (únicos), `name?`, cumpleaños, aceptación de términos (`termsAcceptedAt`, `termsVersion`) |
 | `Pass` | La tarjeta de un cliente: único por `(customerId, programId)`. `passToken` (32 bytes, es lo que va en el QR), `merchantId` = local de alta |
@@ -107,10 +107,11 @@
 - Si cambian los términos, subir `TERMS_VERSION` en `apps/frontend/src/pages/public/Terms.tsx` **y** en `apps/backend/src/customers/terms.ts` en el mismo PR (hay un test que lo verifica).
 
 **La tarjeta y Google Wallet** (editor en `/admin/card`, API `GET/PUT /api/brands/:brandId/card`)
-- El editor y el backend validan con la misma función: `cardConfigProblems` de `@fidelity/shared`.
+- El editor y el backend comparten validadores puros de `@fidelity/shared`: `cardConfigProblems` devuelve mensajes; `cardConfigIssues` agrega el paso del editor donde corregirlos.
 - No se puede cambiar entre sellos y puntos si algún cliente tiene saldo vigente. Los puntos se habilitan en Configuración (dueño) o en `/internal` (superadmin).
 - La **clase** de Google lleva el diseño (nombres, también los `localized*`, logo, color, enlaces, secciones, plantilla del frente y `merchantLocations` para el aviso por cercanía). El **objeto** lleva el saldo, los textos y la tira de sellos como imagen destacada.
 - La tira la dibuja el backend (`GET /api/public/cards/:programId/:version/strip/:target/:filled`) con la misma función que la vista previa. Las URLs llevan la versión del diseño, así que son inmutables.
+- Las imágenes públicas están sujetas al `ThrottlerGuard` global. Solo se descargan assets del origen y carpeta de Storage de la marca, sin saltos de directorio ni redirecciones; el borrado también verifica la marca.
 - Al guardar la tarjeta se publica la clase y se reenvían los pases; al cambiar la ubicación o el estado de un local se publica solo la clase. Dos publicaciones de la misma tarjeta no se superponen.
 - **Google solo acepta imágenes HTTPS públicas.** Sin eso el pase se guarda igual, sin imágenes. `SUPABASE_PUBLIC_URL` publica las imágenes del Storage con otro origen.
 - Sin credenciales de Google, con `ALLOW_MOCK_PASSES=true`, los pases son de prueba y la API de Google solo deja un log.

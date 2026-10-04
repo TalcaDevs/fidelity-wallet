@@ -70,7 +70,7 @@ export class CardService {
     // Solo imágenes subidas a la carpeta de la marca: el backend las descarga para dibujar la
     // tira de sellos, y una URL ajena sería una puerta a pedidos hacia cualquier servidor.
     const foreign = designImages(config.design).filter(
-      (url) => !this.storage.belongsToBrand(url, brandId) && !designImages(current).includes(url),
+      (url) => !this.storage.belongsToBrand(url, brandId),
     );
     if (foreign.length > 0) problems.push('Una de las imágenes no es válida: vuelve a subirla');
     if (problems.length > 0) throw new BadRequestException(problems);
@@ -119,9 +119,12 @@ export class CardService {
       });
     });
 
-    void this.passes.publishCard(program.id);
+    void this.passes.publishCard(program.id).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`No se pudo publicar la tarjeta ${program.id} en Wallet: ${message}`);
+    });
     const kept = new Set(designImages(config.design));
-    void this.removeImages(designImages(current).filter((url) => !kept.has(url)));
+    void this.removeImages(brandId, designImages(current).filter((url) => !kept.has(url)));
 
     return this.read(brandId);
   }
@@ -245,8 +248,12 @@ export class CardService {
     return stamp !== null;
   }
 
-  private async removeImages(urls: string[]): Promise<void> {
-    const paths = urls.map((url) => this.storage.pathOf(url)).filter((p): p is string => !!p);
+  private async removeImages(brandId: string, urls: string[]): Promise<void> {
+    const paths = urls
+      .filter((url) => this.storage.belongsToBrand(url, brandId))
+      .map((url) => this.storage.pathOf(url))
+      .filter((p): p is string => !!p);
+    if (paths.length === 0) return;
     try {
       await this.storage.remove(paths);
     } catch (err: unknown) {

@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Logger } from '@nestjs/common';
 import { DEFAULT_CARD_DESIGN, DEFAULT_CARD_DETAILS, DEFAULT_REGISTRATION } from '@fidelity/shared';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
@@ -211,6 +211,56 @@ describe('CardService', () => {
           body({ rewards: [{ id: 'c0000000-0000-4000-8000-0000000000ff', name: 'Ajena', target: 3 }] }),
         ),
       ).rejects.toThrow('no pertenece a tu tarjeta');
+    });
+
+    it('does not grandfather an unsafe image already stored in the card', async () => {
+      const { service, prisma } = setup();
+      const logoUrl = `${bucket}/another-brand/logo.png`;
+      prisma.loyaltyProgram.findFirst.mockResolvedValue(program({ design: { logoUrl } }));
+      await expect(service.save(brandId, userId, body({
+        design: { ...DEFAULT_CARD_DESIGN, logoUrl },
+      }))).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('never deletes replaced images belonging to another brand', async () => {
+      const { service, prisma, storage } = setup();
+      prisma.loyaltyProgram.findFirst.mockResolvedValue(program({
+        design: { logoUrl: `${bucket}/another-brand/logo.png` },
+      }));
+      await service.save(brandId, userId, body());
+      expect(storage.pathOf).not.toHaveBeenCalled();
+      expect(storage.remove).not.toHaveBeenCalled();
+    });
+
+    it('logs a background Wallet failure without failing the saved card', async () => {
+      const { service, passes } = setup();
+      passes.publishCard.mockRejectedValue(new Error('Wallet offline'));
+      const log = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      try {
+        await expect(service.save(brandId, userId, body())).resolves.toBeDefined();
+        expect(log).toHaveBeenCalledWith(expect.stringContaining('Wallet offline'));
+      } finally {
+        log.mockRestore();
+      }
+    });
+
+    it.each([
+      { type: 'UNLIMITED', expiresAt: null, days: null },
+      { type: 'FIXED_DATE', expiresAt: '2099-01-01T00:00:00.000Z', days: null },
+      { type: 'AFTER_JOIN', expiresAt: null, days: 30 },
+    ] as const)('clears inactive validity fields for $type', async (expected) => {
+      const { service, prisma } = setup();
+      await service.save(brandId, userId, body({
+        validity: { type: expected.type, expiresAt: '2099-01-01T00:00:00.000Z', days: 30 },
+      }));
+      expect(prisma.loyaltyProgram.update).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          cardValidity: expected.type,
+          cardExpiresAt: expected.expiresAt ? new Date(expected.expiresAt) : null,
+          cardValidityDays: expected.days,
+        }),
+      }));
     });
   });
 

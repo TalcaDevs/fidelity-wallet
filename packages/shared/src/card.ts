@@ -535,10 +535,13 @@ export function linkUri(link: CardLink): string {
   }
 }
 
-function linkProblem(link: CardLink, index: number): string | null {
+const trimmedText = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
+
+function linkProblem(raw: unknown, index: number): string | null {
+  const link = record(raw);
   const n = index + 1;
-  if (!link.label.trim()) return `El enlace ${n} necesita un nombre`;
-  const value = link.value.trim();
+  if (!trimmedText(link.label)) return `El enlace ${n} necesita un nombre`;
+  const value = trimmedText(link.value);
   if (!value) return `El enlace ${n} necesita un destino`;
   switch (link.type) {
     case 'WEBSITE':
@@ -551,6 +554,7 @@ function linkProblem(link: CardLink, index: number): string | null {
     case 'INSTAGRAM':
       return INSTAGRAM.test(value) ? null : `El enlace ${n} debe ser un usuario de Instagram`;
   }
+  return null;
 }
 
 export interface CardRulesContext {
@@ -558,90 +562,123 @@ export interface CardRulesContext {
   now?: Date;
 }
 
-/** Reglas de negocio de la tarjeta, con mensajes para el dueño. Vacío = se puede guardar. */
-export function cardConfigProblems(config: CardConfig, { pointsEnabled, now = new Date() }: CardRulesContext): string[] {
+export interface CardConfigIssue {
+  step: 'TYPE' | 'INFO' | 'DESIGN' | 'DETAILS';
+  message: string;
+}
+
+function typeProblems(type: CardType, pointsEnabled: boolean): string[] {
+  return type === 'POINTS' && !pointsEnabled
+    ? ['Los puntos no están habilitados para tu marca. Actívalos en Configuración.']
+    : [];
+}
+
+function basicInfoProblems(config: Record<string, unknown>): string[] {
   const problems: string[] = [];
-  const isPoints = config.type === 'POINTS';
-  const unit = balanceUnit(config.type);
-
-  if (isPoints && !pointsEnabled) {
-    problems.push('Los puntos no están habilitados para tu marca. Actívalos en Configuración.');
-  }
-
-  const name = config.name.trim();
+  const name = trimmedText(config.name);
   if (name.length < CARD_NAME_MIN || name.length > CARD_NAME_MAX) {
     problems.push(`El nombre de la tarjeta debe tener entre ${CARD_NAME_MIN} y ${CARD_NAME_MAX} caracteres`);
   }
 
-  if (config.rewards.length === 0) problems.push('Agrega al menos una recompensa');
-  if (config.rewards.length > CARD_REWARDS_MAX) {
+  return problems;
+}
+
+function rewardProblems(raw: unknown, type: CardType): string[] {
+  const problems: string[] = [];
+  const rewards: unknown[] = Array.isArray(raw) ? raw : [];
+  if (rewards.length === 0) problems.push('Agrega al menos una recompensa');
+  if (rewards.length > CARD_REWARDS_MAX) {
     problems.push(`Puedes tener hasta ${CARD_REWARDS_MAX} recompensas`);
   }
-  const targetMax = isPoints ? POINTS_TARGET_MAX : STAMPS_TARGET_MAX;
-  config.rewards.forEach((reward, i) => {
-    const label = reward.name.trim() || `La recompensa ${i + 1}`;
-    if (!reward.name.trim()) problems.push(`Ponle nombre a la recompensa ${i + 1}`);
-    else if (reward.name.trim().length > REWARD_NAME_MAX) {
+  const targetMax = type === 'POINTS' ? POINTS_TARGET_MAX : STAMPS_TARGET_MAX;
+  const unit = balanceUnit(type);
+  rewards.forEach((rawReward, i) => {
+    const reward = record(rawReward);
+    const name = trimmedText(reward.name);
+    const label = name || `La recompensa ${i + 1}`;
+    if (!name) problems.push(`Ponle nombre a la recompensa ${i + 1}`);
+    else if (name.length > REWARD_NAME_MAX) {
       problems.push(`El nombre de "${label}" no puede superar los ${REWARD_NAME_MAX} caracteres`);
     }
-    if (!Number.isInteger(reward.target) || reward.target < 1 || reward.target > targetMax) {
+    if (!integerInRange(reward.target, 1, targetMax)) {
       problems.push(`"${label}" debe costar entre 1 y ${targetMax} ${unit}`);
     }
   });
+  return problems;
+}
 
-  const welcomeMax = isPoints ? WELCOME_POINTS_MAX : WELCOME_STAMPS_MAX;
-  if (!Number.isInteger(config.welcomeBalance) || config.welcomeBalance < 0 || config.welcomeBalance > welcomeMax) {
-    problems.push(`Los ${unit} de bienvenida deben estar entre 0 y ${welcomeMax}`);
-  }
+function integerInRange(value: unknown, min: number, max: number): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max;
+}
 
-  if (
-    config.stampValidityDays !== null &&
-    (!Number.isInteger(config.stampValidityDays) ||
-      config.stampValidityDays < 1 ||
-      config.stampValidityDays > STAMP_VALIDITY_DAYS_MAX)
-  ) {
+function balanceRuleProblems(welcomeBalance: unknown, type: CardType): string[] {
+  const welcomeMax = type === 'POINTS' ? WELCOME_POINTS_MAX : WELCOME_STAMPS_MAX;
+  return integerInRange(welcomeBalance, 0, welcomeMax)
+    ? []
+    : [`Los ${balanceUnit(type)} de bienvenida deben estar entre 0 y ${welcomeMax}`];
+}
+
+function validityProblems(raw: unknown, stampValidityDays: unknown, type: CardType, now: Date): string[] {
+  const problems: string[] = [];
+  const unit = balanceUnit(type);
+  if (stampValidityDays !== null && !integerInRange(stampValidityDays, 1, STAMP_VALIDITY_DAYS_MAX)) {
     problems.push(`La vigencia de los ${unit} debe ser un número entero de días`);
   }
 
-  const { validity } = config;
+  const validity = record(raw);
   if (validity.type === 'FIXED_DATE') {
-    const date = validity.expiresAt ? new Date(validity.expiresAt) : null;
+    const date = typeof validity.expiresAt === 'string' && validity.expiresAt ? new Date(validity.expiresAt) : null;
     if (!date || Number.isNaN(date.getTime())) problems.push('Elige la fecha en que vence la tarjeta');
     else if (date.getTime() <= now.getTime()) problems.push('La fecha de término de la tarjeta debe ser futura');
   }
   if (
     validity.type === 'AFTER_JOIN' &&
-    (!validity.days || !Number.isInteger(validity.days) || validity.days < 1 || validity.days > CARD_VALIDITY_DAYS_MAX)
+    !integerInRange(validity.days, 1, CARD_VALIDITY_DAYS_MAX)
   ) {
     problems.push('Indica cuántos días dura la tarjeta después de obtenerla');
   }
+  return problems;
+}
 
-  if (config.registration.phone === 'HIDDEN' && config.registration.email === 'HIDDEN') {
-    problems.push('Pide al menos el teléfono o el correo: es como se encuentra al cliente en caja');
-  }
+function registrationProblems(raw: unknown): string[] {
+  const registration = record(raw);
+  return registration.phone === 'HIDDEN' && registration.email === 'HIDDEN'
+    ? ['Pide al menos el teléfono o el correo: es como se encuentra al cliente en caja']
+    : [];
+}
 
-  const { details } = config;
-  if (details.links.length > CARD_LINKS_MAX) problems.push(`Puedes agregar hasta ${CARD_LINKS_MAX} enlaces`);
-  details.links.forEach((link, i) => {
+function detailProblems(raw: unknown): string[] {
+  const problems: string[] = [];
+  const details = record(raw);
+  const links: unknown[] = Array.isArray(details.links) ? details.links : [];
+  const sections: unknown[] = Array.isArray(details.sections) ? details.sections : [];
+  const frontFields: unknown[] = Array.isArray(details.frontFields) ? details.frontFields : [];
+  if (links.length > CARD_LINKS_MAX) problems.push(`Puedes agregar hasta ${CARD_LINKS_MAX} enlaces`);
+  links.forEach((link, i) => {
     const problem = linkProblem(link, i);
     if (problem) problems.push(problem);
   });
-  if (details.sections.length > CARD_SECTIONS_MAX) {
+  if (sections.length > CARD_SECTIONS_MAX) {
     problems.push(`Puedes agregar hasta ${CARD_SECTIONS_MAX} secciones`);
   }
-  details.sections.forEach((section, i) => {
-    if (!section.header.trim() || !section.body.trim()) {
+  sections.forEach((rawSection, i) => {
+    const section = record(rawSection);
+    if (!trimmedText(section.header) || !trimmedText(section.body)) {
       problems.push(`La sección ${i + 1} necesita un título y un texto`);
     }
   });
-  if (details.frontFields.length > CARD_FRONT_FIELDS_MAX) {
+  if (frontFields.length > CARD_FRONT_FIELDS_MAX) {
     problems.push(`En el frente caben hasta ${CARD_FRONT_FIELDS_MAX} datos además del saldo`);
   }
-  if (details.homepageUrl && !/^https:\/\//i.test(details.homepageUrl)) {
+  if (details.homepageUrl && (typeof details.homepageUrl !== 'string' || !/^https:\/\//i.test(details.homepageUrl))) {
     problems.push('El sitio web debe empezar con https://');
   }
+  return problems;
+}
 
-  const { design } = config;
+function designProblems(raw: unknown): string[] {
+  const problems: string[] = [];
+  const design = record(raw);
   for (const key of [
     'backgroundColor',
     'textColor',
@@ -653,7 +690,40 @@ export function cardConfigProblems(config: CardConfig, { pointsEnabled, now = ne
     if (!isHexColor(design[key])) problems.push('Los colores deben tener el formato #RRGGBB');
   }
 
-  return [...new Set(problems)];
+  return problems;
+}
+
+function issuesForStep(step: CardConfigIssue['step'], problems: string[]): CardConfigIssue[] {
+  return problems.map((message) => ({ step, message }));
+}
+
+/** Reglas de negocio asociadas al paso del editor donde se pueden corregir. */
+export function cardConfigIssues(config: CardConfig, { pointsEnabled, now = new Date() }: CardRulesContext): CardConfigIssue[] {
+  const input = record(config);
+  const type = input.type === 'POINTS' ? 'POINTS' : 'STAMPS';
+  const issues = [
+    ...issuesForStep('TYPE', typeProblems(type, pointsEnabled)),
+    ...issuesForStep('INFO', [
+      ...basicInfoProblems(input),
+      ...rewardProblems(input.rewards, type),
+      ...balanceRuleProblems(input.welcomeBalance, type),
+      ...validityProblems(input.validity, input.stampValidityDays, type, now),
+      ...registrationProblems(input.registration),
+    ]),
+    ...issuesForStep('DETAILS', detailProblems(input.details)),
+    ...issuesForStep('DESIGN', designProblems(input.design)),
+  ];
+  const seen = new Set<string>();
+  return issues.filter(({ message }) => {
+    if (seen.has(message)) return false;
+    seen.add(message);
+    return true;
+  });
+}
+
+/** Reglas de negocio de la tarjeta, con mensajes para el dueño. Vacío = se puede guardar. */
+export function cardConfigProblems(config: CardConfig, context: CardRulesContext): string[] {
+  return cardConfigIssues(config, context).map(({ message }) => message);
 }
 
 // --- Tira de sellos del pase (heroImage de Google). La misma función dibuja la vista previa

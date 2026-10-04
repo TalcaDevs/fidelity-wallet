@@ -4,6 +4,7 @@ import {
   DEFAULT_CARD_DETAILS,
   DEFAULT_REGISTRATION,
   autoTextColor,
+  cardConfigIssues,
   cardConfigProblems,
   cardExpiryDate,
   contrastRatio,
@@ -101,6 +102,125 @@ describe('cardConfigProblems', () => {
       { pointsEnabled: false, now },
     );
     expect(problems).toEqual(['El enlace 1 debe ser una dirección que empiece con https://']);
+  });
+
+  it('keeps error ordering across domains and removes repeated color errors', () => {
+    const problems = cardConfigProblems(
+      config({
+        type: 'POINTS',
+        name: ' ',
+        rewards: [{ name: ' ', target: 0 }],
+        welcomeBalance: 100_001,
+        stampValidityDays: 0,
+        validity: { type: 'FIXED_DATE', expiresAt: now.toISOString(), days: null },
+        registration: { ...DEFAULT_REGISTRATION, phone: 'HIDDEN', email: 'HIDDEN' },
+        details: {
+          ...DEFAULT_CARD_DETAILS,
+          links: [{ type: 'EMAIL', label: 'Correo', value: 'inválido' }],
+          sections: [{ header: ' ', body: 'Texto' }],
+          frontFields: ['REWARD', 'PROGRESS', 'CARD_EXPIRY'],
+          homepageUrl: 'http://cafe.cl',
+        },
+        design: { ...DEFAULT_CARD_DESIGN, backgroundColor: 'red', textColor: 'white' },
+      }),
+      { pointsEnabled: false, now },
+    );
+    expect(problems).toEqual([
+      'Los puntos no están habilitados para tu marca. Actívalos en Configuración.',
+      'El nombre de la tarjeta debe tener entre 2 y 40 caracteres',
+      'Ponle nombre a la recompensa 1',
+      '"La recompensa 1" debe costar entre 1 y 1000000 puntos',
+      'Los puntos de bienvenida deben estar entre 0 y 100000',
+      'La vigencia de los puntos debe ser un número entero de días',
+      'La fecha de término de la tarjeta debe ser futura',
+      'Pide al menos el teléfono o el correo: es como se encuentra al cliente en caja',
+      'El enlace 1 debe ser un correo válido',
+      'La sección 1 necesita un título y un texto',
+      'En el frente caben hasta 2 datos además del saldo',
+      'El sitio web debe empezar con https://',
+      'Los colores deben tener el formato #RRGGBB',
+    ]);
+  });
+
+  it('accepts the maximum point balances and validity durations', () => {
+    expect(
+      cardConfigProblems(
+        config({
+          type: 'POINTS',
+          rewards: [{ name: 'Premio', target: 1_000_000 }],
+          welcomeBalance: 100_000,
+          stampValidityDays: 3650,
+          validity: { type: 'AFTER_JOIN', expiresAt: null, days: 3650 },
+        }),
+        { pointsEnabled: true, now },
+      ),
+    ).toEqual([]);
+  });
+
+  it('returns problems instead of throwing for unexpected top-level input types', () => {
+    for (const raw of [null, undefined, false, 42, 'tarjeta', [], Symbol('card')]) {
+      expect(cardConfigProblems(raw as unknown as CardConfig, { pointsEnabled: false, now })).not.toEqual([]);
+    }
+  });
+
+  it('handles malformed nested fields without coercing them into valid values', () => {
+    const raw = {
+      ...config(),
+      rewards: [null, { name: 123, target: '10' }],
+      validity: { type: 'FIXED_DATE', expiresAt: Symbol('date') },
+      registration: null,
+      details: {
+        links: [{ label: null }, { label: 'Web', value: Symbol('url') }],
+        sections: [null],
+        frontFields: null,
+        homepageUrl: {},
+      },
+      design: null,
+    };
+    expect(cardConfigProblems(raw as unknown as CardConfig, { pointsEnabled: false, now })).toEqual([
+      'Ponle nombre a la recompensa 1',
+      '"La recompensa 1" debe costar entre 1 y 30 sellos',
+      'Ponle nombre a la recompensa 2',
+      '"La recompensa 2" debe costar entre 1 y 30 sellos',
+      'Elige la fecha en que vence la tarjeta',
+      'El enlace 1 necesita un nombre',
+      'El enlace 2 necesita un destino',
+      'La sección 1 necesita un título y un texto',
+      'El sitio web debe empezar con https://',
+      'Los colores deben tener el formato #RRGGBB',
+    ]);
+  });
+});
+
+describe('cardConfigIssues', () => {
+  it('links each error to the step that can correct it without changing messages', () => {
+    const card = config({
+      type: 'POINTS',
+      name: ' ',
+      rewards: [],
+      welcomeBalance: -1,
+      stampValidityDays: 0,
+      validity: { type: 'AFTER_JOIN', expiresAt: null, days: 0 },
+      registration: { ...DEFAULT_REGISTRATION, phone: 'HIDDEN', email: 'HIDDEN' },
+      details: { ...DEFAULT_CARD_DETAILS, homepageUrl: 'http://cafe.cl' },
+      design: { ...DEFAULT_CARD_DESIGN, backgroundColor: 'red', textColor: 'white' },
+    });
+    const context = { pointsEnabled: false, now };
+    const issues = cardConfigIssues(card, context);
+    expect(issues.map(({ step }) => step)).toEqual([
+      'TYPE', 'INFO', 'INFO', 'INFO', 'INFO', 'INFO', 'INFO', 'DETAILS', 'DESIGN',
+    ]);
+    expect(issues.at(-2)).toEqual({ step: 'DETAILS', message: 'El sitio web debe empezar con https://' });
+    expect(issues.at(-1)).toEqual({ step: 'DESIGN', message: 'Los colores deben tener el formato #RRGGBB' });
+    expect(issues.map(({ message }) => message)).toEqual(cardConfigProblems(card, context));
+  });
+
+  it('keeps the first occurrence when two rewards produce the same error', () => {
+    const card = config({ rewards: [{ name: 'Café', target: 0 }, { name: 'Café', target: 31 }] });
+    expect(cardConfigIssues(card, { pointsEnabled: false, now })).toEqual([
+      { step: 'INFO', message: '"Café" debe costar entre 1 y 30 sellos' },
+    ]);
+    expect(cardConfigIssues(config(), { pointsEnabled: false, now })).toEqual([]);
   });
 });
 

@@ -9,7 +9,6 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { SkipThrottle } from '@nestjs/throttler';
 import { STAMPS_TARGET_MAX } from '@fidelity/shared';
 import { CardRenderService } from './card-render.service.js';
 
@@ -20,7 +19,6 @@ const png = (buffer: Buffer) => new StreamableFile(buffer, { type: 'image/png' }
 
 /** Imágenes que Google Wallet descarga sin sesión. No exponen datos de clientes. */
 @ApiTags('Card editor')
-@SkipThrottle()
 @Controller('public/cards/:programId/:version')
 export class CardPublicController {
   constructor(private readonly render: CardRenderService) {}

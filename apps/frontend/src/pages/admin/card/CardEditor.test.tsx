@@ -101,6 +101,23 @@ describe('CardEditor', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Agrega al menos una recompensa');
     expect(save).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Detalles' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Información: Agrega al menos una recompensa' }));
+    expect(screen.getByLabelText('Nombre de la tarjeta')).toBeInTheDocument();
+  });
+
+  it('links detail errors to their wizard step', async () => {
+    vi.spyOn(cardService, 'getCard').mockResolvedValue(card());
+    const save = vi.spyOn(cardService, 'saveCard');
+    renderEditor();
+    fireEvent.click(await screen.findByRole('button', { name: 'Detalles' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ Agregar sección' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar tarjeta' }));
+    const link = await screen.findByRole('button', { name: 'Detalles: La sección 1 necesita un título y un texto' });
+    fireEvent.click(screen.getByRole('button', { name: 'Diseño' }));
+    fireEvent.click(link);
+    expect(screen.getByLabelText('Título de la sección 1')).toBeInTheDocument();
+    expect(save).not.toHaveBeenCalled();
   });
 
   it('saves the whole card and tells how many passes get updated', async () => {
