@@ -8,6 +8,9 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 
+/** Únicos campos extra que la app agrega a sus excepciones (p. ej. PLAN_LIMIT); el resto no sale. */
+const EXPOSED_KEYS = ['code', 'resource', 'limit'] as const;
+
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
@@ -20,14 +23,19 @@ export class HttpExceptionFilter implements ExceptionFilter {
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message: string | object = 'Ha ocurrido un error interno en el servidor';
     let error = 'Internal Server Error';
+    // Campos propios de la app (p. ej. code: PLAN_LIMIT) para que el cliente distinga el caso sin parsear el texto.
+    const extra: Record<string, unknown> = {};
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
       const res = exception.getResponse();
       if (typeof res === 'object' && res !== null) {
-        const resObj = res as Record<string, unknown>;
-        message = (resObj.message as string | object) ?? exception.message;
-        error = (resObj.error as string) ?? exception.name;
+        const body = res as Record<string, unknown>;
+        message = (body.message as string | object) ?? exception.message;
+        error = (body.error as string) ?? exception.name;
+        for (const key of EXPOSED_KEYS) {
+          if (body[key] !== undefined) extra[key] = body[key];
+        }
       } else {
         message = res;
         error = exception.name;
@@ -49,6 +57,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     }
 
     response.status(status).json({
+      ...extra,
       statusCode: status,
       message,
       error,

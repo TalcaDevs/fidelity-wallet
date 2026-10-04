@@ -6,6 +6,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
+import { CUSTOMER_NAME_MAX, isValidBirthday } from '@fidelity/shared';
 import { Prisma, type Customer } from '@prisma/client';
 import {
   findStampsProgram,
@@ -13,6 +14,8 @@ import {
   locationWithBrandSelect,
   resolveLocationAccess,
 } from '../common/access/brand-access.js';
+import { assertPlanAllows } from '../common/plan/plan-limits.js';
+import { normalizeEmail } from '../common/utils/email.util.js';
 import { normalizePhone } from '../common/utils/phone.util.js';
 import { cleanRut, validateRut } from '../common/utils/rut.util.js';
 import { PassesService } from '../passes/passes.service.js';
@@ -21,28 +24,69 @@ import { CreateCustomerDto, CustomerResponseDto } from './dto/create-customer.dt
 import { DeleteCustomerResponseDto } from './dto/deletion.dto.js';
 import { TERMS_VERSION } from './terms.js';
 
-// Mismo mensaje para todo cruce de identidad: no revela cuál de los dos datos ya existe.
+// Mismo mensaje para todo cruce de identidad: no revela cuál de los datos ya existe.
 const IDENTITY_MISMATCH_MESSAGE =
   'Los datos proporcionados no coinciden o no son válidos para emitir el pase.';
 
+type IdentityField = 'rut' | 'phone' | 'email';
+
+/** Identificadores normalizados del alta: RUT opcional y al menos teléfono o correo. */
+type Identity = Partial<Record<IdentityField, string>>;
+
+interface Profile {
+  name?: string;
+  birthDay?: number;
+  birthMonth?: number;
+  birthYear?: number;
+}
+
+const IDENTITY_FIELDS: IdentityField[] = ['rut', 'phone', 'email'];
+
 /**
- * El cliente encontrado debe tener exactamente el RUT y el teléfono enviados.
+ * El cliente encontrado debe tener exactamente los identificadores enviados.
  *
- * Un cliente antiguo (anterior al 2026-09-24) puede tener solo uno de los dos. El dato
- * faltante NO se completa con lo que llega: sin verificación (OTP), eso permitiría adjuntar el
- * teléfono de un tercero a la ficha de otra persona y luego resolver su pase en caja por ese
- * teléfono. Mientras no exista la verificación, basta con que coincida el dato que sí tiene.
+ * Un dato que el cliente no tenía (un cliente antiguo sin teléfono, o uno que se registró solo
+ * con correo) NO se completa con lo que llega: sin verificación (OTP), eso permitiría adjuntar
+ * el teléfono o el correo de un tercero a la ficha de otra persona y luego resolver su pase en
+ * caja con ese dato. Mientras no exista la verificación, basta con que coincida lo que sí tiene.
  */
-function assertSameIdentity(
-  customer: Pick<Customer, 'rut' | 'phone'>,
-  rut: string,
-  phone: string,
-): void {
-  const rutMatches = customer.rut === null || customer.rut === rut;
-  const phoneMatches = customer.phone === null || customer.phone === phone;
-  if (!rutMatches || !phoneMatches) {
-    throw new BadRequestException(IDENTITY_MISMATCH_MESSAGE);
+function assertSameIdentity(customer: Pick<Customer, IdentityField>, identity: Identity): void {
+  for (const field of IDENTITY_FIELDS) {
+    const sent = identity[field];
+    if (sent !== undefined && customer[field] !== null && customer[field] !== sent) {
+      throw new BadRequestException(IDENTITY_MISMATCH_MESSAGE);
+    }
   }
+}
+
+/** Nombre y cumpleaños solo se completan si estaban vacíos: nunca se pisan desde un alta pública. */
+function missingProfile(customer: Customer, profile: Profile): Profile {
+  const fill: Profile = {};
+  if (!customer.name && profile.name) fill.name = profile.name;
+  if (customer.birthDay === null && profile.birthDay !== undefined) {
+    fill.birthDay = profile.birthDay;
+    fill.birthMonth = profile.birthMonth;
+    fill.birthYear = profile.birthYear;
+  }
+  return fill;
+}
+
+function uniqueWhere(field: IdentityField, value: string): Prisma.CustomerWhereUniqueInput {
+  switch (field) {
+    case 'rut':
+      return { rut: value };
+    case 'phone':
+      return { phone: value };
+    case 'email':
+      return { email: value };
+  }
+}
+
+function identityFilter(identity: Identity): Prisma.CustomerWhereInput[] {
+  return IDENTITY_FIELDS.flatMap((f) => {
+    const value = identity[f];
+    return value === undefined ? [] : [uniqueWhere(f, value)];
+  });
 }
 
 @Injectable()
@@ -53,34 +97,15 @@ export class CustomersService {
   ) {}
 
   async createOrFindCustomer(dto: CreateCustomerDto): Promise<CustomerResponseDto> {
-    const rawRut = dto.rut?.trim();
-    const rawPhone = dto.phone?.trim();
-
-    // Desde 2026-09-24 el alta exige RUT **y** teléfono, más la aceptación de los términos.
-    // El DTO ya lo valida; se repite acá porque este servicio también se llama sin pasar por HTTP.
-    if (!rawRut || !rawPhone) {
-      throw new BadRequestException(
-        'Debe proporcionar el RUT y el teléfono para emitir la tarjeta',
-      );
-    }
-
+    // El DTO ya valida la forma; se repite acá porque este servicio también se llama sin HTTP.
     if (dto.acceptedTerms !== true) {
       throw new BadRequestException(
         'Debes aceptar los términos y condiciones para obtener tu tarjeta',
       );
     }
 
-    if (!validateRut(rawRut)) {
-      throw new BadRequestException('El RUT ingresado no es válido');
-    }
-    const normalizedRut = cleanRut(rawRut);
-
-    const normalizedPhone = normalizePhone(rawPhone);
-    if (!normalizedPhone) {
-      throw new BadRequestException(
-        `Formato de teléfono chileno inválido: "${rawPhone}". Se espera formato +569XXXXXXXX o 9XXXXXXXX.`,
-      );
-    }
+    const identity = this.normalizeIdentity(dto);
+    const profile = this.normalizeProfile(dto);
 
     // Prueba del consentimiento: cuándo y qué versión de los términos aceptó (Ley 19.628).
     const termsAcceptance = { termsAcceptedAt: new Date(), termsVersion: TERMS_VERSION };
@@ -106,11 +131,23 @@ export class CustomersService {
           throw new BadRequestException('El comercio no tiene una promoción activa configurada');
         }
 
+        // Un cliente que ya tiene la tarjeta siempre puede volver a entrar; solo las altas nuevas
+        // cuentan contra el límite de clientes del plan.
+        const existingPass = await tx.pass.findFirst({
+          where: { programId: program.id, customer: { OR: identityFilter(identity) } },
+          select: { id: true },
+        });
+        if (!existingPass) {
+          await assertPlanAllows(tx, merchant.brandId, 'customers', {
+            publicMessage: 'Este local no puede registrar nuevos clientes por ahora. Consulta en caja.',
+          });
+        }
+
         // 2. Buscar o crear cliente (resolución de identidad y términos)
         const { customer, isNew: isNewCustomer } = await this.resolveCustomer(
           tx,
-          normalizedRut,
-          normalizedPhone,
+          identity,
+          profile,
           termsAcceptance,
         );
 
@@ -246,47 +283,118 @@ export class CustomersService {
     };
   }
 
+  /** RUT opcional y al menos teléfono o correo, ya normalizados. */
+  private normalizeIdentity(dto: CreateCustomerDto): Identity {
+    const rawRut = dto.rut?.trim();
+    const rawPhone = dto.phone?.trim();
+    const rawEmail = dto.email?.trim();
+
+    if (!rawPhone && !rawEmail) {
+      throw new BadRequestException('Ingresa tu teléfono o tu correo para emitir la tarjeta');
+    }
+
+    const identity: Identity = {};
+
+    if (rawRut) {
+      if (!validateRut(rawRut)) {
+        throw new BadRequestException('El RUT ingresado no es válido');
+      }
+      identity.rut = cleanRut(rawRut);
+    }
+
+    if (rawPhone) {
+      const phone = normalizePhone(rawPhone);
+      if (!phone) {
+        throw new BadRequestException(
+          `Formato de teléfono chileno inválido: "${rawPhone}". Se espera formato +569XXXXXXXX o 9XXXXXXXX.`,
+        );
+      }
+      identity.phone = phone;
+    }
+
+    if (rawEmail) {
+      const email = normalizeEmail(rawEmail);
+      if (!email) {
+        throw new BadRequestException('El correo ingresado no es válido');
+      }
+      identity.email = email;
+    }
+
+    return identity;
+  }
+
+  private normalizeProfile(dto: CreateCustomerDto): Profile {
+    const profile: Profile = {};
+
+    const name = dto.name?.trim().replace(/\s+/g, ' ');
+    if (name) {
+      if (name.length > CUSTOMER_NAME_MAX) {
+        throw new BadRequestException(
+          `El nombre no puede superar los ${CUSTOMER_NAME_MAX} caracteres`,
+        );
+      }
+      profile.name = name;
+    }
+
+    const hasDay = dto.birthDay !== undefined && dto.birthDay !== null;
+    const hasMonth = dto.birthMonth !== undefined && dto.birthMonth !== null;
+    const hasYear = dto.birthYear !== undefined && dto.birthYear !== null;
+    if (hasDay || hasMonth || hasYear) {
+      if (!hasDay || !hasMonth) {
+        throw new BadRequestException('Indica el día y el mes de tu cumpleaños');
+      }
+      const birthday = { day: dto.birthDay!, month: dto.birthMonth!, year: dto.birthYear };
+      if (!isValidBirthday(birthday)) {
+        throw new BadRequestException('La fecha de cumpleaños no es válida');
+      }
+      profile.birthDay = birthday.day;
+      profile.birthMonth = birthday.month;
+      if (hasYear) profile.birthYear = dto.birthYear;
+    }
+
+    return profile;
+  }
+
   /**
-   * Resuelve de forma segura y atómica la entidad Customer dentro de la transacción,
-   * validando que no existan cruces de identidad entre RUT y teléfono.
+   * Resuelve de forma segura y atómica la entidad Customer dentro de la transacción: todos los
+   * identificadores enviados deben apuntar al mismo cliente.
    */
   private async resolveCustomer(
     tx: Prisma.TransactionClient,
-    normalizedRut: string,
-    normalizedPhone: string,
+    identity: Identity,
+    profile: Profile,
     termsAcceptance: { termsAcceptedAt: Date; termsVersion: string },
   ): Promise<{ customer: Customer; isNew: boolean }> {
-    const customerByRut = await tx.customer.findUnique({ where: { rut: normalizedRut } });
-    const customerByPhone = await tx.customer.findUnique({ where: { phone: normalizedPhone } });
+    // Una sola consulta por todos los identificadores: si apuntan a clientes distintos, no se mezclan.
+    const found = await tx.customer.findMany({ where: { OR: identityFilter(identity) } });
 
-    if (customerByRut && customerByPhone && customerByRut.id !== customerByPhone.id) {
+    if (new Set(found.map((c) => c.id)).size > 1) {
       throw new BadRequestException(IDENTITY_MISMATCH_MESSAGE);
     }
 
-    let customer = customerByRut ?? customerByPhone;
-    let isNew = false;
-
-    if (!customer) {
-      customer = await tx.customer.create({
-        data: {
-          rut: normalizedRut,
-          phone: normalizedPhone,
-          ...termsAcceptance,
-        },
+    const existing = found[0];
+    if (!existing) {
+      const customer = await tx.customer.create({
+        data: { ...identity, ...profile, ...termsAcceptance },
       });
-      isNew = true;
-    } else {
-      assertSameIdentity(customer, normalizedRut, normalizedPhone);
-
-      if (customer.termsVersion !== TERMS_VERSION) {
-        customer = await tx.customer.update({
-          where: { id: customer.id },
-          data: termsAcceptance,
-        });
-      }
+      return { customer, isNew: true };
     }
 
-    return { customer, isNew };
+    assertSameIdentity(existing, identity);
+
+    const changes = {
+      ...missingProfile(existing, profile),
+      ...(existing.termsVersion !== TERMS_VERSION ? termsAcceptance : {}),
+    };
+    if (Object.keys(changes).length === 0) {
+      return { customer: existing, isNew: false };
+    }
+
+    const customer = await tx.customer.update({
+      where: { id: existing.id },
+      data: changes,
+    });
+    return { customer, isNew: false };
   }
 
   /**

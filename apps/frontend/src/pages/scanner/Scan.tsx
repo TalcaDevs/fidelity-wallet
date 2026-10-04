@@ -8,13 +8,33 @@ import { useSignOut } from '../../hooks/useSignOut';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { supabase } from '../../lib/supabase';
 import { Session } from '@supabase/supabase-js';
-import { processScan, ScanResult, ScanTarget } from '../../services/scanService';
+import {
+  processScan,
+  validateScan,
+  type LookupTarget,
+  type ScanResult,
+  type ScanValidation as Validation,
+  type StampExtras,
+} from '../../services/scanService';
 import { IdentifierValue } from '../../components/ui/IdentifierInput';
 import { ROUTES } from '../../components/routing/routePaths';
 import type { MerchantRole } from '../../hooks/useMembership';
 import { ScanLoading, ScanSuccess, ScanAlreadyScanned, ScanReward, ScanError, ScanRedeemSuccess, ScanOffline, ScanSessionExpired } from './ScanViews';
+import { ScanValidation } from './ScanValidation';
 
-type ScanState = 'camera' | 'manual' | 'loading' | 'success' | 'alreadyScanned' | 'reward' | 'error' | 'redeemSuccess';
+type ScanState = 'camera' | 'manual' | 'loading' | 'validation' | 'success' | 'alreadyScanned' | 'reward' | 'error' | 'redeemSuccess';
+
+/** El canje usa la misma pantalla venga de la validación o de un sello recién sumado. */
+const rewardFromValidation = (v: Validation): ScanResult => ({
+  ok: true,
+  passId: v.passId,
+  customerLabel: v.customerLabel,
+  stampsCount: v.stampsCount,
+  targetStamps: v.targetStamps,
+  rewardUnlocked: v.rewardUnlocked,
+  rewardName: v.rewardName,
+  availablePromotions: v.availablePromotions,
+});
 
 export function Scan({ merchantId, session, role }: { merchantId: string, session: Session, role: MerchantRole | null }) {
   const { triggerFeedback, resumeAudio } = useScanFeedback();
@@ -22,50 +42,79 @@ export function Scan({ merchantId, session, role }: { merchantId: string, sessio
   const [isStarted, setIsStarted] = useState(false);
   const [state, setState] = useState<ScanState>('camera');
   const [result, setResult] = useState<ScanResult | null>(null);
-  const [target, setTarget] = useState<ScanTarget | null>(null);
+  const [validation, setValidation] = useState<Validation | null>(null);
+  // Desde dónde se abrió el canje: "seguir juntando" vuelve a la validación si aún no se selló.
+  const [rewardFrom, setRewardFrom] = useState<'validation' | 'stamped'>('stamped');
   
   const isOnline = useOnlineStatus();
   const [isSessionExpired, setIsSessionExpired] = useState(false);
 
-  const handleScan = useCallback(async (nextTarget: ScanTarget) => {
+  const handleFailure = useCallback((res: { errorCode?: string }) => {
+    triggerFeedback('error');
+    if (res.errorCode === 'UNAUTHORIZED') {
+      setIsSessionExpired(true);
+    } else {
+      setState('error');
+    }
+  }, [triggerFeedback]);
+
+  // Escanear o buscar a mano solo valida: nada se suma hasta "Agregar sello".
+  const handleLookup = useCallback(async (lookup: LookupTarget) => {
     setState('loading');
-    setTarget(nextTarget);
-    const res = await processScan({ merchantId, action: 'STAMP', target: nextTarget });
-    
+    setResult(null);
+    const res = await validateScan({ merchantId, target: lookup });
+    if (!res.ok) {
+      setResult({ ok: false, error: res.error, errorCode: res.errorCode });
+      handleFailure(res);
+      return;
+    }
+    const { ok: _ok, ...found } = res;
+    setValidation(found);
+    setState('validation');
+  }, [merchantId, handleFailure]);
+
+  const handleAddStamp = useCallback(async (extras: StampExtras) => {
+    if (!validation) return;
+    setState('loading');
+    const res = await processScan({
+      merchantId,
+      action: 'STAMP',
+      target: { validationToken: validation.validationToken },
+      extras,
+    });
     setResult(res);
-    
-    if (res.rewardUnlocked) {
-      triggerFeedback('reward');
-      setState('reward');
-    } else if (!res.ok) {
-      triggerFeedback('error');
-      if (res.errorCode === 'UNAUTHORIZED') {
-        setIsSessionExpired(true);
-      } else {
-        setState('error');
-      }
+
+    if (!res.ok) {
+      handleFailure(res);
     } else if (res.alreadyScanned) {
       triggerFeedback('alreadyScanned');
       setState('alreadyScanned');
     } else {
+      triggerFeedback(res.rewardUnlocked ? 'reward' : 'success');
       setState('success');
     }
-  }, [triggerFeedback, merchantId]);
+  }, [validation, merchantId, handleFailure, triggerFeedback]);
+
+  const openReward = useCallback((from: 'validation' | 'stamped') => {
+    if (from === 'validation' && validation) setResult(rewardFromValidation(validation));
+    setRewardFrom(from);
+    setState('reward');
+  }, [validation]);
 
   // promotionId: el premio que eligió el cliente (los sellos sirven para cualquier promoción activa).
   const handleRedeem = useCallback(async (promotionId?: string) => {
-    if (!target) return;
+    if (!validation) return;
     setState('loading');
-    const res = await processScan({ merchantId, action: 'REDEEM', target, promotionId });
+    const res = await processScan({
+      merchantId,
+      action: 'REDEEM',
+      target: { validationToken: validation.validationToken },
+      promotionId,
+    });
     setResult(res);
 
     if (!res.ok) {
-      triggerFeedback('error');
-      if (res.errorCode === 'UNAUTHORIZED') {
-        setIsSessionExpired(true);
-      } else {
-        setState('error');
-      }
+      handleFailure(res);
     } else if (res.alreadyScanned) {
       // Doble toque sobre el mismo premio: el canje ya estaba hecho. NO es un "premio entregado"
       // nuevo; mostrarlo así haría que el cajero lo entregue dos veces.
@@ -75,19 +124,31 @@ export function Scan({ merchantId, session, role }: { merchantId: string, sessio
       triggerFeedback('success');
       setState('redeemSuccess');
     }
-  }, [target, merchantId, triggerFeedback]);
+  }, [validation, merchantId, handleFailure, triggerFeedback]);
 
   const handleManual = useCallback((identifier: IdentifierValue) => {
     resumeAudio();
-    void handleScan({
-      customer: identifier.kind === 'rut' ? { rut: identifier.value } : { phone: identifier.value },
-    });
-  }, [handleScan, resumeAudio]);
+    const customer =
+      identifier.kind === 'rut'
+        ? { rut: identifier.value }
+        : identifier.kind === 'phone'
+          ? { phone: identifier.value }
+          : { email: identifier.value };
+    void handleLookup({ customer });
+  }, [handleLookup, resumeAudio]);
 
   const resetScanner = () => {
     setResult(null);
-    setTarget(null);
+    setValidation(null);
     setState('camera');
+  };
+
+  const leaveReward = () => {
+    if (rewardFrom === 'validation' && validation) {
+      setState('validation');
+    } else {
+      resetScanner();
+    }
   };
 
   return (
@@ -131,7 +192,7 @@ export function Scan({ merchantId, session, role }: { merchantId: string, sessio
         </div>
       </header>
 
-      <main className="flex-1 relative w-full h-full pb-8 px-4 flex flex-col">
+      <main className="flex-1 min-h-0 relative w-full h-full pb-8 px-4 flex flex-col">
         {state === 'manual' && (
           <ManualFallback onSubmit={handleManual} onCancel={resetScanner} />
         )}
@@ -163,20 +224,35 @@ export function Scan({ merchantId, session, role }: { merchantId: string, sessio
                   <p className="text-slate-500 font-bold">Cámara pausada (Sin red)</p>
                 </div>
               ) : (
-                <QRCam isActive={!isSessionExpired} onScanSuccess={(passToken) => handleScan({ passToken })} />
+                <QRCam isActive={!isSessionExpired} onScanSuccess={(passToken) => void handleLookup({ passToken })} />
               )}
             </div>
             <p className="text-center text-slate-400 mt-6 font-medium px-8">
-              Apunta la cámara al pase del cliente para registrar su visita.
+              Apunta la cámara al pase del cliente para validarlo.
             </p>
           </div>
         )}
 
         {state === 'loading' && <ScanLoading />}
-        {state === 'success' && result && <ScanSuccess result={result} onReset={resetScanner} />}
+        {state === 'validation' && validation && (
+          <ScanValidation
+            key={validation.validationToken}
+            validation={validation}
+            onAddStamp={(extras) => void handleAddStamp(extras)}
+            onScanAnother={resetScanner}
+            onRedeem={() => openReward('validation')}
+          />
+        )}
+        {state === 'success' && result && (
+          <ScanSuccess
+            result={result}
+            onReset={resetScanner}
+            onRedeem={result.rewardUnlocked ? () => openReward('stamped') : undefined}
+          />
+        )}
         {state === 'redeemSuccess' && result && <ScanRedeemSuccess result={result} onReset={resetScanner} />}
         {state === 'alreadyScanned' && result && <ScanAlreadyScanned result={result} onReset={resetScanner} />}
-        {state === 'reward' && result && <ScanReward key={result.scanId ?? result.passId} result={result} onReset={resetScanner} onRedeem={handleRedeem} />}
+        {state === 'reward' && result && <ScanReward key={result.scanId ?? result.passId} result={result} onReset={leaveReward} onRedeem={(id) => void handleRedeem(id)} />}
         {state === 'error' && <ScanError result={result} onReset={resetScanner} />}
       </main>
 

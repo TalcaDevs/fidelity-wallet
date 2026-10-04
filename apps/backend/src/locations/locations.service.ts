@@ -6,6 +6,7 @@ import {
   requireActiveBrandOwner,
   type Db,
 } from '../common/access/brand-access.js';
+import { assertPlanAllows } from '../common/plan/plan-limits.js';
 import { isValidSlug, slugify } from '../common/utils/slug.util.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type {
@@ -79,14 +80,18 @@ export class LocationsService {
     dto: CreateLocationDto,
   ): Promise<LocationDto> {
     await requireActiveBrandOwner(this.prisma, userId, brandId);
-    const create = async () =>
-      this.prisma.merchant.create({
-        data: {
-          ...(locationChanges(dto) as Prisma.MerchantUncheckedCreateInput),
-          brandId,
-          name: dto.name,
-          slug: await availableSlug(this.prisma, dto.name),
-        },
+    // Límite y alta en la misma transacción: el lock de la marca serializa altas simultáneas.
+    const create = () =>
+      this.prisma.$transaction(async (tx) => {
+        await assertPlanAllows(tx, brandId, 'locations');
+        return tx.merchant.create({
+          data: {
+            ...(locationChanges(dto) as Prisma.MerchantUncheckedCreateInput),
+            brandId,
+            name: dto.name,
+            slug: await availableSlug(tx, dto.name),
+          },
+        });
       });
 
     try {
@@ -112,15 +117,19 @@ export class LocationsService {
     await requireActiveBrandOwner(this.prisma, userId, brandId);
     const existing = await this.prisma.merchant.findFirst({
       where: { id: locationId, brandId },
-      select: { id: true },
+      select: { id: true, isActive: true },
     });
     if (!existing)
       throw new NotFoundException('El local no existe en tu marca');
+    const reactivating = dto.isActive === true && !existing.isActive;
 
     return toLocationDto(
-      await this.prisma.merchant.update({
-        where: { id: locationId },
-        data: locationChanges(dto),
+      await this.prisma.$transaction(async (tx) => {
+        if (reactivating) await assertPlanAllows(tx, brandId, 'locations');
+        return tx.merchant.update({
+          where: { id: locationId },
+          data: locationChanges(dto),
+        });
       }),
     );
   }

@@ -8,6 +8,8 @@ import { InternalRoleContext } from './internalRole';
 import { InternalAudit } from './InternalAudit';
 import { InternalBrands } from './InternalBrands';
 import { InternalCustomers } from './InternalCustomers';
+import { InternalCustomerHistory } from './InternalCustomerHistory';
+import { InternalSummary } from './InternalSummary';
 import { InternalTickets } from './InternalTickets';
 
 // Las pantallas con mapa traen Leaflet: se descargan al abrirlas, no con la bandeja de tickets.
@@ -17,6 +19,7 @@ const InternalBrandDetail = lazy(() =>
 );
 
 const NAV = [
+  { to: 'summary', label: 'Resumen' },
   { to: 'tickets', label: 'Tickets' },
   { to: 'brands', label: 'Marcas' },
   { to: 'map', label: 'Mapa de locales' },
@@ -83,14 +86,16 @@ export default function InternalApp({ session, role }: { session: Session; role:
     <InternalRoleContext.Provider value={{ userId: session.user.id, role }}>
       <Routes>
         <Route element={<InternalLayout session={session} role={role} />}>
-          <Route index element={<Navigate to="tickets" replace />} />
+          <Route index element={<Navigate to="summary" replace />} />
+          <Route path="summary" element={<InternalSummary />} />
           <Route path="tickets" element={<InternalTickets />} />
           <Route path="brands" element={<InternalBrands />} />
           <Route path="brands/:brandId" element={<InternalBrandDetail />} />
           <Route path="map" element={<InternalMap />} />
           <Route path="customers" element={<InternalCustomers />} />
+          {role === 'SUPERADMIN' && <Route path="customers/:customerId/history" element={<InternalCustomerHistory />} />}
           {role === 'SUPERADMIN' && <Route path="audit" element={<InternalAudit />} />}
-          <Route path="*" element={<Navigate to="tickets" replace />} />
+          <Route path="*" element={<Navigate to="summary" replace />} />
         </Route>
       </Routes>
     </InternalRoleContext.Provider>

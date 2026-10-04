@@ -1,20 +1,6 @@
 import { supabase } from '../lib/supabase';
-import { isValidStampValidityDays } from '../lib/stampExpiry';
 import { apiUrl } from '../lib/api';
 import { extractApiError } from '../lib/apiError';
-
-export interface Merchant {
-  id: string;
-  name: string;
-  email: string;
-  // Identificador público del link de registro: /join/<slug>.
-  slug: string;
-  // Vigencia de los sellos en días. null = no vencen. Vive en el programa de la marca.
-  stampValidityDays: number | null;
-  createdAt: string;
-}
-
-export type MerchantSettings = Pick<Merchant, 'name' | 'stampValidityDays'>;
 
 export interface MerchantWithPromo {
   id: string;
@@ -87,67 +73,6 @@ export async function getMerchantWithActivePromo(merchantName: string): Promise<
       rewardName: p.rewardName
     }))
   };
-}
-
-export async function getMerchant(merchantId: string): Promise<Merchant | null> {
-  const { data: merchant, error } = await supabase
-    .from('Merchant')
-    .select('id, name, email, slug, createdAt, brandId')
-    .eq('id', merchantId)
-    .maybeSingle();
-
-  if (error) throw error;
-  if (!merchant) return null;
-
-  const { data: program, error: programError } = await supabase
-    .from('LoyaltyProgram')
-    .select('stampValidityDays')
-    .eq('brandId', merchant.brandId)
-    .eq('type', 'STAMPS')
-    .maybeSingle();
-
-  if (programError) throw programError;
-
-  const { brandId: _brandId, ...rest } = merchant;
-  return { ...rest, stampValidityDays: program?.stampValidityDays ?? null };
-}
-
-// El nombre del comercio viaja al pase de la billetera y al landing de
-// adquisición, así que el dueño tiene que poder corregir el que generó el
-// trigger al registrarse ("Mi Local (...)").
-export async function updateMerchantSettings(merchantId: string, settings: MerchantSettings): Promise<void> {
-  // El vencimiento de cada sello se congela al entregarlo, así que un valor
-  // corrupto acá no se puede "arreglar" después: validamos antes de escribir.
-  if (!isValidStampValidityDays(settings.stampValidityDays)) {
-    throw new Error('La vigencia de los sellos debe ser un número entero de días mayor que cero.');
-  }
-
-  const { data, error } = await supabase
-    .from('Merchant')
-    .update({ name: settings.name })
-    .eq('id', merchantId)
-    .select('id, brandId');
-
-  if (error) throw error;
-
-  // PostgREST responde 204 a un UPDATE que RLS dejó sin filas: no es un error,
-  // simplemente no tocó nada. Sin pedir las filas afectadas, el panel avisaría
-  // "guardado" sobre una escritura que la base rechazó en silencio.
-  if (!data || data.length === 0) {
-    throw new Error('No se pudo guardar: tu cuenta no tiene permisos sobre este local.');
-  }
-
-  const { data: programs, error: programError } = await supabase
-    .from('LoyaltyProgram')
-    .update({ stampValidityDays: settings.stampValidityDays })
-    .eq('brandId', data[0].brandId)
-    .eq('type', 'STAMPS')
-    .select('id');
-
-  if (programError) throw programError;
-  if (!programs || programs.length === 0) {
-    throw new Error('No se pudo guardar la vigencia: tu cuenta no tiene permisos sobre esta marca.');
-  }
 }
 
 /** URL pública que el dueño imprime en el QR de las mesas. */

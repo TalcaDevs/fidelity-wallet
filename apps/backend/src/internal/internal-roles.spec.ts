@@ -31,6 +31,7 @@ const SUPERADMIN_ONLY: Handler[] = [
   'audit',
 ];
 const READ: Handler[] = [
+  'summary',
   'me',
   'listBrands',
   'getBrand',

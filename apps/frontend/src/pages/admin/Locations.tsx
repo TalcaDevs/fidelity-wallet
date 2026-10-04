@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { getPlan, type LocationDto, type LocationInput } from '@fidelity/shared';
 import { LocationForm } from '../../components/locations/LocationForm';
+import { LocationQrPanel } from '../../components/locations/LocationQrPanel';
 import { LocationMap, type MapPin } from '../../components/map/LocationMap';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
 import { Modal } from '../../components/ui/Modal';
@@ -10,7 +11,7 @@ import { useToast } from '../../hooks/useToast';
 import { createLocation, listLocations, updateLocation } from '../../services/locationsService';
 import { publicJoinUrl } from '../../services/merchantService';
 
-type Editing = { kind: 'new' } | { kind: 'edit'; location: LocationDto } | null;
+type Editing = { kind: 'new' } | { kind: 'edit'; location: LocationDto } | { kind: 'qr'; location: LocationDto } | null;
 
 const addressOf = (l: LocationDto) => [l.address, l.commune, l.region].filter(Boolean).join(', ');
 
@@ -24,7 +25,8 @@ export function Locations({ brandId }: { brandId: string | null }) {
   const locations = useMemo(() => data ?? [], [data]);
 
   const limit = subscription ? getPlan(subscription.planId).limits.locations : null;
-  const overLimit = limit !== null && locations.length >= limit;
+  const activeCount = locations.filter((l) => l.isActive).length;
+  const atLimit = limit !== null && activeCount >= limit;
 
   const pins = useMemo<MapPin[]>(
     () =>
@@ -79,16 +81,18 @@ export function Locations({ brandId }: { brandId: string | null }) {
         <button
           type="button"
           onClick={() => setEditing({ kind: 'new' })}
-          className="px-6 py-3 rounded-xl bg-brand-blue hover:bg-blue-600 text-white font-bold shadow-lg shadow-brand-blue/30"
+          disabled={atLimit}
+          title={atLimit ? 'Llegaste al límite de sucursales de tu plan' : undefined}
+          className="px-6 py-3 rounded-xl bg-brand-blue hover:bg-blue-600 text-white font-bold shadow-lg shadow-brand-blue/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-brand-blue"
         >
           Agregar sucursal
         </button>
       </div>
 
       {limit !== null && (
-        <p className={`text-sm font-bold ${overLimit ? 'text-orange-600' : 'text-slate-500'}`}>
-          {locations.length} de {limit} sucursales de tu plan
-          {locations.length > limit ? ' · superaste el límite de tu plan' : overLimit ? ' · llegaste al límite de tu plan' : ''}
+        <p className={`text-sm font-bold ${atLimit ? 'text-orange-600' : 'text-slate-500'}`}>
+          {activeCount} de {limit} sucursales activas de tu plan
+          {atLimit ? ' · llegaste al límite: sube de plan para agregar o activar más' : ''}
         </p>
       )}
 
@@ -121,7 +125,16 @@ export function Locations({ brandId }: { brandId: string | null }) {
                 <button type="button" onClick={() => setEditing({ kind: 'edit', location: l })} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-brand-blue/10 hover:text-brand-blue">
                   Editar
                 </button>
-                <button type="button" onClick={() => void toggleActive(l)} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-slate-200">
+                <button type="button" onClick={() => setEditing({ kind: 'qr', location: l })} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-brand-blue/10 hover:text-brand-blue">
+                  Link y QR
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void toggleActive(l)}
+                  disabled={!l.isActive && atLimit}
+                  title={!l.isActive && atLimit ? 'Llegaste al límite de sucursales de tu plan' : undefined}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   {l.isActive ? 'Desactivar' : 'Activar'}
                 </button>
               </div>
@@ -130,7 +143,20 @@ export function Locations({ brandId }: { brandId: string | null }) {
         </ul>
       )}
 
-      {editing && (
+      {editing?.kind === 'qr' && (
+        <Modal title={`Link y QR · ${editing.location.name}`} onClose={() => setEditing(null)}>
+          <LocationQrPanel
+            location={editing.location}
+            onSlugChange={(slug) => {
+              const updated = { ...editing.location, slug };
+              upsert(updated);
+              setEditing({ kind: 'qr', location: updated });
+            }}
+          />
+        </Modal>
+      )}
+
+      {editing && editing.kind !== 'qr' && (
         <Modal
           size="lg"
           title={editing.kind === 'new' ? 'Nueva sucursal' : `Editar ${editing.location.name}`}

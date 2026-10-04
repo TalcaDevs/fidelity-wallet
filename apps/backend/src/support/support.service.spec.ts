@@ -6,13 +6,18 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import sharp from 'sharp';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import type { SupportStorageService } from './support-storage.service.js';
 import { SupportService } from './support.service.js';
 import type { TicketPresenterService } from './ticket-presenter.service.js';
 
-const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const png = await sharp({
+  create: { width: 4, height: 4, channels: 3, background: '#fff' },
+})
+  .png()
+  .toBuffer();
 const upload = {
   buffer: png,
   originalname: 'c.png',

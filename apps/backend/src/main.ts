@@ -2,6 +2,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import helmet from 'helmet';
 import { AppModule } from './app.module.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 
@@ -11,6 +12,19 @@ async function bootstrap() {
 
   // Configuración para proxy inverso (Railway, Render, Fly, Nginx): resuelve IP real del cliente para Throttler
   app.set('trust proxy', 1);
+
+  // Gate estricto de Swagger: desarrollo o flag explícito.
+  const enableSwagger =
+    process.env.NODE_ENV === 'development' || process.env.ENABLE_SWAGGER === 'true';
+
+  // Headers de seguridad (nosniff, frameguard, HSTS, sin X-Powered-By). La API solo sirve JSON,
+  // salvo Swagger, que necesita scripts inline: la CSP va en producción solo si Swagger está apagado.
+  app.use(
+    helmet({
+      contentSecurityPolicy:
+        process.env.NODE_ENV === 'production' && !enableSwagger,
+    }),
+  );
 
   // Prefijo global para todos los endpoints de la API
   app.setGlobalPrefix('api');
@@ -51,10 +65,7 @@ async function bootstrap() {
   // Filtro global de excepciones estructuradas
   app.useGlobalFilters(new HttpExceptionFilter());
 
-  // Configuración de documentación OpenAPI / Swagger (gate estricto por entorno o flag explícito)
-  const enableSwagger =
-    process.env.NODE_ENV === 'development' || process.env.ENABLE_SWAGGER === 'true';
-
+  // Configuración de documentación OpenAPI / Swagger
   if (enableSwagger) {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('Fidelity Wallet API')

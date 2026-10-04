@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { FieldValue, IdentifierInput, IdentifierValue, PhoneField, RutField } from './IdentifierInput';
+import { FieldValue, IdentifierInput, IdentifierValue, PhoneField, RutField, EmailField } from './IdentifierInput';
 
 function setup(showErrors = false) {
   const changes: IdentifierValue[] = [];
@@ -82,7 +82,7 @@ describe('IdentifierInput', () => {
   });
 });
 
-describe('RutField and PhoneField (alta del cliente: los dos obligatorios)', () => {
+describe('RutField, PhoneField y EmailField (alta del cliente)', () => {
   it('RutField reports the formatted RUT once it is valid', () => {
     const changes: FieldValue[] = [];
     render(<RutField label="RUT" onChange={(v) => changes.push(v)} />);
@@ -90,7 +90,7 @@ describe('RutField and PhoneField (alta del cliente: los dos obligatorios)', () 
     fireEvent.change(screen.getByLabelText('RUT'), { target: { value: '123456785' } });
 
     expect(screen.getByLabelText('RUT')).toHaveValue('12.345.678-5');
-    expect(changes[changes.length - 1]).toEqual({ value: '12.345.678-5', isValid: true });
+    expect(changes[changes.length - 1]).toEqual({ value: '12.345.678-5', isValid: true, isEmpty: false });
   });
 
   it('PhoneField always carries the +56 prefix', () => {
@@ -100,7 +100,7 @@ describe('RutField and PhoneField (alta del cliente: los dos obligatorios)', () 
     expect(screen.getByText('+56')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Teléfono celular'), { target: { value: '987654321' } });
 
-    expect(changes[changes.length - 1]).toEqual({ value: '+56987654321', isValid: true });
+    expect(changes[changes.length - 1]).toEqual({ value: '+56987654321', isValid: true, isEmpty: false });
   });
 
   it('shows both "required" errors when the form is submitted empty', () => {
@@ -113,5 +113,24 @@ describe('RutField and PhoneField (alta del cliente: los dos obligatorios)', () 
 
     const alerts = screen.getAllByRole('alert').map((a) => a.textContent);
     expect(alerts).toEqual(['Ingresa tu RUT', 'Ingresa tu teléfono']);
+  });
+
+  it('optional fields accept being empty but still reject a wrong value', () => {
+    const changes: FieldValue[] = [];
+    render(
+      <>
+        <RutField label="RUT" optional onChange={() => {}} showErrors />
+        <EmailField label="Correo" optional onChange={(v) => changes.push(v)} showErrors />
+      </>
+    );
+
+    expect(screen.queryAllByRole('alert')).toEqual([]);
+
+    fireEvent.change(screen.getByLabelText('Correo'), { target: { value: 'maria@' } });
+    expect(screen.getByRole('alert')).toHaveTextContent('falta la @ o el dominio');
+    expect(changes[changes.length - 1]).toEqual({ value: '', isValid: false, isEmpty: false });
+
+    fireEvent.change(screen.getByLabelText('Correo'), { target: { value: ' Maria@Gmail.com ' } });
+    expect(changes[changes.length - 1]).toEqual({ value: 'maria@gmail.com', isValid: true, isEmpty: false });
   });
 });

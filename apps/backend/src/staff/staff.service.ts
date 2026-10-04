@@ -25,6 +25,7 @@ import {
   type UserAccessInfo,
 } from '../common/users/user-directory.service.js';
 import { maskPhone } from '../common/utils/mask.util.js';
+import { assertPlanAllows } from '../common/plan/plan-limits.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
   InviteStaffMemberDto,
@@ -94,6 +95,10 @@ export class StaffService {
       brandId,
       callerUserId,
       dto.locationId,
+    );
+    // Corte temprano para no crear cuentas ni mandar correos sin cupo; el definitivo va con la membresía.
+    await this.prisma.$transaction((tx) =>
+      assertPlanAllows(tx, brandId, 'teamUsers'),
     );
     const supabase = this.getSupabaseAdmin();
 
@@ -409,8 +414,13 @@ export class StaffService {
       );
     }
 
-    await this.prisma.brandMember.create({
-      data: { userId, brandId, merchantId, role: MerchantRole.STAFF },
+    // La cuenta de auth ya existe, pero sin membresía no da acceso: si otra alta simultánea tomó
+    // el último cupo, se corta aquí y la invitación puede repetirse cuando haya espacio.
+    await this.prisma.$transaction(async (tx) => {
+      await assertPlanAllows(tx, brandId, 'teamUsers');
+      await tx.brandMember.create({
+        data: { userId, brandId, merchantId, role: MerchantRole.STAFF },
+      });
     });
     await this.liftBan(userId);
   }

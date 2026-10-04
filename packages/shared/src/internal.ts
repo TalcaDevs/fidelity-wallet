@@ -1,6 +1,7 @@
 // Panel interno /internal (HANDOFF §11.5). Todo sale de /api/internal/*.
 import type { LocationDto } from './locations.js';
 import type { PlanId, SubscriptionMock } from './plans.js';
+import type { ScanMethodName } from './scan.js';
 
 export type PlatformRole = 'SUPERADMIN' | 'SUPPORT';
 export type BrandStatus = 'ACTIVE' | 'SUSPENDED';
@@ -55,7 +56,7 @@ export interface InternalBrandDetailDto extends InternalBrandSummaryDto {
   recentActivity: {
     id: string;
     type: 'STAMP_ADDED' | 'REWARD_REDEEMED';
-    method: 'QR' | 'MANUAL';
+    method: ScanMethodName;
     locationName: string;
     customer: string;
     createdAt: string;
@@ -120,4 +121,23 @@ export interface AuditLogEntryDto {
   after: unknown;
   reason: string | null;
   createdAt: string;
+}
+
+/** Pantalla de inicio de /internal. */
+export interface InternalSummaryDto {
+  brands: { total: number; active: number; suspended: number; byPlan: Record<PlanId, number> };
+  trials: {
+    endingSoon: { id: string; name: string; trialEndsAt: string }[];
+    expired: number;
+  };
+  tickets: { open: number; unassigned: number; urgent: number; waitingOnMerchant: number };
+  /** Últimos 7 días, en hora de Chile. */
+  activity: { date: string; stamps: number; redemptions: number; newCustomers: number }[];
+}
+
+export interface LocationPinsBbox {
+  minLat: number;
+  maxLat: number;
+  minLng: number;
+  maxLng: number;
 }

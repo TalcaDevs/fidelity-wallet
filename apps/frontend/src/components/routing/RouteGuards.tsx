@@ -5,7 +5,7 @@ import type { PlatformRole } from '@fidelity/shared';
 import type { PlatformAdminState } from '../../hooks/usePlatformAdmin';
 import type { MembershipState, MerchantRole } from '../../hooks/useMembership';
 import { supabase } from '../../lib/supabase';
-import { ROUTES, buildLoginUrl, resolveRedirectTarget } from './routePaths';
+import { ROUTES, buildLoginUrl, isReturnableRoute, resolveRedirectTarget } from './routePaths';
 
 interface LocationState {
   from?: string;
@@ -71,7 +71,16 @@ export function RequireRole({
 
   if (!session) {
     const from = `${location.pathname}${location.search}`;
-    return <Navigate to={buildLoginUrl(from)} state={{ from } satisfies LocationState} replace />;
+    // Unificación con isReturnableRoute: si el origen no es retornable (ej. /scan o /admin/login),
+    // no se propaga ni en la URL de login ni en el history state.
+    const canReturn = isReturnableRoute(from);
+    return (
+      <Navigate
+        to={buildLoginUrl(from)}
+        state={canReturn ? ({ from } satisfies LocationState) : undefined}
+        replace
+      />
+    );
   }
 
   if (membership.loading || (!membership.role && platformAdmin?.loading)) {

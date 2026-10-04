@@ -25,11 +25,10 @@ export function Team({ brandId }: { brandId: string | null }) {
   const [isRemoving, setIsRemoving] = useState(false);
   const close = () => setDialog(null);
 
-  // "N de M usuarios" (§6.4). El backend todavía no bloquea el límite (§8.11): solo se avisa.
+  // "N de M usuarios" (§6.4). El backend bloquea al llegar al límite; aquí solo se refleja.
   const teamLimit = subscription ? getPlan(subscription.planId).limits.teamUsers : null;
   const teamUsers = team.staff.filter((m) => m.role === 'STAFF').length;
   const atLimit = teamLimit !== null && teamUsers >= teamLimit;
-  const overLimit = teamLimit !== null && teamUsers > teamLimit;
 
   async function handleRemove(member: StaffMemberDto) {
     setIsRemoving(true);
@@ -48,7 +47,9 @@ export function Team({ brandId }: { brandId: string | null }) {
         <button
           type="button"
           onClick={() => setDialog({ kind: 'invite' })}
-          className="px-6 py-3 rounded-xl bg-brand-blue hover:bg-blue-600 text-white font-bold transition-all shadow-lg shadow-brand-blue/30"
+          disabled={atLimit}
+          title={atLimit ? 'Llegaste al límite de usuarios de tu plan' : undefined}
+          className="px-6 py-3 rounded-xl bg-brand-blue hover:bg-blue-600 text-white font-bold transition-all shadow-lg shadow-brand-blue/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-brand-blue"
         >
           Agregar usuario
         </button>
@@ -67,7 +68,7 @@ export function Team({ brandId }: { brandId: string | null }) {
           {teamLimit !== null && (
             <p className={`text-sm font-bold ${atLimit ? 'text-orange-600' : 'text-slate-500'}`}>
               {teamUsers} de {teamLimit} usuarios de equipo
-              {overLimit ? ' · superaste el límite de tu plan' : atLimit ? ' · llegaste al límite de tu plan' : ''}
+              {atLimit ? ' · llegaste al límite: sube de plan para agregar más' : ''}
             </p>
           )}
         </div>

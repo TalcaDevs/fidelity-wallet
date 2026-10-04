@@ -49,6 +49,16 @@ describe('ManualFallback', () => {
     expect(submitCalls).toEqual([{ kind: 'phone', value: '+56912345678', isValid: true }]);
   });
 
+  it('submits the email trimmed and in lowercase', () => {
+    const { submitCalls } = setup();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Correo' }));
+    fireEvent.change(screen.getByPlaceholderText('nombre@correo.cl'), { target: { value: ' Maria@Gmail.com ' } });
+    fireEvent.click(screen.getByRole('button', { name: /buscar cliente/i }));
+
+    expect(submitCalls).toEqual([{ kind: 'email', value: 'maria@gmail.com', isValid: true }]);
+  });
+
   it('calls onCancel when the cashier goes back to the camera', () => {
     const { cancelCalls } = setup();
 

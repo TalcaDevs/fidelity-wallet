@@ -6,6 +6,7 @@ import { SupabaseAuth } from './auth/SupabaseAuth';
 import { Layout } from './components/Layout';
 import { PromotionsModule } from './pages/admin/PromotionsModule';
 import { Customers } from './pages/admin/Customers';
+import { CustomerDetail } from './pages/admin/CustomerDetail';
 import { Team } from './pages/admin/Team';
 import { Billing } from './pages/admin/Billing';
 import { Support } from './pages/admin/Support';
@@ -86,7 +87,8 @@ export default function App() {
               <Route path={ROUTES.support} element={<Support brandId={membership.brandId} />} />
               <Route path={ROUTES.promotions} element={<PromotionsModule programId={membership.programId} />} />
               <Route path={ROUTES.customers} element={<Customers brandId={membership.brandId} merchantId={membership.merchantId} />} />
-              <Route path={ROUTES.settings} element={<Settings session={session} merchantId={membership.merchantId} />} />
+              <Route path={ROUTES.customerDetail} element={<CustomerDetail brandId={membership.brandId} />} />
+              <Route path={ROUTES.settings} element={<Settings session={session} brandId={membership.brandId} />} />
               {/* Un 404 dentro del panel conserva la navegación lateral */}
               <Route path="/admin/*" element={<NotFound />} />
             </Route>

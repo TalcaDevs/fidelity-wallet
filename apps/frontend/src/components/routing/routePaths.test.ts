@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ROUTES, buildLoginUrl, resolveRedirectTarget, passwordResetUrl } from './routePaths';
+import { ROUTES, buildLoginUrl, isReturnableRoute, resolveRedirectTarget, passwordResetUrl } from './routePaths';
 
 describe('resolveRedirectTarget', () => {
   it('keeps an internal path', () => {
@@ -20,6 +20,18 @@ describe('resolveRedirectTarget', () => {
 
   it('accepts an explicit fallback', () => {
     expect(resolveRedirectTarget('//evil.com', ROUTES.scan)).toBe(ROUTES.scan);
+  });
+});
+
+describe('isReturnableRoute', () => {
+  it('returns true for administrative and internal routes', () => {
+    expect(isReturnableRoute('/admin/dashboard')).toBe(true);
+    expect(isReturnableRoute('/internal/tickets')).toBe(true);
+  });
+
+  it('returns false for /scan and /admin/login', () => {
+    expect(isReturnableRoute(ROUTES.scan)).toBe(false);
+    expect(isReturnableRoute(ROUTES.login)).toBe(false);
   });
 });
 

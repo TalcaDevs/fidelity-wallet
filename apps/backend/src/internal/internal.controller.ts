@@ -20,10 +20,12 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import type {
   AuditLogEntryDto,
+  CustomerHistoryDto,
   InternalBrandDetailDto,
   InternalBrandSummaryDto,
   InternalCustomerDto,
   InternalLocationPinDto,
+  InternalSummaryDto,
   LocationDto,
   Paginated,
   PlatformMeDto,
@@ -36,6 +38,8 @@ import {
   type PlatformAdminUser,
 } from '../common/guards/platform-admin.guard.js';
 import { SupabaseAuthGuard } from '../common/guards/supabase-auth.guard.js';
+import { CustomerHistoryService } from '../customers/customer-history.service.js';
+import { CustomerHistoryQueryDto } from '../customers/dto/history.dto.js';
 import { UpdateLocationDto } from '../locations/dto/location.dto.js';
 import {
   ListAuditQueryDto,
@@ -48,6 +52,7 @@ import {
 import { InternalBrandsService } from './internal-brands.service.js';
 import { InternalCustomersService } from './internal-customers.service.js';
 import { InternalLocationsService } from './internal-locations.service.js';
+import { InternalSummaryService } from './internal-summary.service.js';
 
 /** Lectura para todo el equipo interno; escrituras, datos completos y auditoría solo SUPERADMIN. */
 @ApiTags('Internal')
@@ -64,6 +69,8 @@ export class InternalController {
     private readonly brands: InternalBrandsService,
     private readonly customers: InternalCustomersService,
     private readonly locations: InternalLocationsService,
+    private readonly summaries: InternalSummaryService,
+    private readonly history: CustomerHistoryService,
   ) {}
 
   @Get('me')
@@ -74,6 +81,15 @@ export class InternalController {
       email: user.email ?? null,
       role: user.platformRole,
     };
+  }
+
+  @Get('summary')
+  @ApiOperation({
+    summary:
+      'Resumen de la plataforma: marcas, pruebas por vencer, tickets y actividad',
+  })
+  summary(): Promise<InternalSummaryDto> {
+    return this.summaries.summary();
   }
 
   @Get('brands')
@@ -152,6 +168,20 @@ export class InternalController {
     @CurrentUser() user: PlatformAdminUser,
   ): Promise<RevealedCustomerDto> {
     return this.customers.reveal(customerId, user.id, dto.reason);
+  }
+
+  @Get('customers/:customerId/history')
+  @PlatformRoles('SUPERADMIN')
+  @ApiOperation({
+    summary:
+      'Historial de compras de un cliente en una marca, con fotos de boletas. Identificadores enmascarados; queda en AuditLog',
+  })
+  customerHistory(
+    @Param('customerId', new ParseUUIDPipe()) customerId: string,
+    @Query() query: CustomerHistoryQueryDto,
+    @CurrentUser() user: PlatformAdminUser,
+  ): Promise<CustomerHistoryDto> {
+    return this.history.forPlatform(customerId, query, user.id);
   }
 
   @Get('audit')

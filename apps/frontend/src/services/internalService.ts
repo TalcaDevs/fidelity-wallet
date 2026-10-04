@@ -1,12 +1,15 @@
 import type {
   AuditLogEntryDto,
+  CustomerHistoryDto,
   InternalBrandDetailDto,
   InternalBrandSummaryDto,
   InternalBrandUpdateInput,
   InternalCustomerDto,
   InternalLocationPinDto,
+  InternalSummaryDto,
   InternalTicketDto,
   LocationDto,
+  LocationPinsBbox,
   LocationUpdateInput,
   Paginated,
   PlatformMeDto,
@@ -71,7 +74,13 @@ export function updateLocationInternal(locationId: string, input: LocationUpdate
   return requestJson(`/api/internal/locations/${locationId}`, { method: 'PATCH', ...jsonBody(input) }, 'No se pudo guardar el local');
 }
 
-export function listLocationPins(filters: { brandId?: string; region?: string } = {}): Promise<InternalLocationPinDto[]> {
+export function getSummary(): Promise<InternalSummaryDto> {
+  return requestJson('/api/internal/summary', undefined, 'No se pudo cargar el resumen');
+}
+
+export function listLocationPins(
+  filters: { brandId?: string; region?: string } & Partial<LocationPinsBbox> = {},
+): Promise<InternalLocationPinDto[]> {
   return requestJson(`/api/internal/locations${query(filters)}`, undefined, 'No se pudo cargar el mapa');
 }
 
@@ -88,6 +97,19 @@ export function revealCustomer(customerId: string, reason: string): Promise<Reve
     `/api/internal/customers/${customerId}/reveal`,
     { method: 'POST', ...jsonBody({ reason }) },
     'No se pudo mostrar el dato',
+  );
+}
+
+/** Solo SUPERADMIN. Cada consulta queda en la auditoría. */
+export function getInternalCustomerHistory(
+  customerId: string,
+  brandId: string,
+  page = 1,
+): Promise<CustomerHistoryDto> {
+  return requestJson(
+    `/api/internal/customers/${customerId}/history${query({ brandId, page, pageSize: INTERNAL_PAGE_SIZE })}`,
+    undefined,
+    'No se pudo cargar el historial del cliente',
   );
 }
 
