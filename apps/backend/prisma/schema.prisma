@@ -84,6 +84,9 @@ model LoyaltyProgram {
   brandId           String       @unique @db.Uuid
   brand             Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
   type              ProgramType  @default(STAMPS)
+  stampsEnabled     Boolean      @default(true)
+  pointsEnabled     Boolean      @default(false)
+  allowMultipleRedemptionsPerVisit Boolean @default(true)
   /// LOCATION está reservado y no se implementa.
   scope             ProgramScope @default(BRAND)
   name              String
@@ -123,6 +126,7 @@ model Promotion {
   program      LoyaltyProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
   name         String
   targetStamps Int
+  currency     Currency       @default(STAMPS)
   rewardName   String
   isActive     Boolean        @default(true)
   stamps       Stamp[]
@@ -185,6 +189,7 @@ model Pass {
 /// contando las filas no consumidas y no vencidas (vista PassStampBalance).
 model Stamp {
   id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  currency         Currency       @default(STAMPS)
   passId           String         @db.Uuid
   pass             Pass           @relation(fields: [passId], references: [id], onDelete: Cascade)
   /// brandId y programId los fija el trigger ledger_derive_from_pass desde passId.
@@ -233,6 +238,7 @@ model Scan {
   stampCount      Int            @default(1)
   /// Pesos chilenos. En una tarjeta de puntos define los puntos; en una de sellos solo se registra.
   purchaseAmount  Int?
+  pointsEarned    Int            @default(0)
   note            String?
   receipt         ScanReceipt?
   createdAt       DateTime       @default(now())
@@ -368,6 +374,11 @@ enum BrandStatus {
 }
 
 enum ProgramType {
+  STAMPS
+  POINTS
+}
+
+enum Currency {
   STAMPS
   POINTS
 }
