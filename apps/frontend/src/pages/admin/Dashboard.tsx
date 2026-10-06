@@ -1,9 +1,11 @@
+import { PanelTitle } from '../../components/admin/PanelTitle';
 import { useEffect } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { StatCard } from '../../components/ui/StatCard';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
 import { maskIdentifier } from '../../lib/maskIdentifier';
+import { PANEL_HEADING, PANEL_SURFACE } from '../../components/admin/panelStyles';
 
 const PASSES_ICON = <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>;
 const STAMPS_ICON = <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>;
@@ -22,20 +24,22 @@ export function Dashboard({ session, brandId }: { session: Session | null; brand
 
   return (
     <>
-      <header className="mb-12">
-        <h1 className="text-4xl font-extrabold tracking-tight mb-2">Bienvenido, {session?.user?.email || 'Local'}</h1>
-        <p className="text-slate-500 dark:text-slate-400 text-lg">Aquí tienes un resumen del rendimiento de tu programa de lealtad hoy.</p>
+      <header className="mb-8">
+        <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-panel-accent">Tu programa de fidelización</p>
+        <h1 className={`${PANEL_HEADING} break-words`}><PanelTitle text="Bienvenido," /> {session?.user?.email || 'Local'}</h1>
+        <p className="mt-2 text-sm sm:text-base text-panel-muted">Aquí tienes un resumen del rendimiento de tu programa de lealtad.</p>
       </header>
 
       {error && <ErrorAlert message="Error al cargar los datos del dashboard. Por favor, intenta de nuevo." />}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
+      <div data-panel-stagger className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6 mb-8">
         <StatCard
           title="Pases Activos"
           value={activePasses}
           icon={PASSES_ICON}
           color="blue"
           footnote="Total acumulado"
+          footnoteTone="neutral"
           loading={loading}
         />
         <StatCard
@@ -44,6 +48,7 @@ export function Dashboard({ session, brandId }: { session: Session | null; brand
           icon={STAMPS_ICON}
           color="yellow"
           footnote="Total acumulado"
+          footnoteTone="neutral"
           loading={loading}
         />
         <StatCard
@@ -57,20 +62,19 @@ export function Dashboard({ session, brandId }: { session: Session | null; brand
         />
       </div>
 
-      <div className="bg-white dark:bg-slate-800 p-10 rounded-[2rem] border border-slate-200/60 dark:border-slate-700/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.1)]">
-        <h2 className="text-2xl font-bold mb-8 flex items-center gap-3">
+      <div data-panel-reveal className={`${PANEL_SURFACE} p-4 sm:p-6 lg:p-8`}>
+        <h2 className="text-lg sm:text-xl font-bold mb-6 flex flex-wrap items-center gap-3">
           Actividad Reciente
-          <span className="bg-brand-blue/10 text-brand-blue text-xs px-3 py-1 rounded-full font-bold">En vivo</span>
         </h2>
         <div className="space-y-4">
           {loading ? (
             <div className="space-y-4" data-testid="recent-activity-skeleton">
               {[0, 1, 2].map((i) => (
-                <div key={i} className="h-[76px] rounded-2xl bg-slate-50 dark:bg-slate-800/50 animate-pulse" />
+                <div key={i} className="h-[76px] rounded-2xl bg-panel-soft animate-pulse" />
               ))}
             </div>
           ) : recentScans.length === 0 ? (
-            <p className="text-slate-500 dark:text-slate-400">No hay actividad reciente.</p>
+            <p className="text-panel-muted">No hay actividad reciente.</p>
           ) : (
             recentScans.map((scan) => {
               const customer = scan.customer;
@@ -78,32 +82,32 @@ export function Dashboard({ session, brandId }: { session: Session | null; brand
               const isReward = scan.type === 'REWARD_REDEEMED';
               const isManual = scan.method === 'MANUAL' || scan.method === 'PANEL';
               return (
-                <div key={scan.id} className="flex items-center justify-between p-5 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border border-transparent hover:border-slate-100 dark:hover:border-slate-700">
-                  <div className="flex items-center gap-5">
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${isReward ? 'bg-brand-orange/10 text-brand-orange' : 'bg-brand-blue/10 text-brand-blue'}`}>
-                      {isReward ? '🎁' : 'S'}
+                <div key={scan.id} className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 p-3 sm:p-4 rounded-xl hover:bg-panel-soft transition-colors border border-panel-border/60">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div aria-hidden="true" className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center [&>svg]:h-5 [&>svg]:w-5 ${isReward ? 'bg-panel-orange/10 text-panel-orange' : 'bg-panel-accent/10 text-panel-accent'}`}>
+                      {isReward ? REWARDS_ICON : STAMPS_ICON}
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-semibold text-lg">{isReward ? 'Premio Canjeado' : 'Cliente escaneado'}</p>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-sm">{isReward ? 'Premio Canjeado' : 'Cliente escaneado'}</p>
                         {scan.method && (
                           <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
                             isManual
                               ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-                              : 'bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300'
+                              : 'bg-panel-soft text-panel-muted '
                           }`}>
                             {scan.method === 'PANEL' ? 'Panel' : isManual ? 'Manual' : 'QR'}
                           </span>
                         )}
                       </div>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">{identifier}</p>
+                      <p className="text-sm text-panel-muted">{identifier}</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-bold ${isReward ? 'bg-brand-orange/10 text-brand-orange' : 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'}`}>
+                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-bold ${isReward ? 'bg-panel-orange/10 text-panel-orange' : 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'}`}>
                       {isReward ? 'Premio' : '+1 Sello'}
                     </span>
-                    <p className="text-sm text-slate-400 dark:text-slate-500 mt-2 font-medium">
+                    <p className="text-sm text-panel-muted mt-2 font-medium">
                       {new Date(scan.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
                   </div>

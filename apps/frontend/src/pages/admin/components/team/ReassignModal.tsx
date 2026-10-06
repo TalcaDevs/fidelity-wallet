@@ -28,13 +28,13 @@ export function ReassignModal({
   }
 
   return (
-    <Modal title="Cambiar de local" description={member.email ?? undefined} onClose={onClose}>
+    <Modal trapFocus title="Cambiar de local" description={member.email ?? undefined} onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-5">
         <LocationSelect id="reassign-location" locations={locations} value={locationId} onChange={setLocationId} />
         <button
           type="submit"
           disabled={unchanged || !locationId || isSubmitting}
-          className="w-full py-3.5 rounded-xl bg-brand-blue hover:bg-blue-600 text-white font-bold transition-all disabled:opacity-50"
+          className="w-full py-3.5 rounded-xl bg-panel-primary hover:bg-panel-primary/90 text-white font-bold transition-all disabled:opacity-50"
         >
           {isSubmitting ? 'Guardando...' : 'Guardar'}
         </button>

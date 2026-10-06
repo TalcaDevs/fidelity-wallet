@@ -28,7 +28,7 @@ export interface IdentifierValue extends FieldValue {
   kind: IdentifierKind;
 }
 
-type Variant = 'light' | 'dark';
+type Variant = 'light' | 'dark' | 'wallet';
 
 interface FieldProps {
   onChange: (field: FieldValue) => void;
@@ -68,6 +68,17 @@ const inputTypeOf = (e: React.ChangeEvent<HTMLInputElement>) =>
   (e.nativeEvent as InputEvent).inputType;
 
 const STYLES = {
+  wallet: {
+    tabs: 'bg-panel-soft',
+    tabActive: 'bg-panel-surface text-panel-accent shadow-sm',
+    tabIdle: 'text-panel-muted hover:text-panel-text',
+    label: 'text-panel-text',
+    field: 'bg-panel-surface border-2 border-panel-border focus-within:border-panel-accent text-panel-text',
+    fieldError: 'border-red-500',
+    prefix: 'text-panel-muted border-panel-border',
+    placeholder: 'placeholder:text-panel-muted/70',
+    error: 'text-red-600 dark:text-red-400',
+  },
   light: {
     tabs: 'bg-slate-100',
     tabActive: 'bg-white text-slate-900 shadow-sm',
@@ -326,7 +337,7 @@ export function IdentifierInput({ onChange, variant = 'light', ...fieldProps }: 
             type="button"
             aria-pressed={kind === k}
             onClick={() => handleKind(k)}
-            className={`py-2.5 rounded-xl text-sm font-bold transition-colors ${kind === k ? s.tabActive : s.tabIdle}`}
+            className={`py-2.5 rounded-xl text-sm font-bold transition-colors ${variant === 'wallet' ? 'min-h-11' : ''} ${kind === k ? s.tabActive : s.tabIdle}`}
           >
             {KIND_LABEL[k]}
           </button>

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { NavLink, Outlet, Link } from 'react-router-dom';
+import { useCallback, useRef, useState } from 'react';
+import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
+import { useReducedMotion } from 'motion/react';
 import type { Session } from '@supabase/supabase-js';
 import { useTheme } from '../hooks/useTheme';
 import { useMediaQuery } from '../hooks/useMediaQuery';
@@ -8,11 +9,18 @@ import { isBillingEnabled } from '../config/features';
 import { useSignOut } from '../hooks/useSignOut';
 import { ROUTES } from './routing/routePaths';
 import { TrialBanner } from './TrialBanner';
+import { useDialogFocus } from '../hooks/useDialogFocus';
+import { PanelBrand } from './admin/PanelBrand';
+import { PanelMotionContext } from './admin/PanelMotionContext';
+import { PANEL_ROOT } from './admin/panelStyles';
+import SunIcon from '../assets/home/sun.svg?react';
+import MoonIcon from '../assets/home/moon.svg?react';
+import './admin/panelAnimations.css';
 
 const NAV_LINK_CLASSES = ({ isActive }: { isActive: boolean }) =>
-  `flex items-center gap-3 px-5 py-3.5 rounded-2xl font-bold transition-all duration-300 ${isActive
-    ? 'bg-brand-blue text-white shadow-lg shadow-brand-blue/30 translate-x-1'
-    : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent hover:border-slate-200 dark:hover:border-slate-700'
+  `relative flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold border transition-colors ${isActive
+    ? 'bg-panel-accent/10 text-panel-accent border-panel-accent/15'
+    : 'text-panel-muted border-transparent hover:bg-panel-soft hover:text-panel-text'
   }`;
 
 const NAV_ITEMS = [
@@ -94,131 +102,111 @@ export function Layout({
   brandId: string | null;
 }) {
   const { isDarkMode, toggleDarkMode } = useTheme();
+  const { pathname } = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const systemReducedMotion = useReducedMotion();
+  const reducedMotion = Boolean(systemReducedMotion);
   const isMobile = useMediaQuery(MOBILE_QUERY);
-
-  // Cerrado y en móvil, el drawer sigue en el DOM: hay que sacarlo del orden de
-  // tabulación y del árbol de accesibilidad o se puede navegar a ciegas.
+  const drawerRef = useRef<HTMLElement>(null);
+  const drawerOpen = isMobile && isSidebarOpen;
+  const closeSidebar = useCallback(() => setIsSidebarOpen(false), []);
   const isSidebarHidden = isMobile && !isSidebarOpen;
-
-  const closeSidebar = () => setIsSidebarOpen(false);
-
-  useEffect(() => {
-    if (!isSidebarOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsSidebarOpen(false);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isSidebarOpen]);
-
+  useDialogFocus(drawerOpen, drawerRef, closeSidebar);
   const handleLogout = useSignOut();
+  const currentPage = VISIBLE_NAV_ITEMS.find((item) => pathname.startsWith(item.to))?.label ?? 'Panel';
 
   return (
-    <div className="h-screen w-full flex bg-slate-100/50 dark:bg-[#0f172a] text-slate-900 dark:text-slate-100 transition-colors duration-300 relative overflow-hidden">
-
-      {/* Mobile top bar */}
-      <div className="md:hidden fixed top-0 inset-x-0 z-30 flex items-center justify-between px-4 py-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-b border-slate-200/80 dark:border-slate-800/80">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-blue to-blue-600 flex items-center justify-center text-white font-black shadow-md">
-            W
-          </div>
-          <span className="text-lg font-extrabold tracking-tight">Fidelity</span>
-        </div>
-        <button
-          onClick={() => setIsSidebarOpen(true)}
-          aria-label="Abrir menú"
-          className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+    <PanelMotionContext value={reducedMotion}>
+      <div className={`${PANEL_ROOT} flex h-dvh w-full overflow-hidden relative isolate`} data-motion-reduced={reducedMotion}>
+        <a href="#panel-content" className="fixed -top-20 left-4 z-[70] rounded-xl bg-panel-primary px-4 py-3 text-white focus:top-4">
+          Saltar al contenido
+        </a>
+        {drawerOpen && (
+          <button tabIndex={-1} aria-label="Cerrar menú" onClick={closeSidebar} className="fixed inset-0 z-30 bg-[#061524]/50 backdrop-blur-sm" />
+        )}
+        <aside
+          id="panel-navigation"
+          ref={drawerRef}
+          tabIndex={-1}
+          role={drawerOpen ? 'dialog' : undefined}
+          aria-label="Navegación del panel"
+          aria-modal={drawerOpen ? true : undefined}
+          aria-hidden={isSidebarHidden}
+          inert={isSidebarHidden}
+          className={`fixed inset-y-0 left-0 z-40 flex w-[min(19rem,calc(100vw-2rem))] flex-col overflow-y-auto border-r border-panel-border bg-panel-surface p-5 transition-transform duration-250 md:relative md:w-64 md:shrink-0 md:translate-x-0 lg:w-72 lg:p-6 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
         >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-        </button>
+          <div className="mb-8 flex items-center justify-between gap-2">
+            <PanelBrand onClick={closeSidebar} />
+            {isMobile && (
+              <button type="button" aria-label="Cerrar navegación" onClick={closeSidebar} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-panel-muted hover:bg-panel-soft">
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeWidth="2" d="m6 6 12 12M6 18 18 6" /></svg>
+              </button>
+            )}
+          </div>
+          <nav aria-label="Secciones del negocio" className="flex-1 space-y-1">
+            {VISIBLE_NAV_ITEMS.map((item, index) => (
+              <div key={item.to}>
+                {(index === 0 || item.to === ROUTES.card || item.to === ROUTES.support) && (
+                  <p className={`px-4 pb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-panel-muted ${index === 0 ? '' : 'pt-5'}`}>
+                    {index === 0 ? 'Vista general' : item.to === ROUTES.card ? 'Tu programa' : 'Ayuda y cuenta'}
+                  </p>
+                )}
+                <NavLink to={item.to} className={NAV_LINK_CLASSES} onClick={closeSidebar}>
+                  <svg className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={item.strokeWidth} d={item.icon} />
+                  </svg>
+                  {item.label}
+                </NavLink>
+              </div>
+            ))}
+          </nav>
+          <div className="mt-6 border-t border-panel-border pt-4">
+            <div className="mb-4 flex gap-2">
+              <button type="button" onClick={toggleDarkMode} aria-label={isDarkMode ? 'Activar modo claro' : 'Activar modo oscuro'} className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-panel-border px-3 py-2.5 text-xs font-semibold text-panel-muted transition-colors hover:bg-panel-soft">
+                {isDarkMode ? <SunIcon className="h-4 w-4" aria-hidden="true" /> : <MoonIcon className="h-4 w-4" aria-hidden="true" />}
+                {isDarkMode ? 'Claro' : 'Oscuro'}
+              </button>
+            </div>
+            <div className="flex items-center gap-3 rounded-xl bg-panel-soft px-3 py-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-panel-accent/10 text-sm font-bold text-panel-accent" aria-hidden="true">
+                {session?.user?.email?.[0]?.toUpperCase() ?? 'L'}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-semibold">{session?.user?.email}</p>
+                <p className="mt-0.5 text-[11px] text-panel-muted">{role ? ROLE_LABELS[role] : 'Sin rol asignado'}</p>
+              </div>
+            </div>
+            <button type="button" onClick={handleLogout} className="mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeWidth="2" d="M9 5H5v14h4m5-12 5 5-5 5m-5-5h10" /></svg>
+              Cerrar Sesión
+            </button>
+          </div>
+        </aside>
+        <div className="flex min-w-0 flex-1 flex-col" inert={drawerOpen}>
+          <header className="relative z-20 flex min-h-18 shrink-0 items-center justify-between gap-3 border-b border-panel-border bg-panel-surface/80 px-4 backdrop-blur-xl sm:px-6 lg:px-10">
+            <div className="flex min-w-0 items-center gap-3">
+              <button type="button" onClick={() => setIsSidebarOpen(true)} aria-label="Abrir menú" aria-controls="panel-navigation" aria-expanded={drawerOpen} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-panel-border text-panel-muted md:hidden">
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+              </button>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-panel-muted">Panel del dueño</p>
+                <p className="truncate text-sm font-semibold">{currentPage}</p>
+              </div>
+            </div>
+            <Link to={ROUTES.scan} aria-label="Abrir Escáner" className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-panel-primary px-3 py-2.5 text-xs font-bold text-white shadow-sm transition-colors hover:brightness-110 sm:px-4">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeWidth="2" d="M4 9V4h5m6 0h5v5m0 6v5h-5m-6 0H4v-5M8 8h2v2H8zm6 0h2v2h-2zM8 14h2v2H8zm6 0h2v2h-2z" /></svg>
+              <span>Escáner</span>
+            </Link>
+          </header>
+          <main id="panel-content" tabIndex={-1} className="relative isolate flex-1 overflow-y-auto overflow-x-hidden scroll-smooth">
+            <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[480px] bg-[radial-gradient(ellipse_at_top_right,#087bd710,transparent_65%)] dark:bg-[radial-gradient(ellipse_at_top_right,#087bd71c,transparent_65%)]" />
+            <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 sm:py-8 lg:px-10 lg:py-10">
+              {role === 'OWNER' && isBillingEnabled && <TrialBanner brandId={brandId} />}
+              <Outlet />
+            </div>
+          </main>
+        </div>
       </div>
-
-      {/* Backdrop for mobile sidebar */}
-      {isSidebarOpen && (
-        <button
-          aria-label="Cerrar menú"
-          onClick={closeSidebar}
-          className="md:hidden fixed inset-0 z-30 bg-black/50 backdrop-blur-sm"
-        />
-      )}
-
-      {/* Sidebar with Glassmorphism and Strong Shadow */}
-      <aside
-        aria-hidden={isSidebarHidden}
-        inert={isSidebarHidden}
-        className={`w-72 bg-white/95 dark:bg-slate-900/95 md:bg-white/80 md:dark:bg-slate-900/80 backdrop-blur-xl border-r border-slate-200/80 dark:border-slate-800/80 p-6 flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-40 fixed inset-y-0 left-0 transform transition-transform duration-300 md:relative md:translate-x-0 md:h-full md:flex-shrink-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-          }`}
-      >
-        <div className="flex items-center justify-between mb-12">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-brand-blue to-blue-600 flex items-center justify-center text-white font-black shadow-lg shadow-brand-blue/30 border border-blue-400/30">
-              W
-            </div>
-            <span className="text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400">Fidelity</span>
-          </div>
-          <button
-            onClick={toggleDarkMode}
-            aria-label={isDarkMode ? 'Activar modo claro' : 'Activar modo oscuro'}
-            className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200 transition-all border border-transparent hover:border-slate-300 dark:hover:border-slate-600 shadow-sm"
-          >
-            {isDarkMode ? '☀️' : '🌙'}
-          </button>
-        </div>
-
-        <nav className="space-y-2 flex-1">
-          {VISIBLE_NAV_ITEMS.map((item) => (
-            <NavLink key={item.to} to={item.to} className={NAV_LINK_CLASSES} onClick={closeSidebar}>
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={item.strokeWidth} d={item.icon}></path>
-              </svg>
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-
-        <div className="mt-auto">
-          <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50 mb-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-500 font-bold border border-white dark:border-slate-600 shadow-sm">
-              L
-            </div>
-            <div className="overflow-hidden text-ellipsis">
-              <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{session?.user?.email}</p>
-              <p className="text-xs text-slate-500">{role ? ROLE_LABELS[role] : 'Sin rol asignado'}</p>
-            </div>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center justify-center gap-2 px-4 py-3 w-full rounded-xl text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 font-bold transition-all border border-transparent hover:border-red-100 dark:hover:border-red-500/20"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
-            Cerrar Sesión
-          </button>
-        </div>
-      </aside>
-
-      {/* Main Content Area */}
-      <main className="flex-1 h-full min-w-0 flex flex-col overflow-y-auto overflow-x-hidden relative z-10 bg-slate-50 dark:bg-[#0f172a]">
-
-        <div className="p-6 pt-20 md:p-14 md:pt-14 lg:pt-14 flex-1 relative">
-          {/* Decorative Background Elements for depth */}
-          <div className="absolute top-0 right-0 w-[800px] h-[600px] bg-brand-blue/5 dark:bg-brand-blue/10 rounded-full blur-3xl pointer-events-none -z-10 translate-x-1/3 -translate-y-1/3" />
-          <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-brand-yellow/5 dark:bg-brand-yellow/10 rounded-full blur-3xl pointer-events-none -z-10 -translate-x-1/3 translate-y-1/3" />
-
-          {role === 'OWNER' && isBillingEnabled && <TrialBanner brandId={brandId} />}
-          <Outlet />
-        </div>
-      </main>
-
-      {/* Botón flotante del Escáner */}
-      <Link
-        to={ROUTES.scan}
-        className="fixed bottom-24 right-6 md:bottom-10 md:right-10 z-20 flex items-center justify-center sm:justify-start w-14 h-14 sm:w-auto sm:h-auto sm:px-6 sm:py-4 gap-3 bg-brand-blue hover:bg-blue-600 text-white rounded-full font-bold shadow-[0_8px_30px_rgb(0,0,0,0.12)] hover:shadow-[0_8px_40px_rgba(59,130,246,0.3)] transition-all duration-300 hover:-translate-y-1 group"
-        aria-label="Abrir Escáner"
-      >
-        <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
-        <span className="hidden sm:block">Abrir Escáner</span>
-      </Link>
-    </div>
+    </PanelMotionContext>
   );
 }

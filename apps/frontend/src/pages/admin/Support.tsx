@@ -1,3 +1,4 @@
+import { PanelTitle } from '../../components/admin/PanelTitle';
 import { useState } from 'react';
 import { useBrandLocations } from '../../hooks/useBrandLocations';
 import { useSupport } from '../../hooks/useSupport';
@@ -20,11 +21,11 @@ export function Support({ brandId }: { brandId: string | null }) {
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
       <div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">Soporte</h1>
-        <p className="text-slate-500 dark:text-slate-400 mt-2 text-lg">Cuéntanos qué necesitas y te respondemos por aquí.</p>
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text"><PanelTitle text="Soporte" /></h1>
+        <p className="text-panel-muted mt-2 text-sm sm:text-base">Cuéntanos qué necesitas y te respondemos por aquí.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div data-panel-stagger className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
         <div className="lg:col-span-2">
           <SupportForm locations={locations} onSubmit={support.submitTicket} />
         </div>

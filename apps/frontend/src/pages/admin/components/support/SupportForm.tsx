@@ -11,9 +11,9 @@ import { PHONE_COUNTRIES, descriptionError, isValidE164, toE164 } from '../../..
 import { AttachmentPicker } from './AttachmentPicker';
 
 const FIELD_CLASSES =
-  'w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3.5 text-slate-900 dark:text-white font-medium placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-blue/50 focus:border-brand-blue';
-const LABEL_CLASSES = 'block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2';
-const HINT_CLASSES = 'text-xs text-slate-500 mt-1';
+  'w-full bg-panel-soft border border-panel-border rounded-xl px-4 py-3.5 text-panel-text font-medium placeholder:text-panel-muted/70 focus:outline-none focus:ring-2 focus:ring-panel-accent/50 focus:border-panel-accent';
+const LABEL_CLASSES = 'block text-sm font-bold text-panel-text mb-2';
+const HINT_CLASSES = 'text-xs text-panel-muted mt-1';
 
 export function SupportForm({
   locations,
@@ -59,8 +59,8 @@ export function SupportForm({
   }
 
   return (
-    <section className="bg-white dark:bg-slate-800/80 rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-200/20 dark:shadow-none">
-      <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6">¿Necesitas ayuda?</h2>
+    <section className="bg-panel-surface rounded-2xl p-6 md:p-8 border border-panel-border shadow-panel">
+      <h2 className="text-xl font-bold text-panel-text mb-6">¿Necesitas ayuda?</h2>
 
       <form onSubmit={handleSubmit} className="space-y-5" noValidate>
         <div>
@@ -129,7 +129,7 @@ export function SupportForm({
               className={FIELD_CLASSES}
             />
           </div>
-          <p className={`text-xs mt-1 ${phoneInvalid ? 'text-red-600' : 'text-slate-500'}`}>
+          <p className={`text-xs mt-1 ${phoneInvalid ? 'text-red-600' : 'text-panel-muted'}`}>
             {phoneInvalid
               ? 'Revisa el número: con el código de país debe tener entre 8 y 15 dígitos.'
               : 'Déjanos tu número si prefieres que te contactemos por teléfono o WhatsApp.'}
@@ -144,7 +144,7 @@ export function SupportForm({
         <button
           type="submit"
           disabled={!isValid || submitting}
-          className="w-full md:w-auto px-8 py-3.5 rounded-xl bg-brand-blue hover:bg-blue-600 text-white font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-brand-blue/30"
+          className="w-full md:w-auto px-8 py-3.5 rounded-xl bg-panel-primary hover:bg-panel-primary/90 text-white font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-brand-blue/30"
         >
           {submitting ? 'Enviando...' : 'Enviar solicitud'}
         </button>

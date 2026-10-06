@@ -15,7 +15,7 @@ const MONTHS = [
 ];
 
 const selectClass =
-  'w-full bg-white border-2 border-slate-300 focus:border-blue-600 focus:ring-4 focus:ring-blue-600/10 rounded-2xl px-4 py-4 text-lg font-medium text-slate-900 outline-none';
+  'w-full bg-panel-surface border-2 border-panel-border focus:border-panel-accent focus:ring-4 focus:ring-panel-accent/10 rounded-2xl px-4 py-4 text-lg font-medium text-panel-text outline-none';
 
 function birthdayError(day: string, month: string, year: string): string | null {
   if (!day && !month && !year) return null;
@@ -61,8 +61,8 @@ export function BirthdayField({
 
   return (
     <fieldset aria-describedby={visibleError ? `${id}-error` : undefined}>
-      <legend className="block text-sm font-bold mb-2 px-1 text-slate-700">
-        Cumpleaños {!required && <span className="font-medium text-slate-400">(opcional)</span>}
+      <legend className="block text-sm font-bold mb-2 px-1 text-panel-text">
+        Cumpleaños {!required && <span className="font-medium text-panel-muted">(opcional)</span>}
       </legend>
       <div className="grid grid-cols-[1fr_1.6fr_1.2fr] gap-2">
         <label className="sr-only" htmlFor={`${id}-day`}>Día</label>
@@ -89,12 +89,12 @@ export function BirthdayField({
           value={year}
           onChange={(e) => update({ year: e.target.value.replace(/\D/g, '').slice(0, 4) })}
           aria-invalid={Boolean(visibleError)}
-          className={`${selectClass} placeholder:text-slate-400`}
+          className={`${selectClass} placeholder:text-panel-muted`}
         />
       </div>
-      <p className="text-xs font-medium text-slate-500 mt-2 px-1">El año es opcional.</p>
+      <p className="text-xs font-medium text-panel-muted mt-2 px-1">El año es opcional.</p>
       {visibleError && (
-        <p id={`${id}-error`} role="alert" className="text-sm font-bold mt-1 px-1 text-red-500">{visibleError}</p>
+        <p id={`${id}-error`} role="alert" className="text-sm font-bold mt-1 px-1 text-red-600 dark:text-red-400">{visibleError}</p>
       )}
     </fieldset>
   );

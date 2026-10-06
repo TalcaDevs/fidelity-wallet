@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { JoinSuccess } from './JoinSuccess';
+import { MemoryRouter } from 'react-router-dom';
 
 describe('JoinSuccess', () => {
   it('renders wallet buttons when pass is new (alreadyExists is false)', () => {
@@ -10,7 +11,7 @@ describe('JoinSuccess', () => {
         googleWalletUrl="/api/passes/token1/google"
         alreadyExists={false}
         merchantName="Café Test"
-      />,
+      />, { wrapper: MemoryRouter },
     );
 
     expect(screen.getByText('¡Tarjeta Lista!')).toBeInTheDocument();
@@ -23,7 +24,7 @@ describe('JoinSuccess', () => {
       <JoinSuccess
         alreadyExists={true}
         merchantName="Café Test"
-      />,
+      />, { wrapper: MemoryRouter },
     );
 
     expect(screen.getByText('¡Ya tienes tu tarjeta!')).toBeInTheDocument();

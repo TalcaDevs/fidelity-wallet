@@ -1,0 +1,62 @@
+@keyframes fw-panel-enter {
+  from {
+    opacity: 0.5;
+    translate: 0 8px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes fw-panel-slide-in {
+  from {
+    opacity: 0;
+    translate: -16px 0;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes fw-panel-letter-in {
+  from {
+    opacity: 0;
+    translate: -4px 3px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .fw-auth-story[data-entry-stagger] > *,
+  .fw-public [data-public-entry],
+  .fw-scanner [data-scan-entry],
+  .fw-scanner [data-entry-stagger] > * {
+    animation: fw-panel-slide-in 420ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  }
+
+  :is(.fw-auth-story, .fw-scanner [data-entry-stagger]) > :nth-child(2) { animation-delay: 80ms; }
+  :is(.fw-auth-story, .fw-scanner [data-entry-stagger]) > :nth-child(3) { animation-delay: 160ms; }
+  :is(.fw-auth-story, .fw-scanner [data-entry-stagger]) > :nth-child(n + 4) { animation-delay: 240ms; }
+
+  /* Backwards fill leaves no transform containing block after the entrance. */
+  .fw-admin [data-panel-reveal],
+  .fw-admin .fw-panel-section-entry,
+  .fw-admin [data-panel-stagger] > * {
+    animation: fw-panel-slide-in 420ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  }
+
+  .fw-admin [data-panel-stagger] > :nth-child(2) { animation-delay: 65ms; }
+  .fw-admin [data-panel-stagger] > :nth-child(3) { animation-delay: 130ms; }
+  .fw-admin [data-panel-stagger] > :nth-child(4) { animation-delay: 195ms; }
+  .fw-admin [data-panel-stagger] > :nth-child(5) { animation-delay: 260ms; }
+  .fw-admin [data-panel-stagger] > :nth-child(n + 6) { animation-delay: 325ms; }
+
+  .fw-admin .fw-panel-letter {
+    animation: fw-panel-letter-in 300ms ease-out backwards;
+  }
+}

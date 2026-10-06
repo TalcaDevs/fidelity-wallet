@@ -20,7 +20,7 @@ export interface StaffActions {
 }
 
 const ACTION_CLASSES =
-  'whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700/60 hover:bg-brand-blue/10 hover:text-brand-blue transition-colors';
+  'whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold text-panel-muted bg-panel-soft hover:bg-panel-accent/10 hover:text-panel-accent transition-colors';
 
 function StatusBadge({ status }: { status: StaffStatus }) {
   const badge = STATUS_BADGE[status];
@@ -35,13 +35,13 @@ function MemberIdentity({ member }: { member: StaffMemberDto }) {
   const email = member.email ?? 'Cuenta no disponible';
   return (
     <div className="flex items-center gap-3 min-w-0">
-      <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-500 font-bold shrink-0">
+      <div className="w-10 h-10 rounded-full bg-panel-soft flex items-center justify-center text-panel-muted font-bold shrink-0">
         {email.charAt(0).toUpperCase()}
       </div>
       <div className="min-w-0">
-        <p className="font-bold text-slate-900 dark:text-white truncate">{email}</p>
+        <p className="font-bold text-panel-text truncate">{email}</p>
         {member.role === 'OWNER' && (
-          <span className="text-xs text-brand-blue bg-brand-blue/10 px-2 py-0.5 rounded-md mt-1 inline-block">Dueño</span>
+          <span className="text-xs text-panel-accent bg-panel-accent/10 px-2 py-0.5 rounded-md mt-1 inline-block">Dueño</span>
         )}
       </div>
     </div>
@@ -86,15 +86,15 @@ export function StaffList({ staff, actions }: { staff: StaffMemberDto[]; actions
     <>
       <ul className="xl:hidden grid gap-3 md:grid-cols-2">
         {staff.map((member) => (
-          <li key={member.userId} className="rounded-2xl border border-slate-200 dark:border-slate-700 p-4 space-y-3">
+          <li key={member.userId} className="rounded-2xl border border-panel-border p-4 space-y-3">
             <MemberIdentity member={member} />
             <dl className="grid grid-cols-2 gap-2 text-sm">
-              <dt className="text-slate-500">Local</dt>
-              <dd className="text-slate-900 dark:text-white font-medium">{member.locationName ?? 'Todos los locales'}</dd>
-              <dt className="text-slate-500">Estado</dt>
+              <dt className="text-panel-muted">Local</dt>
+              <dd className="text-panel-text font-medium">{member.locationName ?? 'Todos los locales'}</dd>
+              <dt className="text-panel-muted">Estado</dt>
               <dd><StatusBadge status={member.status} /></dd>
-              <dt className="text-slate-500">Último ingreso</dt>
-              <dd className="text-slate-900 dark:text-white font-medium">{lastSignIn(member)}</dd>
+              <dt className="text-panel-muted">Último ingreso</dt>
+              <dd className="text-panel-text font-medium">{lastSignIn(member)}</dd>
             </dl>
             <MemberActions member={member} actions={actions} />
           </li>
@@ -104,7 +104,7 @@ export function StaffList({ staff, actions }: { staff: StaffMemberDto[]; actions
       <div className="hidden xl:block">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="border-b border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-sm">
+            <tr className="border-b border-panel-border text-panel-muted text-sm">
               <th className="pb-4 pl-4 font-bold">Usuario</th>
               <th className="pb-4 px-4 font-bold">Local</th>
               <th className="pb-4 px-4 font-bold">Estado</th>
@@ -112,13 +112,13 @@ export function StaffList({ staff, actions }: { staff: StaffMemberDto[]; actions
               <th className="pb-4 pr-4 font-bold text-right">Acciones</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+          <tbody className="divide-y divide-panel-border">
             {staff.map((member) => (
-              <tr key={member.userId} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
+              <tr key={member.userId} className="hover:bg-panel-soft transition-colors">
                 <td className="py-4 pl-4 max-w-[260px]"><MemberIdentity member={member} /></td>
-                <td className="py-4 px-4 text-slate-700 dark:text-slate-300">{member.locationName ?? 'Todos los locales'}</td>
+                <td className="py-4 px-4 text-panel-text">{member.locationName ?? 'Todos los locales'}</td>
                 <td className="py-4 px-4"><StatusBadge status={member.status} /></td>
-                <td className="py-4 px-4 text-sm text-slate-500 whitespace-nowrap">{lastSignIn(member)}</td>
+                <td className="py-4 px-4 text-sm text-panel-muted whitespace-nowrap">{lastSignIn(member)}</td>
                 <td className="py-4 pr-4"><MemberActions member={member} actions={actions} align="end" /></td>
               </tr>
             ))}

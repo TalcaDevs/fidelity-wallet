@@ -7,7 +7,7 @@ import type { LocationOption } from '../../../../services/locationsService';
 import { LocationSelect } from './LocationSelect';
 
 const INPUT_CLASSES =
-  'w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-brand-blue/50 focus:border-brand-blue';
+  'w-full bg-panel-soft border border-panel-border rounded-xl px-4 py-3 text-panel-text font-medium focus:outline-none focus:ring-2 focus:ring-panel-accent/50 focus:border-panel-accent';
 
 /** Se monta solo mientras está abierto: al cerrarlo el formulario se descarta. */
 export function InviteModal({
@@ -45,7 +45,7 @@ export function InviteModal({
   }
 
   return (
-    <Modal
+    <Modal trapFocus
       title="Agregar usuario"
       description="Ingresa el correo del mesero y el local donde trabajará. Si le asignas una contraseña, no recibe correo de invitación."
       onClose={onClose}
@@ -53,15 +53,15 @@ export function InviteModal({
       {error && <div className="mb-5"><ErrorAlert message={error} /></div>}
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
-          <label htmlFor="invite-email" className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Correo electrónico</label>
+          <label htmlFor="invite-email" className="block text-sm font-bold text-panel-text mb-2">Correo electrónico</label>
           <input id="invite-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className={INPUT_CLASSES} />
         </div>
         <div>
-          <label htmlFor="invite-location" className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Local</label>
+          <label htmlFor="invite-location" className="block text-sm font-bold text-panel-text mb-2">Local</label>
           <LocationSelect id="invite-location" locations={locations} value={locationId} onChange={setLocationId} />
         </div>
         <div>
-          <label htmlFor="invite-password" className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Contraseña (opcional)</label>
+          <label htmlFor="invite-password" className="block text-sm font-bold text-panel-text mb-2">Contraseña (opcional)</label>
           <input
             id="invite-password"
             type="password"
@@ -77,7 +77,7 @@ export function InviteModal({
         <button
           type="submit"
           disabled={!canSubmit}
-          className="w-full py-3.5 rounded-xl bg-brand-blue hover:bg-blue-600 text-white font-bold transition-all disabled:opacity-50"
+          className="w-full py-3.5 rounded-xl bg-panel-primary hover:bg-panel-primary/90 text-white font-bold transition-all disabled:opacity-50"
         >
           {isSubmitting ? 'Procesando...' : password ? 'Crear cuenta' : 'Enviar invitación'}
         </button>

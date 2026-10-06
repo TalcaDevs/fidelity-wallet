@@ -10,6 +10,21 @@
   --color-brand-olive: #574C2F;
 }
 
+/* Semantic Wallet utilities. Each page shell supplies its theme values. */
+@theme inline {
+  --color-panel-canvas: var(--fw-panel-canvas, #f7fafc);
+  --color-panel-surface: var(--fw-panel-surface, #fff);
+  --color-panel-soft: var(--fw-panel-soft, #edf3f8);
+  --color-panel-text: var(--fw-panel-text, #193346);
+  --color-panel-muted: var(--fw-panel-muted, #556c7d);
+  --color-panel-border: var(--fw-panel-border, rgb(47 69 87 / 13%));
+  --color-panel-accent: var(--fw-panel-accent, #0767b3);
+  --color-panel-primary: var(--fw-panel-primary, #086fbd);
+  --color-panel-gold: var(--fw-panel-gold, #865f00);
+  --color-panel-orange: var(--fw-panel-orange, #a84700);
+  --shadow-panel: var(--fw-panel-shadow, 0 8px 32px rgb(25 51 70 / 4%));
+}
+
 @layer base {
   body {
     @apply transition-colors duration-300 ease-in-out;

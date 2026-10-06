@@ -305,15 +305,15 @@ export function CardPreview({ config, brandName, face }: { config: CardConfig; b
   const [platform, setPlatform] = useState<Platform>('ANDROID');
 
   return (
-    <aside aria-label="Vista previa en vivo" className="rounded-[2rem] border border-slate-200/70 dark:border-slate-700/60 bg-slate-100/70 dark:bg-slate-800/50 overflow-hidden">
-      <div className="px-5 py-4 bg-white/70 dark:bg-slate-800 border-b border-slate-200/70 dark:border-slate-700/60">
-        <p className="font-extrabold text-slate-900 dark:text-white">Vista previa en vivo</p>
+    <aside aria-label="Vista previa en vivo" className="rounded-2xl border border-panel-border bg-panel-soft overflow-hidden">
+      <div className="px-5 py-4 bg-panel-surface border-b border-panel-border">
+        <p className="font-extrabold text-panel-text">Vista previa en vivo</p>
         <p className="mt-1 inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10 rounded-full px-2.5 py-0.5">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Se actualiza al editar
         </p>
       </div>
       <div className="p-5">
-        <div role="tablist" aria-label="Billetera" className="flex justify-center gap-1 p-1 rounded-xl bg-white dark:bg-slate-900/60 w-fit mx-auto mb-5">
+        <div role="tablist" aria-label="Billetera" className="flex justify-center gap-1 p-1 rounded-xl bg-panel-surface w-fit mx-auto mb-5">
           {(['ANDROID', 'APPLE'] as const).map((p) => (
             <button
               key={p}
@@ -322,7 +322,7 @@ export function CardPreview({ config, brandName, face }: { config: CardConfig; b
               aria-selected={platform === p}
               onClick={() => setPlatform(p)}
               className={`px-4 py-1.5 rounded-lg text-sm font-bold ${
-                platform === p ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'text-slate-500'
+                platform === p ? 'bg-panel-primary text-white' : 'text-panel-muted'
               }`}
             >
               {p === 'ANDROID' ? 'Google Wallet' : 'Apple Wallet'}
@@ -336,7 +336,7 @@ export function CardPreview({ config, brandName, face }: { config: CardConfig; b
             <ApplePass config={config} face={face} />
           )}
         </div>
-        <p className="text-xs text-center text-slate-500 dark:text-slate-400 mt-4">
+        <p className="text-xs text-center text-panel-muted mt-4">
           {platform === 'APPLE'
             ? 'Simulación: la emisión en Apple Wallet se habilitará más adelante.'
             : face === 'DETAILS'

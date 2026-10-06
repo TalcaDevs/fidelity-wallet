@@ -92,9 +92,9 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
         description={`Crea una o varias recompensas, cada una con los ${unit} que cuesta. El saldo sirve para cualquiera: el cliente elige en caja.`}
       >
         {isPoints && (
-          <p className="mb-4 rounded-2xl bg-brand-blue/5 border border-brand-blue/20 px-4 py-3 text-sm text-slate-700 dark:text-slate-200">
+          <p className="mb-4 rounded-2xl bg-panel-accent/5 border border-panel-accent/20 px-4 py-3 text-sm text-panel-text">
             Cada compra da <strong>1 punto cada ${clp.format(pesosPerPoint)}</strong>. Puedes cambiar ese valor en{' '}
-            <Link to={ROUTES.settings} className="font-bold text-brand-blue underline underline-offset-2">
+            <Link to={ROUTES.settings} className="font-bold text-panel-accent underline underline-offset-2">
               Configuración
             </Link>
             .
@@ -102,7 +102,7 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
         )}
         <ul className="space-y-3">
           {config.rewards.map((reward, i) => (
-            <li key={reward.id ?? `new-${i}`} className="rounded-2xl border border-slate-200 dark:border-slate-700 p-4">
+            <li key={reward.id ?? `new-${i}`} className="rounded-2xl border border-panel-border p-4">
               <div className="flex gap-3 items-start">
                 <input
                   aria-label={`Nombre de la recompensa ${i + 1}`}
@@ -116,7 +116,7 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
                   type="button"
                   aria-label={`Quitar la recompensa ${i + 1}`}
                   onClick={() => update({ rewards: config.rewards.filter((_, j) => j !== i) })}
-                  className="shrink-0 p-3 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
+                  className="shrink-0 p-3 rounded-xl text-panel-muted hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
                 >
                   <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -124,7 +124,7 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
                 </button>
               </div>
               <div className="flex flex-wrap items-center gap-3 mt-3">
-                <span className="text-sm text-slate-500 dark:text-slate-400">A los</span>
+                <span className="text-sm text-panel-muted">A los</span>
                 <NumberStepper
                   label={`${unit} de la recompensa ${i + 1}`}
                   value={reward.target}
@@ -133,9 +133,9 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
                   step={isPoints ? 10 : 1}
                   onChange={(target) => setReward(i, { target })}
                 />
-                <span className="text-sm text-slate-500 dark:text-slate-400">{unit}</span>
+                <span className="text-sm text-panel-muted">{unit}</span>
                 {isPoints && (
-                  <span className="text-xs text-slate-400">≈ ${clp.format(reward.target * pesosPerPoint)} en compras</span>
+                  <span className="text-xs text-panel-muted">≈ ${clp.format(reward.target * pesosPerPoint)} en compras</span>
                 )}
               </div>
             </li>
@@ -156,12 +156,12 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
 
       <Section title="Reglas">
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-panel-soft px-4 py-3">
             <div>
-              <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
+              <p className="text-sm font-bold text-panel-text">
                 {isPoints ? 'Puntos de bienvenida' : 'Sellos de bienvenida'}
               </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-panel-muted">
                 Los recibe el cliente al obtener la tarjeta por primera vez.
               </p>
             </div>
@@ -183,14 +183,14 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
             />
           )}
           {isPoints && (
-            <p className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+            <p className="rounded-2xl bg-panel-soft px-4 py-3 text-sm text-panel-muted">
               Con puntos el cajero siempre ingresa el monto y adjunta la foto de la boleta. Así el monto queda respaldado.
             </p>
           )}
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 px-4 py-3">
-            <label htmlFor={`${ids}-balance-validity`} className="text-sm font-bold text-slate-800 dark:text-slate-100">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-panel-soft px-4 py-3">
+            <label htmlFor={`${ids}-balance-validity`} className="text-sm font-bold text-panel-text">
               Vigencia de cada {balanceUnit(config.type, 1)}
-              <span className="block text-xs font-normal text-slate-500 dark:text-slate-400">
+              <span className="block text-xs font-normal text-panel-muted">
                 Lo ya entregado no cambia si después modificas este plazo.
               </span>
             </label>
@@ -221,7 +221,7 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
               <div
                 key={option.value}
                 className={`rounded-2xl border-2 px-4 py-3 ${
-                  selected ? 'border-brand-blue bg-brand-blue/5' : 'border-slate-200 dark:border-slate-700'
+                  selected ? 'border-panel-accent bg-panel-accent/5' : 'border-panel-border '
                 }`}
               >
                 <label className="flex items-start gap-3 cursor-pointer">
@@ -238,11 +238,11 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
                         },
                       })
                     }
-                    className="mt-1 accent-brand-blue"
+                    className="mt-1 accent-panel-accent"
                   />
                   <span>
-                    <span className="block text-sm font-bold text-slate-800 dark:text-slate-100">{option.title}</span>
-                    <span className="block text-xs text-slate-500 dark:text-slate-400">{option.description}</span>
+                    <span className="block text-sm font-bold text-panel-text">{option.title}</span>
+                    <span className="block text-xs text-panel-muted">{option.description}</span>
                   </span>
                 </label>
                 {selected && option.value === 'FIXED_DATE' && (
@@ -264,7 +264,7 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
                       step={30}
                       onChange={(days) => update({ validity: { ...validity, days } })}
                     />
-                    <span className="text-sm text-slate-500">días después de obtenerla</span>
+                    <span className="text-sm text-panel-muted">días después de obtenerla</span>
                   </div>
                 )}
               </div>
@@ -279,7 +279,7 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
       >
         <ul className="space-y-2">
           {REGISTRATION.map(({ field, label }) => (
-            <li key={field} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 px-4 py-3">
+            <li key={field} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-panel-soft px-4 py-3">
               <span className={LABEL}>{label}</span>
               <Segmented
                 label={label}

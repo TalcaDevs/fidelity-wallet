@@ -1,5 +1,4 @@
-import { Link } from 'react-router-dom';
-import { ROUTES } from '../../components/routing/routePaths';
+import { PublicFrame } from '../../components/PublicFrame';
 import { LEGAL, LEGAL_IS_DRAFT, TERMS_VERSION } from '../../lib/legal';
 
 /**
@@ -186,39 +185,46 @@ const SECTIONS: Section[] = [
 
 export function Terms() {
   return (
-    <div className="min-h-[100dvh] bg-white text-slate-900 font-sans">
-      <div className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6">
-        <Link to={ROUTES.home} className="text-sm font-bold text-blue-700 hover:underline">
-          ← {LEGAL.platform}
-        </Link>
-
+    <PublicFrame brandLabel={`${LEGAL.platform}, inicio`}>
+      <div className="mx-auto w-full max-w-6xl px-5 pb-12 pt-6 sm:px-8 sm:pt-10">
+        <header data-public-entry className="max-w-3xl">
+          <p className="mb-4 text-xs font-bold uppercase tracking-[0.18em] text-panel-accent">Tu tarjeta, con claridad</p>
+          <h1 className="text-3xl font-extrabold leading-tight tracking-tight sm:text-5xl">
+            Términos y condiciones del programa de sellos
+          </h1>
+          <p className="mt-4 text-sm font-medium text-panel-muted">
+            Versión vigente desde el {formatVersion(TERMS_VERSION)}
+          </p>
+        </header>
         {LEGAL_IS_DRAFT && (
-          <p role="note" className="mt-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">
+          <p role="note" className="mt-7 rounded-2xl border border-panel-gold/30 bg-panel-gold/10 px-5 py-4 text-sm font-semibold leading-relaxed text-panel-gold">
             Borrador: faltan los datos legales de la empresa. Este texto no es la versión definitiva.
           </p>
         )}
-
-        <h1 className="mt-6 text-3xl font-black leading-tight sm:text-4xl">
-          Términos y condiciones del programa de sellos
-        </h1>
-        <p className="mt-2 text-sm font-medium text-slate-500">
-          Versión vigente desde el {formatVersion(TERMS_VERSION)}
-        </p>
-
-        <ol className="mt-8 space-y-8">
-          {SECTIONS.map((section, i) => (
-            <li key={section.title}>
-              <h2 className="text-lg font-black">
-                {i + 1}. {section.title}
-              </h2>
-              <div className="mt-2 space-y-3 text-[15px] leading-relaxed text-slate-700 [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5">
-                {section.body}
-              </div>
-            </li>
-          ))}
-        </ol>
+        <div className="mt-9 grid items-start gap-8 lg:grid-cols-[240px_minmax(0,1fr)]">
+          <nav aria-label="Secciones de los términos" className="rounded-2xl border border-panel-border bg-panel-surface p-5 shadow-panel lg:sticky lg:top-6">
+            <p className="mb-3 text-xs font-bold uppercase tracking-wider text-panel-muted">En esta página</p>
+            <ol className="grid gap-1 sm:grid-cols-2 lg:grid-cols-1">
+              {SECTIONS.map((section, i) => (
+                <li key={section.title}><a href={`#terms-section-${i + 1}`} className="flex gap-2 rounded-lg px-2 py-2 text-xs font-semibold leading-relaxed text-panel-muted transition-colors hover:bg-panel-soft hover:text-panel-accent"><span className="text-panel-gold">{String(i + 1).padStart(2, '0')}</span>{section.title}</a></li>
+              ))}
+            </ol>
+          </nav>
+          <ol className="min-w-0 space-y-4">
+            {SECTIONS.map((section, i) => (
+              <li id={`terms-section-${i + 1}`} key={section.title} className="scroll-mt-6 rounded-2xl border border-panel-border bg-panel-surface p-5 shadow-panel sm:p-7">
+                <h2 className="text-lg font-extrabold tracking-tight text-panel-text">
+                  {i + 1}. {section.title}
+                </h2>
+                <div className="mt-4 space-y-3 text-[15px] leading-[1.85] text-panel-muted [overflow-wrap:anywhere] [&_strong]:font-bold [&_strong]:text-panel-text [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5">
+                  {section.body}
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
       </div>
-    </div>
+    </PublicFrame>
   );
 }
 
