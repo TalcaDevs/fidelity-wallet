@@ -232,6 +232,7 @@ describe('ScanService: reglas de la tarjeta', () => {
       };
       
       // Personalizamos el mock de findFirst para devolver scans distintos según los filtros de prisma.
+      // @ts-expect-error Prisma client typings require returning Prisma__ScanClient, not a Promise
       vi.mocked(prisma.scan.findFirst).mockImplementation(async (args: any) => {
         if (args?.where?.stampCount?.gt !== undefined) return (latestStamp as any)?.isStamp ? latestStamp : null;
         if (args?.where?.pointsEarned?.gt !== undefined) return (latestStamp as any)?.isPoints ? latestStamp : null;
