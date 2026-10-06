@@ -83,10 +83,12 @@ model LoyaltyProgram {
   id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   brandId           String       @unique @db.Uuid
   brand             Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  /// Campo mantenido por retrocompatibilidad. Las reglas operativas ahora se rigen
+  /// estrictamente por stampsEnabled y pointsEnabled.
   type              ProgramType  @default(STAMPS)
   stampsEnabled     Boolean      @default(true)
   pointsEnabled     Boolean      @default(false)
-  allowMultipleRedemptionsPerVisit Boolean @default(true)
+  allowMultipleRedemptionsPerVisit Boolean @default(false)
   /// LOCATION está reservado y no se implementa.
   scope             ProgramScope @default(BRAND)
   name              String

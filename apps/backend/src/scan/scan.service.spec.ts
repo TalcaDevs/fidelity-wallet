@@ -523,6 +523,7 @@ describe('ScanService', () => {
     vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'redeem-scan-1' } as any);
     const stampUpdateManySpy = vi.spyOn(prisma.stamp, 'updateMany').mockResolvedValue({ count: 3 } as any);
     vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
+    vi.spyOn(prisma.stamp, 'count').mockResolvedValue(2);
 
     const result = await service.processScan(
       {
@@ -686,7 +687,7 @@ describe('ScanService', () => {
       vi.spyOn(prisma.stamp, 'findMany').mockResolvedValue(mockStamps as any);
       const scanCreateSpy = vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'redeem-small' } as any);
       const updateManySpy = vi.spyOn(prisma.stamp, 'updateMany').mockResolvedValue({ count: 3 } as any);
-      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(4);
+      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(1);
       vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
 
       const result = await service.processScan(

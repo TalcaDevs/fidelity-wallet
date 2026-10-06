@@ -381,6 +381,12 @@ export class ScanValidationDto {
   @ApiProperty({ enum: CARD_TYPES, description: 'Tarjeta de sellos (por visita) o de puntos (por monto)' })
   cardType: CardType;
 
+  @ApiProperty({ description: 'Verdadero si el programa permite sumar sellos por visita' })
+  stampsEnabled: boolean;
+
+  @ApiProperty({ description: 'Verdadero si el programa permite sumar puntos por compra' })
+  pointsEnabled: boolean;
+
   @ApiProperty({ description: 'Pesos de compra por cada punto (solo se usa con puntos)', example: 1000 })
   pesosPerPoint: number;
 

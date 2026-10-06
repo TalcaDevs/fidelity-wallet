@@ -54,6 +54,7 @@ import { ScanValidationTokens } from './validation-token.js';
 
 // Canje: evita el doble toque del cajero sobre el botón de canjear.
 export const REDEEM_DUPLICATE_WINDOW_MS = 90 * 1000; // 90 seconds
+export const VISIT_REDEMPTION_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 horas
 
 // Sellos: tras sumar un sello (por QR o ingreso manual), el pase queda bloqueado para sumar
 // otro durante este tiempo. Evita que un mismo cliente acumule varios sellos en una visita.
@@ -252,9 +253,11 @@ export class ScanService {
       maxStampsPerLoad: isOwner && card.type === 'STAMPS' ? this.ownerMaxStamps : 1,
       reasonRequired: isOwner && nextStampAvailableAt !== null,
       cardType: card.type,
+      stampsEnabled: card.stampsEnabled,
+      pointsEnabled: card.pointsEnabled,
       pesosPerPoint: brandCard.pesosPerPoint,
-      amountRequired: card.type === 'POINTS',
-      receiptRequired: card.type === 'POINTS' && !isOwner,
+      amountRequired: card.pointsEnabled,
+      receiptRequired: card.pointsEnabled && !isOwner,
     };
   }
 
@@ -447,7 +450,7 @@ export class ScanService {
   ): Promise<StampOptions> {
     const stampCount = context.card.stampsEnabled ? this.stampsToAdd(dto, isOwner) : 0;
     const pointsEarned = context.card.pointsEnabled 
-        ? this.pointsToAdd(dto, isOwner, context.pesosPerPoint, receiptFile, source) 
+        ? this.pointsToAdd(dto, isOwner, context.pesosPerPoint, receiptFile, source, context.card.stampsEnabled) 
         : 0;
 
     if (stampCount === 0 && pointsEarned === 0) {
@@ -473,6 +476,7 @@ export class ScanService {
 
   private stampsToAdd(dto: StampInput, isOwner: boolean): number {
     const stampCount = dto.stampCount ?? 1;
+    if (stampCount === 0) return 0;
     if (!isOwner && stampCount !== 1) {
       throw new ForbiddenException('Solo el dueño puede cargar varios sellos de una vez');
     }
@@ -493,6 +497,7 @@ export class ScanService {
     pesosPerPoint: number,
     receiptFile: UploadedImage | undefined,
     source: StampSource,
+    stampsEnabled: boolean,
   ): number {
     const tooMany = `Puedes sumar hasta ${clp.format(POINTS_PER_SCAN_MAX)} puntos de una vez`;
     if (source === 'PANEL') {
@@ -501,10 +506,8 @@ export class ScanService {
       return points;
     }
 
-    if (dto.stampCount !== undefined && dto.stampCount !== 1) {
-      throw new BadRequestException('Los puntos se calculan con el monto de la compra');
-    }
     if (dto.purchaseAmount === undefined) {
+      if (stampsEnabled) return 0;
       throw new BadRequestException('Ingresa el monto de la compra: con él se calculan los puntos');
     }
     if (!isOwner && !receiptFile) {
@@ -906,11 +909,12 @@ export class ScanService {
       };
     }
     
-    let msgParts = [];
+    const msgParts = [];
     if (options.stampCount > 0) msgParts.push(`${options.stampCount} sello${options.stampCount === 1 ? '' : 's'}`);
     if (options.pointsEarned > 0) msgParts.push(`${clp.format(options.pointsEarned)} punto${options.pointsEarned === 1 ? '' : 's'}`);
     
-    const added = msgParts.join(' y ') + ' agregado' + (msgParts.length > 1 || options.stampCount > 1 || options.pointsEarned > 1 ? 's' : '');
+    const isPlural = msgParts.length > 1 || options.stampCount > 1 || options.pointsEarned > 1;
+    const added = `${msgParts.join(' y ')} agregado${isPlural ? 's' : ''}`;
     const balances = [];
     if (card.stampsEnabled) balances.push(`${activeStamps} sellos`);
     if (card.pointsEnabled) balances.push(`${clp.format(activePoints)} puntos`);
@@ -977,12 +981,11 @@ export class ScanService {
       }
 
       if (!program.allowMultipleRedemptionsPerVisit) {
-        const visitWindowMs = 2 * 60 * 60 * 1000; // 2 horas
         const anyRecentRedeem = await tx.scan.findFirst({
           where: {
             passId: pass.id,
             type: ScanType.REWARD_REDEEMED,
-            createdAt: { gt: new Date(now.getTime() - visitWindowMs) }
+            createdAt: { gt: new Date(now.getTime() - VISIT_REDEMPTION_WINDOW_MS) }
           }
         });
         if (anyRecentRedeem) {
@@ -1034,10 +1037,7 @@ export class ScanService {
       }
 
       const { activeStamps, activePoints, nextExpiryAt } = await this.readBalance(tx, pass.id, now);
-      const remainingStamps = promotion.currency === 'STAMPS' ? activeStamps - promotion.targetStamps : activeStamps;
-      const remainingPoints = promotion.currency === 'POINTS' ? activePoints - promotion.targetStamps : activePoints;
-
-      const availablePromotions = toPromotionOptions(activePromotions, remainingStamps, remainingPoints);
+      const availablePromotions = toPromotionOptions(activePromotions, activeStamps, activePoints);
 
       return {
         success: true,
@@ -1045,8 +1045,8 @@ export class ScanService {
         action: ScanActionType.REDEEM,
         method,
         passId: pass.id,
-        activeStamps: remainingStamps,
-        activePoints: remainingPoints,
+        activeStamps,
+        activePoints,
         targetStamps: promotion.targetStamps,
         rewardUnlocked: availablePromotions.some((p) => p.canRedeem),
         rewardName: promotion.rewardName,

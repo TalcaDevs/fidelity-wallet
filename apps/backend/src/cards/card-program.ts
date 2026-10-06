@@ -70,7 +70,7 @@ export function toCardView(program: CardProgramRow): CardView {
     designVersion: program.designVersion ?? 1,
     stampsEnabled: program.stampsEnabled ?? true,
     pointsEnabled: program.pointsEnabled ?? false,
-    allowMultipleRedemptionsPerVisit: program.allowMultipleRedemptionsPerVisit ?? true,
+    allowMultipleRedemptionsPerVisit: program.allowMultipleRedemptionsPerVisit ?? false,
   };
 }
 

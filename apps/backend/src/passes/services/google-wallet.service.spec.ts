@@ -155,7 +155,7 @@ describe('GoogleWalletService', () => {
     designVersion: 3,
     stampsEnabled: true,
     pointsEnabled: false,
-    allowMultipleRedemptionsPerVisit: true,
+    allowMultipleRedemptionsPerVisit: false,
     ...overrides,
   });
 

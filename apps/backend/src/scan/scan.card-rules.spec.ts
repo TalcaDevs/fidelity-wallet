@@ -45,7 +45,7 @@ describe('ScanService: reglas de la tarjeta', () => {
     role = 'STAFF';
     latestStamp = null;
     passCreatedAt = new Date('2026-01-01T12:00:00Z');
-    program = { id: programId, brandId, type: 'STAMPS', isActive: true, stampValidityDays: null, dailyStampLimit: true, stampsEnabled: true, pointsEnabled: false, allowMultipleRedemptionsPerVisit: true };
+    program = { id: programId, brandId, type: 'STAMPS', isActive: true, stampValidityDays: null, dailyStampLimit: true, stampsEnabled: true, pointsEnabled: false, allowMultipleRedemptionsPerVisit: false };
     prisma = {
       merchant: {
         findUnique: vi.fn().mockResolvedValue({
