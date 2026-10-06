@@ -45,7 +45,7 @@ describe('ScanService: reglas de la tarjeta', () => {
     role = 'STAFF';
     latestStamp = null;
     passCreatedAt = new Date('2026-01-01T12:00:00Z');
-    program = { id: programId, brandId, type: 'POINTS', isActive: true, stampValidityDays: null, dailyStampLimit: true };
+    program = { id: programId, brandId, type: 'STAMPS', isActive: true, stampValidityDays: null, dailyStampLimit: true, stampsEnabled: true, pointsEnabled: false, allowMultipleRedemptionsPerVisit: false };
     prisma = {
       merchant: {
         findUnique: vi.fn().mockResolvedValue({
@@ -112,6 +112,12 @@ describe('ScanService: reglas de la tarjeta', () => {
   const createdRows = () => vi.mocked(prisma.stamp.createMany).mock.calls[0]?.[0]?.data as unknown[];
 
   describe('puntos', () => {
+    beforeEach(() => {
+      program.type = 'POINTS';
+      program.stampsEnabled = false;
+      program.pointsEnabled = true;
+    });
+
     it('tells the cashier the amount and the receipt are required', async () => {
       const validation = await service.validate({ passToken: 'qr-token', merchantId }, userId);
       expect(validation).toMatchObject({
@@ -135,10 +141,10 @@ describe('ScanService: reglas de la tarjeta', () => {
     it('gives one point per 1.000 pesos and records the amount', async () => {
       const result = await stamp({ purchaseAmount: 12_500 }, await receipt());
 
-      expect(result.stampsAdded).toBe(12);
+      expect(result.pointsAdded).toBe(12);
       expect(createdRows()).toHaveLength(12);
       expect(prisma.scan.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({ stampCount: 12, purchaseAmount: 12_500 }),
+        data: expect.objectContaining({ pointsEarned: 12, purchaseAmount: 12_500 }),
       });
       expect(result.message).toMatch(/12 puntos agregados/);
     });
@@ -152,7 +158,7 @@ describe('ScanService: reglas de la tarjeta', () => {
     it('lets the OWNER add points without the receipt', async () => {
       role = 'OWNER';
       const result = await stamp({ purchaseAmount: 3_000 });
-      expect(result.stampsAdded).toBe(3);
+      expect(result.pointsAdded).toBe(3);
     });
 
     it('only blocks a repeated purchase for a couple of minutes', async () => {
@@ -192,7 +198,7 @@ describe('ScanService: reglas de la tarjeta', () => {
 
       const result = await stamp();
       expect(result.alreadyScanned).toBe(true);
-      expect(result.message).toMatch(/sello de hoy/);
+      expect(result.message).toMatch(/límite diario de sellos/);
     });
 
     it('allows the next stamp after Chilean midnight', async () => {
@@ -212,6 +218,142 @@ describe('ScanService: reglas de la tarjeta', () => {
       latestStamp = { id: 'prev', createdAt: new Date(), method: ScanMethod.QR, type: ScanType.STAMP_ADDED };
       const result = await stamp({ reason: 'Segunda compra del día' });
       expect(result.alreadyScanned).toBe(false);
+    });
+  });
+
+  describe('coexistencia: cooldown de sellos y puntos', () => {
+    beforeEach(() => {
+      program = {
+        ...program,
+        type: 'DUAL',
+        stampsEnabled: true,
+        pointsEnabled: true,
+        dailyStampLimit: false, // Usaremos el cooldown regular de 30 min (STAMP_COOLDOWN_MINUTES="30")
+      };
+      
+      // Personalizamos el mock de findFirst para devolver scans distintos según los filtros de prisma.
+      // @ts-expect-error Prisma client typings require returning Prisma__ScanClient, not a Promise
+      vi.mocked(prisma.scan.findFirst).mockImplementation(async (args: any) => {
+        if (args?.where?.stampCount?.gt !== undefined) return (latestStamp as any)?.isStamp ? latestStamp : null;
+        if (args?.where?.pointsEarned?.gt !== undefined) return (latestStamp as any)?.isPoints ? latestStamp : null;
+        return null;
+      });
+    });
+
+    describe('validación en caja', () => {
+      it('tarjeta dual + puntos recientes -> canStamp=true, canAddPoints=false', async () => {
+        latestStamp = {
+          id: 'prev',
+          createdAt: new Date(Date.now() - 60_000), // Hace 1 min
+          method: ScanMethod.QR,
+          type: ScanType.STAMP_ADDED,
+          isPoints: true,
+          isStamp: false,
+        } as any;
+        
+        const validation = await service.validate({ passToken: 'qr-token', merchantId }, userId);
+        expect(validation.canStamp).toBe(true);
+        expect(validation.nextStampAvailableAt).toBeNull();
+        expect(validation.canAddPoints).toBe(false);
+        expect(validation.nextPointsAvailableAt).toBeDefined();
+      });
+
+      it('tarjeta dual + sello reciente -> canStamp=false, canAddPoints=true', async () => {
+        latestStamp = {
+          id: 'prev',
+          createdAt: new Date(Date.now() - 60_000), // Hace 1 min
+          method: ScanMethod.QR,
+          type: ScanType.STAMP_ADDED,
+          isPoints: false,
+          isStamp: true,
+        } as any;
+        
+        const validation = await service.validate({ passToken: 'qr-token', merchantId }, userId);
+        expect(validation.canStamp).toBe(false);
+        expect(validation.nextStampAvailableAt).toBeDefined();
+        expect(validation.canAddPoints).toBe(true);
+        expect(validation.nextPointsAvailableAt).toBeNull();
+      });
+    });
+
+    it('puntos-only previo + sello-only actual -> el sello debe pasar', async () => {
+      // Compra anterior de solo puntos hace 1 minuto (bloquearía puntos pero no sellos)
+      latestStamp = {
+        id: 'prev',
+        createdAt: new Date(Date.now() - 60_000),
+        method: ScanMethod.QR,
+        type: ScanType.STAMP_ADDED,
+        isPoints: true,
+        isStamp: false,
+      } as any;
+      
+      // Operación actual: solo sello
+      const result = await stamp({ stampCount: 1 });
+      expect(result.alreadyScanned).toBe(false);
+    });
+
+    it('sello previo + puntos-only actual -> los puntos deben pasar', async () => {
+      // Sello anterior hace 1 minuto (bloquearía sellos pero no puntos)
+      latestStamp = {
+        id: 'prev',
+        createdAt: new Date(Date.now() - 60_000),
+        method: ScanMethod.QR,
+        type: ScanType.STAMP_ADDED,
+        isPoints: false,
+        isStamp: true,
+      } as any;
+      
+      // Operación actual: solo puntos
+      const result = await stamp({ stampCount: 0, purchaseAmount: 5_000 }, await receipt());
+      expect(result.alreadyScanned).toBe(false);
+    });
+
+    it('puntos previo + puntos actual dentro de 2 min -> bloqueado', async () => {
+      latestStamp = {
+        id: 'prev',
+        createdAt: new Date(Date.now() - 60_000),
+        method: ScanMethod.QR,
+        type: ScanType.STAMP_ADDED,
+        isPoints: true,
+        isStamp: false,
+      } as any;
+      
+      const result = await stamp({ stampCount: 0, purchaseAmount: 5_000 }, await receipt());
+      expect(result.alreadyScanned).toBe(true);
+      expect(result.message).toMatch(/se sumaron puntos hace un momento/);
+    });
+
+    it('sello previo + sello actual dentro del cooldown -> bloqueado', async () => {
+      latestStamp = {
+        id: 'prev',
+        createdAt: new Date(Date.now() - 60_000), // Hace 1 min, el cooldown de sellos es 30 min
+        method: ScanMethod.QR,
+        type: ScanType.STAMP_ADDED,
+        isPoints: false,
+        isStamp: true,
+      } as any;
+      
+      const result = await stamp({ stampCount: 1 });
+      expect(result.alreadyScanned).toBe(true);
+      expect(result.message).toMatch(/repetido/);
+    });
+
+    it('operación combinada -> se aplican ambas reglas', async () => {
+      // Hace 1 minuto se dieron puntos (bloquea puntos actuales)
+      latestStamp = {
+        id: 'prev',
+        createdAt: new Date(Date.now() - 60_000),
+        method: ScanMethod.QR,
+        type: ScanType.STAMP_ADDED,
+        isPoints: true,
+        isStamp: false,
+      } as any;
+      
+      // Operación combinada (sello y puntos)
+      const result = await stamp({ stampCount: 1, purchaseAmount: 5_000 }, await receipt());
+      expect(result.alreadyScanned).toBe(true);
+      // Se bloquea porque una de las partes (puntos) falla
+      expect(result.message).toMatch(/se sumaron puntos hace un momento/);
     });
   });
 
