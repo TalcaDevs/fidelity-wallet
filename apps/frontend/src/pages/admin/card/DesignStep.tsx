@@ -14,14 +14,35 @@ import type { CardEditor } from './useCardEditor';
 import { ColorSwatches, ImagePicker, Section } from './ui';
 
 const ICON_LABELS: Record<StampIcon, string> = {
+  // Genéricos de fidelidad
   STAR: 'Estrella',
-  DIAMOND: 'Diamante',
-  CIRCLE: 'Círculo',
   HEART: 'Corazón',
-  TRIANGLE: 'Triángulo',
   SPARKLE: 'Destello',
-  COFFEE: 'Taza',
-  CHECK: 'Visto',
+  CHECK: 'Visto bueno',
+  CIRCLE: 'Círculo',
+  DIAMOND: 'Diamante',
+  TRIANGLE: 'Triángulo',
+  // Comida y Bebidas
+  COFFEE: 'Café / Cafetería',
+  BURGER: 'Hamburguesa / Comida rápida',
+  PIZZA: 'Pizza / Pizzería',
+  FRIES: 'Papas fritas / Snack',
+  SANDWICH: 'Sándwich / Almuerzo',
+  CUP: 'Bebida / Refresco',
+  BEER: 'Cerveza / Bar',
+  WINE: 'Copa de vino',
+  ICE_CREAM: 'Helado / Postre',
+  CAKE: 'Pastel / Cafetería',
+  UTENSILS: 'Plato / Restaurante',
+  // Premios y Beneficios universales
+  GIFT: 'Regalo / Sorpresa',
+  TAG: 'Descuento / Oferta',
+  TICKET: 'Cupón / Entrada',
+  TROPHY: 'Trofeo / Premio mayor',
+  CROWN: 'Corona / Membresía VIP',
+  // Servicios de canje
+  SCISSORS: 'Corte / Barbería',
+  BONE: 'Snack / Premio mascota',
 };
 
 /** WCAG AA para texto normal. */
