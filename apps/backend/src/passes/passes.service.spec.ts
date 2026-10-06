@@ -483,6 +483,36 @@ describe('PassesService', () => {
       expect(googleWalletService.updateLoyaltyObject).not.toHaveBeenCalled();
     });
 
+    it('returns early in enqueuePassUpdate when pass does not exist', async () => {
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(null);
+
+      await expect(service.enqueuePassUpdate('non-existent-pass')).resolves.toBeUndefined();
+    });
+
+    it('catches P2003 foreign key violation in notifyPassUpdate and does not throw', async () => {
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(createMockPass() as any);
+      const p2003Error = new Prisma.PrismaClientKnownRequestError('Foreign key constraint failed', {
+        code: 'P2003',
+        clientVersion: '6.0.0',
+      });
+      const updateWorker = (service as any).updateWorker;
+      vi.spyOn(updateWorker, 'enqueue').mockRejectedValue(p2003Error);
+
+      await expect(service.notifyPassUpdate(mockPassId)).resolves.toBeUndefined();
+    });
+
+    it('catches P2003 foreign key violation in enqueuePassUpdate and does not throw', async () => {
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(createMockPass() as any);
+      const p2003Error = new Prisma.PrismaClientKnownRequestError('Foreign key constraint failed', {
+        code: 'P2003',
+        clientVersion: '6.0.0',
+      });
+      const updateWorker = (service as any).updateWorker;
+      vi.spyOn(updateWorker, 'enqueue').mockRejectedValue(p2003Error);
+
+      await expect(service.enqueuePassUpdate(mockPassId)).resolves.toBeUndefined();
+    });
+
     it('serializes rapid consecutive updates for the same pass in FIFO order', async () => {
       const executionOrder: string[] = [];
 

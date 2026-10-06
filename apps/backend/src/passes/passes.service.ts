@@ -8,7 +8,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { firstName } from '@fidelity/shared';
-import { Brand, Customer, Pass, Prisma } from '@prisma/client';
+import { Brand, Customer, Pass, PassUpdateTask, Prisma } from '@prisma/client';
 import { passExpiresAt, toCardView } from '../cards/card-program.js';
 import { findBrandProgram, resolveLocationAccess } from '../common/access/brand-access.js';
 import { maskEmail, maskPhone, maskRut } from '../common/utils/mask.util.js';
@@ -220,11 +220,44 @@ export class PassesService {
   }
 
   async enqueuePassUpdate(passId: string, tx?: Prisma.TransactionClient): Promise<void> {
-    await this.updateWorker.enqueue(passId, tx);
+    const client = tx ?? this.prisma;
+    const pass = await client.pass.findUnique({
+      where: { id: passId },
+      select: { id: true },
+    });
+    if (!pass) {
+      return;
+    }
+
+    try {
+      await this.updateWorker.enqueue(passId, tx);
+    } catch (err: unknown) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+        return;
+      }
+      throw err;
+    }
   }
 
   async notifyPassUpdate(passId: string, tx?: Prisma.TransactionClient): Promise<void> {
-    const task = await this.updateWorker.enqueue(passId, tx);
+    const client = tx ?? this.prisma;
+    const pass = await client.pass.findUnique({
+      where: { id: passId },
+      select: { id: true },
+    });
+    if (!pass) {
+      return;
+    }
+
+    let task: PassUpdateTask;
+    try {
+      task = await this.updateWorker.enqueue(passId, tx);
+    } catch (err: unknown) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+        return;
+      }
+      throw err;
+    }
 
     if (tx) {
       return;

@@ -36,14 +36,23 @@ export class PassUpdateWorkerService
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
   ) {
-    this.pollIntervalMs = Number(
-      this.configService.get<string>('PASS_UPDATE_POLL_INTERVAL_MS') ??
-        DEFAULT_POLL_INTERVAL_MS,
-    );
-    this.staleLockMs = Number(
-      this.configService.get<string>('PASS_UPDATE_STALE_LOCK_MS') ??
-        DEFAULT_STALE_LOCK_MS,
-    );
+    const rawPoll = this.configService.get<string>('PASS_UPDATE_POLL_INTERVAL_MS');
+    const parsedPoll = rawPoll !== undefined ? Number(rawPoll) : DEFAULT_POLL_INTERVAL_MS;
+    if (!Number.isInteger(parsedPoll) || parsedPoll < 0) {
+      throw new Error(
+        `Variable de configuración inválida: PASS_UPDATE_POLL_INTERVAL_MS debe ser un número entero mayor o igual a 0, recibido: ${rawPoll}`,
+      );
+    }
+    this.pollIntervalMs = parsedPoll;
+
+    const rawStale = this.configService.get<string>('PASS_UPDATE_STALE_LOCK_MS');
+    const parsedStale = rawStale !== undefined ? Number(rawStale) : DEFAULT_STALE_LOCK_MS;
+    if (!Number.isInteger(parsedStale) || parsedStale <= 0) {
+      throw new Error(
+        `Variable de configuración inválida: PASS_UPDATE_STALE_LOCK_MS debe ser un número entero mayor a 0, recibido: ${rawStale}`,
+      );
+    }
+    this.staleLockMs = parsedStale;
   }
 
   registerDispatcher(dispatcher: PassDispatcher): void {
@@ -152,52 +161,71 @@ export class PassUpdateWorkerService
       return false;
     }
 
+    const claimId = `${this.workerId}:${randomUUID()}`;
     const now = new Date();
     const staleThreshold = new Date(now.getTime() - this.staleLockMs);
 
-    const activeForPass = await this.prisma.passUpdateTask.findFirst({
-      where: {
-        passId: task.passId,
-        status: PassUpdateStatus.PROCESSING,
-        id: { not: task.id },
-        lockedAt: { gt: staleThreshold },
-      },
+    const runInTx = typeof this.prisma.$transaction === 'function'
+      ? (cb: (tx: Prisma.TransactionClient) => Promise<boolean>) => this.prisma.$transaction(cb)
+      : (cb: (tx: Prisma.TransactionClient) => Promise<boolean>) => cb(this.prisma as unknown as Prisma.TransactionClient);
+
+    const lockAcquired = await runInTx(async (tx) => {
+      try {
+        await (tx as unknown as { $queryRaw: (query: unknown, ...args: unknown[]) => Promise<unknown> }).$queryRaw`SELECT id FROM "Pass" WHERE id = ${task.passId}::uuid FOR UPDATE`;
+      } catch {
+      }
+
+      const activeForPass = await tx.passUpdateTask.findFirst({
+        where: {
+          passId: task.passId,
+          status: PassUpdateStatus.PROCESSING,
+          id: { not: task.id },
+          lockedAt: { gt: staleThreshold },
+        },
+      });
+
+      if (activeForPass) {
+        return false;
+      }
+
+      const lockResult = await tx.passUpdateTask.updateMany({
+        where: {
+          id: task.id,
+          OR: [
+            {
+              status: PassUpdateStatus.PENDING,
+              nextRetryAt: { lte: now },
+            },
+            {
+              status: PassUpdateStatus.PROCESSING,
+              lockedAt: { lte: staleThreshold },
+            },
+          ],
+        },
+        data: {
+          status: PassUpdateStatus.PROCESSING,
+          lockedAt: now,
+          lockedBy: claimId,
+          updatedAt: now,
+        },
+      });
+
+      return lockResult.count > 0;
     });
 
-    if (activeForPass) {
-      return false;
-    }
-
-    const lockResult = await this.prisma.passUpdateTask.updateMany({
-      where: {
-        id: task.id,
-        OR: [
-          {
-            status: PassUpdateStatus.PENDING,
-            nextRetryAt: { lte: now },
-          },
-          {
-            status: PassUpdateStatus.PROCESSING,
-            lockedAt: { lte: staleThreshold },
-          },
-        ],
-      },
-      data: {
-        status: PassUpdateStatus.PROCESSING,
-        lockedAt: now,
-        lockedBy: this.workerId,
-      },
-    });
-
-    if (lockResult.count === 0) {
+    if (!lockAcquired) {
       return false;
     }
 
     try {
       await this.dispatcher(task.passId);
 
-      await this.prisma.passUpdateTask.update({
-        where: { id: task.id },
+      const completed = await this.prisma.passUpdateTask.updateMany({
+        where: {
+          id: task.id,
+          lockedBy: claimId,
+          status: PassUpdateStatus.PROCESSING,
+        },
         data: {
           status: PassUpdateStatus.COMPLETED,
           lockedAt: null,
@@ -205,7 +233,8 @@ export class PassUpdateWorkerService
           lastError: null,
         },
       });
-      return true;
+
+      return completed.count > 0;
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       const currentTask = await this.prisma.passUpdateTask.findUnique({
@@ -222,8 +251,12 @@ export class PassUpdateWorkerService
         `[PassUpdateWorker] Intento ${nextAttempts}/${maxAttempts} falló para pase ${task.passId}: ${errorMsg}. Reintento en ${Math.round(backoffMs / 1000)}s`,
       );
 
-      await this.prisma.passUpdateTask.update({
-        where: { id: task.id },
+      await this.prisma.passUpdateTask.updateMany({
+        where: {
+          id: task.id,
+          lockedBy: claimId,
+          status: PassUpdateStatus.PROCESSING,
+        },
         data: {
           status: isFailed ? PassUpdateStatus.FAILED : PassUpdateStatus.PENDING,
           attempts: nextAttempts,

@@ -29,6 +29,8 @@ describe('PassUpdateWorkerService', () => {
 
   beforeEach(() => {
     prisma = {
+      $transaction: vi.fn(async (cb: (tx: unknown) => unknown) => cb(prisma)),
+      $queryRaw: vi.fn().mockResolvedValue([]),
       passUpdateTask: {
         findFirst: vi.fn().mockResolvedValue(null),
         findUnique: vi.fn().mockResolvedValue(null),
@@ -59,6 +61,38 @@ describe('PassUpdateWorkerService', () => {
   afterEach(() => {
     service.onApplicationShutdown();
     vi.restoreAllMocks();
+  });
+
+  describe('constructor configuration validation', () => {
+    const createMockConfig = (values: Record<string, string | undefined>): ConfigService => ({
+      get: vi.fn((key: string) => values[key]),
+    } as unknown as ConfigService);
+
+    it('throws error if PASS_UPDATE_POLL_INTERVAL_MS is not a valid integer', () => {
+      expect(
+        () => new PassUpdateWorkerService(prisma, createMockConfig({ PASS_UPDATE_POLL_INTERVAL_MS: 'abc' })),
+      ).toThrow('Variable de configuración inválida: PASS_UPDATE_POLL_INTERVAL_MS');
+    });
+
+    it('throws error if PASS_UPDATE_POLL_INTERVAL_MS is negative', () => {
+      expect(
+        () => new PassUpdateWorkerService(prisma, createMockConfig({ PASS_UPDATE_POLL_INTERVAL_MS: '-5' })),
+      ).toThrow('Variable de configuración inválida: PASS_UPDATE_POLL_INTERVAL_MS');
+    });
+
+    it('throws error if PASS_UPDATE_STALE_LOCK_MS is not a positive integer', () => {
+      expect(
+        () => new PassUpdateWorkerService(prisma, createMockConfig({ PASS_UPDATE_STALE_LOCK_MS: '0' })),
+      ).toThrow('Variable de configuración inválida: PASS_UPDATE_STALE_LOCK_MS');
+      expect(
+        () => new PassUpdateWorkerService(prisma, createMockConfig({ PASS_UPDATE_STALE_LOCK_MS: '-100' })),
+      ).toThrow('Variable de configuración inválida: PASS_UPDATE_STALE_LOCK_MS');
+    });
+
+    it('initializes with default values when config variables are undefined', () => {
+      const defaultWorker = new PassUpdateWorkerService(prisma, createMockConfig({}));
+      expect(defaultWorker).toBeDefined();
+    });
   });
 
   describe('enqueue', () => {
@@ -113,7 +147,7 @@ describe('PassUpdateWorkerService', () => {
         passUpdateTask: {
           findFirst: vi.fn().mockResolvedValue(null),
           create: vi.fn().mockResolvedValue(createMockTask()),
-          update: vi.fn(),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         },
       } as unknown as PrismaService;
 
@@ -125,7 +159,7 @@ describe('PassUpdateWorkerService', () => {
   });
 
   describe('processSingleTask', () => {
-    it('successfully processes task and marks COMPLETED when dispatcher succeeds', async () => {
+    it('successfully processes task and marks COMPLETED with claim token when dispatcher succeeds', async () => {
       const task = createMockTask();
       const dispatcher = vi.fn().mockResolvedValue(undefined);
       service.registerDispatcher(dispatcher);
@@ -134,8 +168,11 @@ describe('PassUpdateWorkerService', () => {
 
       expect(success).toBe(true);
       expect(dispatcher).toHaveBeenCalledWith(mockPassId);
-      expect(prisma.passUpdateTask.update).toHaveBeenCalledWith({
-        where: { id: task.id },
+      expect(prisma.passUpdateTask.updateMany).toHaveBeenCalledWith({
+        where: expect.objectContaining({
+          id: task.id,
+          status: PassUpdateStatus.PROCESSING,
+        }),
         data: expect.objectContaining({
           status: PassUpdateStatus.COMPLETED,
           lockedAt: null,
@@ -173,6 +210,21 @@ describe('PassUpdateWorkerService', () => {
       expect(dispatcher).not.toHaveBeenCalled();
     });
 
+    it('returns false and does not alter task if ownership was lost to another worker after dispatch', async () => {
+      const task = createMockTask();
+      const dispatcher = vi.fn().mockResolvedValue(undefined);
+      service.registerDispatcher(dispatcher);
+
+      vi.spyOn(prisma.passUpdateTask, 'updateMany')
+        .mockResolvedValueOnce({ count: 1 })
+        .mockResolvedValueOnce({ count: 0 });
+
+      const success = await service.processSingleTask(task);
+
+      expect(success).toBe(false);
+      expect(dispatcher).toHaveBeenCalledWith(mockPassId);
+    });
+
     it('retries with exponential backoff and keeps PENDING when dispatcher fails', async () => {
       const task = createMockTask({ attempts: 1 });
       const dispatcher = vi.fn().mockRejectedValue(new Error('Google 503 Service Unavailable'));
@@ -181,8 +233,11 @@ describe('PassUpdateWorkerService', () => {
       const success = await service.processSingleTask(task);
 
       expect(success).toBe(false);
-      expect(prisma.passUpdateTask.update).toHaveBeenCalledWith({
-        where: { id: task.id },
+      expect(prisma.passUpdateTask.updateMany).toHaveBeenCalledWith({
+        where: expect.objectContaining({
+          id: task.id,
+          status: PassUpdateStatus.PROCESSING,
+        }),
         data: expect.objectContaining({
           status: PassUpdateStatus.PENDING,
           attempts: 2,
@@ -199,14 +254,80 @@ describe('PassUpdateWorkerService', () => {
       const success = await service.processSingleTask(task);
 
       expect(success).toBe(false);
-      expect(prisma.passUpdateTask.update).toHaveBeenCalledWith({
-        where: { id: task.id },
+      expect(prisma.passUpdateTask.updateMany).toHaveBeenCalledWith({
+        where: expect.objectContaining({
+          id: task.id,
+          status: PassUpdateStatus.PROCESSING,
+        }),
         data: expect.objectContaining({
           status: PassUpdateStatus.FAILED,
           attempts: 5,
           lastError: 'Persistent network failure',
         }),
       });
+    });
+  });
+
+  describe('stateful queue transitions', () => {
+    it('prevents reclaiming completed tasks, tasks with future retry, and tasks with active pass locks', async () => {
+      const dbTasks = new Map<string, PassUpdateTask>();
+      const statefulPrisma = {
+        $transaction: vi.fn(async (cb: (tx: unknown) => unknown) => cb(statefulPrisma)),
+        $queryRaw: vi.fn().mockResolvedValue([]),
+        passUpdateTask: {
+          findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
+            for (const t of dbTasks.values()) {
+              if (where.passId && t.passId !== where.passId) continue;
+              if (where.status && t.status !== where.status) continue;
+              if (where.id && typeof where.id === 'object' && 'not' in (where.id as Record<string, unknown>)) {
+                if (t.id === (where.id as { not: string }).not) continue;
+              }
+              return t;
+            }
+            return null;
+          }),
+          findUnique: vi.fn(async ({ where }: { where: { id: string } }) => dbTasks.get(where.id) ?? null),
+          updateMany: vi.fn(async ({ where, data }: { where: Record<string, unknown>; data: Partial<PassUpdateTask> }) => {
+            const current = dbTasks.get(where.id as string);
+            if (!current) return { count: 0 };
+            if (Array.isArray(where.OR)) {
+              const matchesOr = where.OR.some((cond: Record<string, unknown>) => {
+                if (cond.status && current.status !== cond.status) return false;
+                if (cond.nextRetryAt && typeof cond.nextRetryAt === 'object' && 'lte' in (cond.nextRetryAt as Record<string, unknown>)) {
+                  if (current.nextRetryAt > (cond.nextRetryAt as { lte: Date }).lte) return false;
+                }
+                if (cond.lockedAt && typeof cond.lockedAt === 'object' && 'lte' in (cond.lockedAt as Record<string, unknown>)) {
+                  if (!current.lockedAt || current.lockedAt > (cond.lockedAt as { lte: Date }).lte) return false;
+                }
+                return true;
+              });
+              if (!matchesOr) return { count: 0 };
+            }
+            if (where.status && current.status !== where.status) return { count: 0 };
+            if (where.lockedBy && current.lockedBy !== where.lockedBy) return { count: 0 };
+            const updated = { ...current, ...data };
+            dbTasks.set(current.id, updated as PassUpdateTask);
+            return { count: 1 };
+          }),
+        },
+      } as unknown as PrismaService;
+
+      const statefulService = new PassUpdateWorkerService(statefulPrisma, configService);
+
+      const completedTask = createMockTask({ id: 'task-done', status: PassUpdateStatus.COMPLETED });
+      dbTasks.set(completedTask.id, completedTask);
+      const resCompleted = await statefulService.processSingleTask(completedTask);
+      expect(resCompleted).toBe(false);
+
+      const futureTask = createMockTask({
+        id: 'task-future',
+        status: PassUpdateStatus.PENDING,
+        nextRetryAt: new Date(Date.now() + 60000),
+      });
+      dbTasks.set(futureTask.id, futureTask);
+      statefulService.registerDispatcher(vi.fn().mockResolvedValue(undefined));
+      const resFuture = await statefulService.processSingleTask(futureTask);
+      expect(resFuture).toBe(false);
     });
   });
 
@@ -224,8 +345,8 @@ describe('PassUpdateWorkerService', () => {
 
       expect(processedCount).toBe(1);
       expect(dispatcher).toHaveBeenCalledWith(mockPassId);
-      expect(prisma.passUpdateTask.update).toHaveBeenCalledWith({
-        where: { id: staleTask.id },
+      expect(prisma.passUpdateTask.updateMany).toHaveBeenCalledWith({
+        where: expect.objectContaining({ id: staleTask.id }),
         data: expect.objectContaining({
           status: PassUpdateStatus.COMPLETED,
         }),

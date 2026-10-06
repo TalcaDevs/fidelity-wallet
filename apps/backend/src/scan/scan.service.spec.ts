@@ -401,6 +401,7 @@ describe('ScanService', () => {
 
       expect(result.alreadyScanned).toBe(true);
       expect(prisma.stamp.create).not.toHaveBeenCalled();
+      expect(passesService.enqueuePassUpdate).not.toHaveBeenCalled();
     });
   });
 
@@ -444,6 +445,7 @@ describe('ScanService', () => {
     expect(result.method).toBe(ScanMethod.QR);
     expect(result.customer?.rut).toBe('12.***.*78-5');
     expect(passesService.notifyPassUpdate).toHaveBeenCalledWith(mockPassId);
+    expect(passesService.enqueuePassUpdate).toHaveBeenCalledWith(mockPassId, expect.anything());
 
     expect(scanCreateSpy).toHaveBeenCalledWith({
       data: {
@@ -558,6 +560,7 @@ describe('ScanService', () => {
       }),
     });
     expect(passesService.notifyPassUpdate).toHaveBeenCalledWith(mockPassId);
+    expect(passesService.enqueuePassUpdate).toHaveBeenCalledWith(mockPassId, expect.anything());
   });
 
   it('should throw ConflictException on REDEEM if concurrent process consumed stamps', async () => {
@@ -619,6 +622,7 @@ describe('ScanService', () => {
     expect(result.action).toBe(ScanActionType.REDEEM);
     expect(result.scanId).toBe('redeem-scan-prev');
     expect(passesService.notifyPassUpdate).not.toHaveBeenCalled();
+    expect(passesService.enqueuePassUpdate).not.toHaveBeenCalled();
   });
 
   it('should throw BadRequestException on REDEEM if active stamps < targetStamps', async () => {
