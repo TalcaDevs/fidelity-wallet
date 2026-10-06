@@ -2,6 +2,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import type { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
@@ -28,6 +29,14 @@ async function bootstrap() {
 
   // Prefijo global para todos los endpoints de la API
   app.setGlobalPrefix('api');
+
+  // Permite responder tanto en /health como en /api/health (sondas de Render, Docker o UptimeRobot)
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    if (req.path === '/health') {
+      req.url = '/api/health';
+    }
+    next();
+  });
 
   // Habilitar CORS restringido a orígenes permitidos
   const allowedOrigins = process.env.ALLOWED_ORIGINS
@@ -88,7 +97,7 @@ async function bootstrap() {
   }
 
   const port = process.env.PORT ?? 3000;
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 
   logger.log(`🚀 API REST ejecutándose en: http://localhost:${port}/api`);
 }
