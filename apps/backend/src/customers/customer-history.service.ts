@@ -117,10 +117,10 @@ export class CustomerHistoryService {
       ? await this.prisma.stamp.groupBy({
           by: ['consumedByScanId'],
           where: { consumedByScanId: { in: redeemIds } },
-          _count: { _all: true },
+          _sum: { amount: true },
         })
       : [];
-    const consumedByScan = new Map(consumed.map((c) => [c.consumedByScanId, c._count._all]));
+    const consumedByScan = new Map(consumed.map((c) => [c.consumedByScanId, c._sum?.amount ?? 0]));
 
     const staff = await this.users.lookup(
       scans.flatMap((s) => (s.createdByUserId ? [s.createdByUserId] : [])),

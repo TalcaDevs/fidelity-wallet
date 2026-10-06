@@ -13,7 +13,7 @@ import { PANEL_PAGE } from '../../../components/admin/panelStyles';
 const STEPS = ['Tipo', 'Información', 'Diseño', 'Detalles'] as const;
 const STEP_INDEX = { TYPE: 0, INFO: 1, DESIGN: 2, DETAILS: 3 } as const;
 
-const TYPE_LABEL = { STAMPS: 'Sellos / Visitas', POINTS: 'Puntos por compra', DUAL: 'Sellos y Puntos' } as const;
+const TYPE_LABEL = { STAMPS: 'Sellos / Visitas', POINTS: 'Puntos por compra' } as const;
 
 function Stepper({ current, onSelect }: { current: number; onSelect: (step: number) => void }) {
   return (
@@ -135,7 +135,7 @@ function CardEditorPage({ brandId }: { brandId: string }) {
         <div>
           <h1 ref={headingRef} className="scroll-mt-6 text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text break-words">{config.name || 'Tu tarjeta'}</h1>
           <p className="text-panel-muted text-sm sm:text-base mt-1">
-            {TYPE_LABEL[config.type]} · la tarjeta que tus clientes guardan en su billetera
+            {(config.stampsEnabled && config.pointsEnabled) ? 'Sellos y Puntos' : TYPE_LABEL[config.type]} · la tarjeta que tus clientes guardan en su billetera
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">

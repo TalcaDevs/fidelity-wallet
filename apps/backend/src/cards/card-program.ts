@@ -52,8 +52,7 @@ export interface CardView {
 }
 
 export function toCardView(program: CardProgramRow): CardView {
-  const isDual = program.stampsEnabled && program.pointsEnabled;
-  const type: CardType = isDual ? 'DUAL' : (program.type === 'POINTS' ? 'POINTS' : 'STAMPS');
+  const type: CardType = program.type === 'POINTS' ? 'POINTS' : 'STAMPS';
 
   return {
     programId: program.id,

@@ -47,10 +47,10 @@ const SOON: Pick<Option, 'title' | 'description'>[] = [
  * Al cambiar de tipo, una meta de sellos (10) no sirve como costo en puntos ni al revés: se
  * propone una equivalente (10 sellos ≈ 100 puntos) que el dueño ajusta en el paso siguiente.
  */
-function convertRewards(rewards: CardReward[], to: CardType, oldType: CardType): CardReward[] {
-  if (to === 'DUAL') return rewards;
+function convertRewards(rewards: CardReward[], to: CardType, oldType: CardType, isDual: boolean): CardReward[] {
+  if (isDual) return rewards;
   return rewards.map((r) => {
-    const currentCurrency = r.currency || (oldType === 'POINTS' ? 'POINTS' : 'STAMPS');
+    const currentCurrency = r.currency || oldType;
     if (currentCurrency === to) return { ...r, currency: to };
     return {
       ...r,
@@ -60,8 +60,8 @@ function convertRewards(rewards: CardReward[], to: CardType, oldType: CardType):
   });
 }
 
-function determineNewType(stamps: boolean, points: boolean): CardType {
-  if (stamps && points) return 'DUAL';
+function determineNewType(stamps: boolean, points: boolean, current: CardType): CardType {
+  if (stamps && points) return current;
   if (points) return 'POINTS';
   return 'STAMPS';
 }
@@ -76,8 +76,8 @@ function disabledReason(key: 'STAMPS' | 'POINTS', stampsEnabled: boolean, points
     if ((key === 'STAMPS' && !pointsEnabled) || (key === 'POINTS' && !stampsEnabled)) {
       return 'Debe haber al menos un modo activo.';
     }
-    // Si la tarjeta ya fue guardada con este modo y hay saldo activo, no se puede quitar
-    if (saved.typeLocked && (saved.type === 'DUAL' || saved.type === key)) {
+    // Si la tarjeta ya fue guardada y hay saldo, no se puede quitar la modalidad activa
+    if (saved.typeLocked && isCurrentlyEnabled) {
       return 'Tus clientes ya tienen saldo en esta modalidad: quitarla se los borraría.';
     }
   }
@@ -122,19 +122,13 @@ export function TypeStep({ editor }: { editor: CardEditor }) {
                 // Evitamos que queden ambos desactivados
                 if (!newStampsEnabled && !newPointsEnabled) return;
 
-                const newType = determineNewType(newStampsEnabled, newPointsEnabled);
+                const newType = determineNewType(newStampsEnabled, newPointsEnabled, config.type);
+                const currentType = config.type;
                 
-                const currentType = determineNewType(config.stampsEnabled, config.pointsEnabled);
-                let newRewards = config.rewards;
-                if (newType !== 'DUAL') {
-                  newRewards = convertRewards(config.rewards, newType, currentType);
-                }
+                const newRewards = convertRewards(config.rewards, newType, currentType, newStampsEnabled && newPointsEnabled);
 
                 let newWelcomeBalance = config.welcomeBalance;
-                const currentPrimary = currentType === 'POINTS' ? 'POINTS' : 'STAMPS';
-                const newPrimary = newType === 'POINTS' ? 'POINTS' : 'STAMPS';
-                
-                if (currentPrimary !== newPrimary) {
+                if (currentType !== newType && !(newStampsEnabled && newPointsEnabled)) {
                   newWelcomeBalance = 0;
                 }
 

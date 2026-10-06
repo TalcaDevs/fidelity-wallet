@@ -96,7 +96,7 @@ export class CardService {
       await tx.loyaltyProgram.update({
         where: { id: program.id },
         data: {
-          type: config.type === 'DUAL' ? 'STAMPS' : config.type,
+          type: config.type,
           stampsEnabled: config.stampsEnabled,
           pointsEnabled: config.pointsEnabled,
           name: config.name,

@@ -1082,24 +1082,37 @@ export class ScanService {
 
       await this.passesService.enqueuePassUpdate(pass.id, tx);
 
-      return {
-        success: true,
-        alreadyScanned: false,
-        action: ScanActionType.REDEEM,
-        method,
-        passId: pass.id,
-        activeStamps,
-        activePoints,
-        targetStamps: promotion.targetStamps,
-        rewardUnlocked: availablePromotions.some((p) => p.canRedeem),
-        rewardName: promotion.rewardName,
-        availablePromotions,
-        nextExpiryAt,
-        scanId: scan.id,
-        consumedStampsCount: promotion.targetStamps,
-        customer: maskedCustomer,
-        message: `Premio "${promotion.rewardName}" canjeado exitosamente`,
-      };
+        const remaining = promotion.currency === 'POINTS' ? activePoints : activeStamps;
+        const rewardStr = promotion.currency === 'POINTS' ? (remaining === 1 ? 'punto' : 'puntos') : (remaining === 1 ? 'sello' : 'sellos');
+        const nextReward = availablePromotions.find((p) => p.canRedeem);
+        
+        let message = `Premio "${promotion.rewardName}" canjeado exitosamente`;
+        if (remaining > 0) {
+          if (nextReward) {
+            message = `Premio canjeado. ¡Aún le quedan ${remaining} ${rewardStr} para otro premio!`;
+          } else {
+            message = `Premio canjeado. Le quedan ${remaining} ${rewardStr}.`;
+          }
+        }
+
+        return {
+          success: true,
+          alreadyScanned: false,
+          action: ScanActionType.REDEEM,
+          method,
+          passId: pass.id,
+          activeStamps,
+          activePoints,
+          targetStamps: promotion.targetStamps,
+          rewardUnlocked: availablePromotions.some((p) => p.canRedeem),
+          rewardName: promotion.rewardName,
+          availablePromotions,
+          nextExpiryAt,
+          scanId: scan.id,
+          consumedStampsCount: promotion.targetStamps,
+          customer: maskedCustomer,
+          message,
+        };
     });
   }
 }

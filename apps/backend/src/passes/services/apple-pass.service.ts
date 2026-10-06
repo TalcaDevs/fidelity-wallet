@@ -106,7 +106,7 @@ export class ApplePassService {
             ? [{ key: 'customer', label: 'TITULAR', value: data.customerLabel }]
             : []),
           ...(details.fields.includes('PROGRESS')
-            ? [{ key: 'status', label: 'ESTADO', value: statusText(card, data.rewardCurrency === 'POINTS' ? data.activePoints : data.activeStamps, data.targetStamps) }]
+            ? [{ key: 'status', label: 'ESTADO', value: statusText(card, data.rewardCurrency === 'POINTS' ? data.activePoints : data.activeStamps, data.targetStamps, data.rewardCurrency) }]
             : []),
         ],
         backFields,

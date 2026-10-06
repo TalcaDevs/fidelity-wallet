@@ -190,7 +190,10 @@ export function ScanRedeemSuccess({ result, onReset }: { result: ScanResult, onR
         </svg>
       </div>
       <h2 className="text-3xl sm:text-4xl font-extrabold mb-2">¡Premio entregado!</h2>
-      <p className="text-panel-muted text-xl font-medium mb-5">Cliente {result.customerLabel}</p>
+      <p className="text-panel-muted text-xl font-medium mb-1">Cliente {result.customerLabel}</p>
+      {result.message && (
+        <p className="text-panel-text text-lg font-bold mb-5 max-w-sm">{result.message}</p>
+      )}
       
       <button onClick={onReset} className="w-full max-w-sm py-5 bg-panel-soft hover:bg-panel-border/60 rounded-2xl font-bold text-xl transition-colors">
         Escanear otro

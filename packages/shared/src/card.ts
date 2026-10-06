@@ -1,8 +1,8 @@
 // Contrato de la tarjeta de la marca (editor /admin/card, pase de Google Wallet, landing /join).
 // Una tarjeta por marca: sellos por visita o puntos por dinero gastado.
 
-export type CardType = 'STAMPS' | 'POINTS' | 'DUAL';
-export const CARD_TYPES: readonly CardType[] = ['STAMPS', 'POINTS', 'DUAL'];
+export type CardType = 'STAMPS' | 'POINTS';
+export const CARD_TYPES: readonly CardType[] = ['STAMPS', 'POINTS'];
 
 export const DEFAULT_PESOS_PER_POINT = 1000;
 export const PESOS_PER_POINT_MIN = 1;
@@ -630,12 +630,10 @@ function typeProblems(config: Record<string, unknown>, pointsEnabled: boolean): 
     problems.push('Debes habilitar al menos una modalidad (sellos o puntos)');
   }
 
-  if (type === 'POINTS' && (stamps || !points)) {
+  if (type === 'POINTS' && !points) {
     problems.push('La modalidad principal no coincide con las banderas habilitadas');
-  } else if (type === 'STAMPS' && (!stamps || points)) {
+  } else if (type === 'STAMPS' && !stamps) {
     problems.push('La modalidad principal no coincide con las banderas habilitadas');
-  } else if (type === 'DUAL' && (!stamps || !points)) {
-    problems.push('La modalidad DUAL requiere que ambas banderas estén habilitadas');
   }
 
   if (points && !pointsEnabled) {

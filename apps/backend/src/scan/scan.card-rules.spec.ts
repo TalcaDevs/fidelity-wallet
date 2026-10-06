@@ -231,7 +231,7 @@ describe('ScanService: reglas de la tarjeta', () => {
     beforeEach(() => {
       program = {
         ...program,
-        type: 'DUAL',
+        type: 'STAMPS',
         stampsEnabled: true,
         pointsEnabled: true,
         dailyStampLimit: false, // Usaremos el cooldown regular de 30 min (STAMP_COOLDOWN_MINUTES="30")
