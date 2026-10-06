@@ -15,6 +15,12 @@ interface CachedToken {
   expiresAt: number;
 }
 
+export interface UpdateLoyaltyObjectResult {
+  success: boolean;
+  notFound?: boolean;
+  error?: string;
+}
+
 @Injectable()
 export class GoogleWalletService {
   private readonly logger = new Logger(GoogleWalletService.name);
@@ -69,22 +75,33 @@ export class GoogleWalletService {
   }
 
   /** Saldo, textos e imagen del pase de un cliente. 404 = el cliente aún no lo guardó. */
-  public async updateLoyaltyObject(data: PassData): Promise<void> {
+  public async updateLoyaltyObject(data: PassData): Promise<UpdateLoyaltyObjectResult> {
     const { passId, activeStamps } = data;
     const accessToken = await this.liveAccessToken(`pass ${passId} points updated to ${activeStamps}`);
-    if (!accessToken) return;
+    if (!accessToken) {
+      if (this.isMockAllowed()) {
+        return { success: true };
+      }
+      return {
+        success: false,
+        error: !this.hasCredentials()
+          ? 'Las credenciales de Google Wallet no están configuradas'
+          : 'Could not obtain OAuth2 token for Google Wallet',
+      };
+    }
 
     try {
       const resourceId = this.resolveResourceId(passId);
       const payload = buildObjectState(this.withPublicPassImages(data), this.baseUrl());
       const res = await this.executePatchRequest(resourceId, payload, accessToken);
 
-      await this.handlePatchResponse(res, passId, activeStamps);
+      return await this.handlePatchResponse(res, passId, activeStamps);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(
         `[Google Wallet API] Error updating loyaltyObject for pass ${passId}: ${msg}`,
       );
+      return { success: false, error: msg };
     }
   }
 
@@ -333,24 +350,25 @@ export class GoogleWalletService {
     res: Response,
     passId: string,
     activeStamps: number,
-  ): Promise<void> {
+  ): Promise<UpdateLoyaltyObjectResult> {
     if (res.ok) {
       this.logger.log(
         `[Google Wallet API] Successfully patched loyaltyObject for pass ${passId} (stamps: ${activeStamps})`,
       );
-      return;
+      return { success: true };
     }
 
     if (res.status === 404) {
       this.logger.debug(
         `[Google Wallet API] LoyaltyObject not found (404) for pass ${passId}. User has likely not saved it to wallet yet.`,
       );
-      return;
+      return { success: true, notFound: true };
     }
 
     const errBody = await res.text().catch(() => '');
     this.logger.warn(
       `[Google Wallet API] Failed to patch pass ${passId} (${res.status}): ${errBody}`,
     );
+    return { success: false, error: `Google Wallet API error (${res.status}): ${errBody}` };
   }
 }

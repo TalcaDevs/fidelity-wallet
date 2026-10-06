@@ -8,8 +8,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma, type LoyaltyProgram, type Pass } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { PassesService, passCustomerLabel } from './passes.service.js';
+import type { ConfigService } from '@nestjs/config';
 import { ApplePassService } from './services/apple-pass.service.js';
 import { GoogleWalletService } from './services/google-wallet.service.js';
+import { PassUpdateWorkerService } from './services/pass-update-worker.service.js';
 
 describe('PassesService', () => {
   let service: PassesService;
@@ -100,6 +102,37 @@ describe('PassesService', () => {
       },
       promotion: { findFirst: vi.fn(), findMany: vi.fn() },
       stamp: { count: vi.fn(), findFirst: vi.fn() },
+      passUpdateTask: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findUnique: vi.fn().mockImplementation(({ where }: { where: { id: string } }) =>
+          Promise.resolve({
+            id: where?.id ?? 'task-1',
+            passId: mockPassId,
+            status: 'PENDING',
+            attempts: 0,
+            maxAttempts: 5,
+          }),
+        ),
+        findMany: vi.fn().mockResolvedValue([]),
+        create: vi.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+          Promise.resolve({
+            id: 'task-1',
+            attempts: 0,
+            maxAttempts: 5,
+            ...data,
+          }),
+        ),
+        update: vi.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+          Promise.resolve({
+            id: 'task-1',
+            attempts: 0,
+            maxAttempts: 5,
+            ...data,
+          }),
+        ),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
     } as unknown as PrismaService;
 
     applePassService = {
@@ -109,12 +142,26 @@ describe('PassesService', () => {
 
     googleWalletService = {
       generateSaveUrl: vi.fn(() => 'https://pay.google.com/gp/v/save/mock-jwt'),
-      updateLoyaltyObject: vi.fn().mockResolvedValue(undefined),
+      updateLoyaltyObject: vi.fn().mockResolvedValue({ success: true }),
       upsertLoyaltyClass: vi.fn<GoogleWalletService['upsertLoyaltyClass']>()
         .mockResolvedValue(undefined),
     } as unknown as GoogleWalletService;
 
-    service = new PassesService(prisma, applePassService, googleWalletService);
+    const mockConfigService = {
+      get: vi.fn().mockImplementation((key: string) => {
+        if (key === 'NODE_ENV') return 'test';
+        return undefined;
+      }),
+    } as unknown as ConfigService;
+
+    const passUpdateWorkerService = new PassUpdateWorkerService(prisma, mockConfigService);
+
+    service = new PassesService(
+      prisma,
+      applePassService,
+      googleWalletService,
+      passUpdateWorkerService,
+    );
   });
 
   afterEach(() => {
@@ -436,6 +483,49 @@ describe('PassesService', () => {
       expect(googleWalletService.updateLoyaltyObject).not.toHaveBeenCalled();
     });
 
+    it('returns early in enqueuePassUpdate when pass does not exist', async () => {
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(null);
+
+      await expect(service.enqueuePassUpdate('non-existent-pass')).resolves.toBeUndefined();
+    });
+
+    it('catches P2003 foreign key violation in notifyPassUpdate and does not throw', async () => {
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(createMockPass() as any);
+      const p2003Error = new Prisma.PrismaClientKnownRequestError('Foreign key constraint failed', {
+        code: 'P2003',
+        clientVersion: '6.0.0',
+      });
+      const updateWorker = (service as any).updateWorker;
+      vi.spyOn(updateWorker, 'enqueue').mockRejectedValue(p2003Error);
+
+      await expect(service.notifyPassUpdate(mockPassId)).resolves.toBeUndefined();
+    });
+
+    it('catches database error in notifyPassUpdate and does not produce unhandled rejection', async () => {
+      vi.spyOn(prisma.pass, 'findUnique').mockRejectedValue(new Error('DB connection pool exhausted'));
+      await expect(service.notifyPassUpdate(mockPassId)).resolves.toBeUndefined();
+    });
+
+    it('catches generic enqueue error in notifyPassUpdate and does not produce unhandled rejection', async () => {
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(createMockPass() as any);
+      const updateWorker = (service as any).updateWorker;
+      vi.spyOn(updateWorker, 'enqueue').mockRejectedValue(new Error('Transient database error'));
+
+      await expect(service.notifyPassUpdate(mockPassId)).resolves.toBeUndefined();
+    });
+
+    it('catches P2003 foreign key violation in enqueuePassUpdate and does not throw', async () => {
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(createMockPass() as any);
+      const p2003Error = new Prisma.PrismaClientKnownRequestError('Foreign key constraint failed', {
+        code: 'P2003',
+        clientVersion: '6.0.0',
+      });
+      const updateWorker = (service as any).updateWorker;
+      vi.spyOn(updateWorker, 'enqueue').mockRejectedValue(p2003Error);
+
+      await expect(service.enqueuePassUpdate(mockPassId)).resolves.toBeUndefined();
+    });
+
     it('serializes rapid consecutive updates for the same pass in FIFO order', async () => {
       const executionOrder: string[] = [];
 
@@ -447,6 +537,7 @@ describe('PassesService', () => {
 
       vi.spyOn(googleWalletService, 'updateLoyaltyObject').mockImplementation(async (data) => {
         executionOrder.push(`update-${data.activeStamps}`);
+        return { success: true };
       });
 
       // Disparamos dos actualizaciones simultáneas para el mismo passId

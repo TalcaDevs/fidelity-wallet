@@ -4,6 +4,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -174,6 +175,7 @@ function toCashierCustomer(customer: Customer | null): MaskedCustomerDto | undef
 
 @Injectable()
 export class ScanService {
+  private readonly logger = new Logger(ScanService.name);
   private readonly stampCooldownMs: number;
   private readonly ownerMaxStamps: number;
 
@@ -317,7 +319,11 @@ export class ScanService {
         options,
       );
       if (!result.alreadyScanned) {
-        void this.passesService.notifyPassUpdate(pass.id);
+        void this.passesService
+          .notifyPassUpdate(pass.id)
+          .catch((err) =>
+            this.logger.warn(`Error al notificar actualización de pase en segundo plano: ${err}`),
+          );
       }
       return result;
     }
@@ -339,7 +345,11 @@ export class ScanService {
         method,
       );
       if (!result.alreadyScanned) {
-        void this.passesService.notifyPassUpdate(pass.id);
+        void this.passesService
+          .notifyPassUpdate(pass.id)
+          .catch((err) =>
+            this.logger.warn(`Error al notificar actualización de pase en segundo plano: ${err}`),
+          );
       }
       return result;
     }
@@ -393,7 +403,11 @@ export class ScanService {
       ScanMethod.PANEL,
       options,
     );
-    void this.passesService.notifyPassUpdate(pass.id);
+    void this.passesService
+      .notifyPassUpdate(pass.id)
+      .catch((err) =>
+        this.logger.warn(`Error al notificar actualización de pase desde panel: ${err}`),
+      );
 
     return {
       scanId: result.scanId!,
@@ -864,6 +878,7 @@ export class ScanService {
 
       const createdScan = { id: scan.id, method };
       await this.auditOwnerStamp(tx, { passId: pass.id, merchantId: merchant.id, callerUserId, scan: createdScan, options, overridesCooldown });
+      await this.passesService.enqueuePassUpdate(pass.id, tx);
       return this.stampResponse(tx, { ...responseContext, scan: createdScan });
     });
   }
@@ -1052,6 +1067,8 @@ export class ScanService {
 
       const { activeStamps, activePoints, nextExpiryAt } = await this.readBalance(tx, pass.id, now);
       const availablePromotions = toPromotionOptions(activePromotions, activeStamps, activePoints);
+
+      await this.passesService.enqueuePassUpdate(pass.id, tx);
 
       return {
         success: true,

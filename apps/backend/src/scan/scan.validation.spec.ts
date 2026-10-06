@@ -57,10 +57,24 @@ describe('ScanService: validación en caja', () => {
   let role: 'OWNER' | 'STAFF';
   let latestStamp: { id: string; createdAt: Date; method: ScanMethod; type: ScanType } | null;
 
+  let passesService: { notifyPassUpdate: ReturnType<typeof vi.fn>; enqueuePassUpdate: ReturnType<typeof vi.fn> };
+  let txClient: {
+    $queryRaw: ReturnType<typeof vi.fn>;
+    scan: { findFirst: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn> };
+    stamp: {
+      createMany: ReturnType<typeof vi.fn>;
+      count: ReturnType<typeof vi.fn>;
+      findFirst: ReturnType<typeof vi.fn>;
+      create: ReturnType<typeof vi.fn>;
+    };
+    scanReceipt: { create: ReturnType<typeof vi.fn> };
+    auditLog: { create: ReturnType<typeof vi.fn> };
+  };
+
   const build = (values?: Record<string, string>) =>
     new ScanService(
       prisma,
-      { notifyPassUpdate: vi.fn().mockResolvedValue(undefined) } as unknown as PassesService,
+      passesService as unknown as PassesService,
       config(values),
       limiter,
       receipts as unknown as ReceiptStorageService,
@@ -70,6 +84,28 @@ describe('ScanService: validación en caja', () => {
   beforeEach(() => {
     role = 'STAFF';
     latestStamp = null;
+    passesService = {
+      notifyPassUpdate: vi.fn().mockResolvedValue(undefined),
+      enqueuePassUpdate: vi.fn().mockResolvedValue(undefined),
+    };
+    txClient = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      scan: {
+        findFirst: vi.fn(async () => latestStamp),
+        create: vi.fn().mockResolvedValue({ id: 'scan-1' }),
+      },
+      stamp: {
+        createMany: vi.fn(async function (this: { create: (args: unknown) => unknown }, { data }: { data: unknown[] }) {
+          for (const row of data) await this.create({ data: row });
+          return { count: data.length };
+        }),
+        count: vi.fn().mockResolvedValue(3),
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({ id: 'stamp-1' }),
+      },
+      scanReceipt: { create: vi.fn() },
+      auditLog: { create: vi.fn() },
+    };
     prisma = {
       merchant: {
         findUnique: vi.fn().mockResolvedValue({
@@ -120,7 +156,7 @@ describe('ScanService: validación en caja', () => {
       auditLog: { create: vi.fn() },
       brand: { findUnique: vi.fn().mockResolvedValue({ status: 'ACTIVE' }) },
       $queryRaw: vi.fn().mockResolvedValue([]),
-      $transaction: vi.fn((callback: (tx: unknown) => unknown) => callback(prisma)),
+      $transaction: vi.fn((callback: (tx: unknown) => unknown) => callback(txClient)),
     } as unknown as PrismaService;
     receipts = {
       uploadThen: vi.fn((_upload: unknown, persist: () => Promise<unknown>) => persist()),
@@ -208,9 +244,10 @@ describe('ScanService: validación en caja', () => {
       );
 
       expect(result.alreadyScanned).toBe(false);
-      expect(prisma.scan.create).toHaveBeenCalledWith({
+      expect(txClient.scan.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ method: ScanMethod.MANUAL, stampCount: 1 }),
       });
+      expect(passesService.enqueuePassUpdate).toHaveBeenCalledWith(passId, txClient);
     });
 
     it('rejects a token issued to another user', async () => {
@@ -232,7 +269,7 @@ describe('ScanService: validación en caja', () => {
         userId,
       );
 
-      expect(prisma.scan.create).toHaveBeenCalledWith({
+      expect(txClient.scan.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ purchaseAmount: 12500, note: 'Mesa 4' }),
       });
     });
@@ -276,8 +313,8 @@ describe('ScanService: validación en caja', () => {
       );
 
       expect(result.stampsAdded).toBe(4);
-      expect(prisma.stamp.create).toHaveBeenCalledTimes(4);
-      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+      expect(txClient.stamp.create).toHaveBeenCalledTimes(4);
+      expect(txClient.auditLog.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           actorType: 'OWNER',
           action: 'pass.stamps_added',
@@ -285,6 +322,7 @@ describe('ScanService: validación en caja', () => {
           reason: 'Compensación por reclamo',
         }),
       });
+      expect(passesService.enqueuePassUpdate).toHaveBeenCalledWith(passId, txClient);
     });
 
     it('lets the OWNER skip the cooldown only with a reason', async () => {
@@ -302,9 +340,10 @@ describe('ScanService: validación en caja', () => {
         userId,
       );
       expect(stamped.alreadyScanned).toBe(false);
-      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+      expect(txClient.auditLog.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ after: expect.objectContaining({ overridesCooldown: true }) }),
       });
+      expect(passesService.enqueuePassUpdate).toHaveBeenCalledWith(passId, txClient);
     });
 
     it('honors OWNER_MAX_STAMPS_PER_LOAD', () => {
@@ -331,7 +370,7 @@ describe('ScanService: validación en caja', () => {
       const [upload] = receipts.uploadThen.mock.calls[0] as [{ path: string; contentType: string }];
       expect(upload.path).toMatch(new RegExp(`^${brandId}/${passId}/[0-9a-f-]+\\.png$`));
       expect(upload.contentType).toBe('image/png');
-      expect(prisma.scanReceipt.create).toHaveBeenCalledWith({
+      expect(txClient.scanReceipt.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ scanId: 'scan-1', storagePath: upload.path, uploadedByUserId: userId }),
       });
       expect(receipts.remove).not.toHaveBeenCalled();
@@ -348,7 +387,7 @@ describe('ScanService: validación en caja', () => {
       );
 
       expect(result.alreadyScanned).toBe(true);
-      expect(prisma.scanReceipt.create).not.toHaveBeenCalled();
+      expect(txClient.scanReceipt.create).not.toHaveBeenCalled();
       expect(receipts.remove).toHaveBeenCalledTimes(1);
     });
 
@@ -380,24 +419,25 @@ describe('ScanService: validación en caja', () => {
       const result = await service.addStampsFromPanel(customerId, panel({ purchaseAmount: 9900 }), userId);
 
       expect(result).toMatchObject({ scanId: 'scan-1', stampsAdded: 2 });
-      expect(prisma.scan.create).toHaveBeenCalledWith({
+      expect(txClient.scan.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ method: ScanMethod.PANEL, merchantId, stampCount: 2, purchaseAmount: 9900 }),
       });
-      expect(prisma.stamp.create).toHaveBeenCalledTimes(2);
-      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+      expect(txClient.stamp.create).toHaveBeenCalledTimes(2);
+      expect(txClient.auditLog.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           action: 'pass.stamps_added',
           reason: 'Compra sin tarjeta',
           after: expect.objectContaining({ method: ScanMethod.PANEL }),
         }),
       });
+      expect(passesService.enqueuePassUpdate).toHaveBeenCalledWith(pass.id, txClient);
     });
 
     it('is only for the OWNER', async () => {
       role = 'STAFF';
 
       await expect(service.addStampsFromPanel(customerId, panel(), userId)).rejects.toThrow(ForbiddenException);
-      expect(prisma.scan.create).not.toHaveBeenCalled();
+      expect(txClient.scan.create).not.toHaveBeenCalled();
     });
 
     it('rejects a location of another brand', async () => {

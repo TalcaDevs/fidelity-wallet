@@ -177,10 +177,11 @@ model Pass {
   merchantId String         @db.Uuid
   merchant   Merchant       @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   passToken  String         @unique
-  scans      Scan[]
-  stamps     Stamp[]
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
+  scans       Scan[]
+  stamps      Stamp[]
+  updateTasks PassUpdateTask[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
   @@unique([customerId, programId])
   @@index([brandId])
@@ -443,4 +444,29 @@ enum PlanId {
   STARTER
   PRO
   BUSINESS
+}
+
+enum PassUpdateStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model PassUpdateTask {
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  passId      String           @db.Uuid
+  pass        Pass             @relation(fields: [passId], references: [id], onDelete: Cascade)
+  status      PassUpdateStatus @default(PENDING)
+  attempts    Int              @default(0)
+  maxAttempts Int              @default(5)
+  nextRetryAt DateTime         @default(now())
+  lastError   String?
+  lockedAt    DateTime?
+  lockedBy    String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([status, nextRetryAt])
+  @@index([passId])
 }
