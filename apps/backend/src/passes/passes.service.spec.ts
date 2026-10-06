@@ -100,7 +100,7 @@ describe('PassesService', () => {
         findMany: vi.fn<PrismaService['pass']['findMany']>().mockResolvedValue([]),
       },
       promotion: { findFirst: vi.fn(), findMany: vi.fn() },
-      stamp: { count: vi.fn(), findFirst: vi.fn() },
+      stamp: { count: vi.fn(), aggregate: vi.fn().mockResolvedValue({ _sum: { amount: 0 } }), findFirst: vi.fn() },
     } as unknown as PrismaService;
 
     applePassService = {
@@ -238,7 +238,7 @@ describe('PassesService', () => {
 
       vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue(ownerMembership as any);
 
-      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(2);
+      vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 2 } } as any);
       vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
 
       const result = await service.generatePass(
@@ -349,7 +349,7 @@ describe('PassesService', () => {
         createMockPass({ passToken: 'token-123' }) as any,
       );
       vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(createMockPromotion() as any);
-      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(0);
+      vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 0 } } as any);
       vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
 
       const urls = await service.getWalletUrlsForPass(mockPassId);
@@ -370,6 +370,7 @@ describe('PassesService', () => {
         },
         stamp: {
           count: vi.fn().mockResolvedValue(0),
+          aggregate: vi.fn().mockResolvedValue({ _sum: { amount: 0 } }),
           findFirst: vi.fn().mockResolvedValue(null),
         },
         loyaltyProgram: prisma.loyaltyProgram,
@@ -400,7 +401,7 @@ describe('PassesService', () => {
     it('should return Apple pass buffer when valid pass and promotion exist', async () => {
       vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(createMockPass() as any);
       vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(createMockPromotion() as any);
-      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(0);
+      vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 0 } } as any);
       vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
 
       const buffer = await service.getApplePassBuffer('token-abc');
@@ -413,7 +414,7 @@ describe('PassesService', () => {
     it('dispatches updateLoyaltyObject with passId, activeStamps and options', async () => {
       vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(createMockPass() as any);
       vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(createMockPromotion() as any);
-      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(3);
+      vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 3 } } as any);
       vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
 
       await service.notifyPassUpdate(mockPassId);
@@ -442,11 +443,11 @@ describe('PassesService', () => {
 
       vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(createMockPass() as any);
       vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(createMockPromotion() as any);
-      vi.spyOn(prisma.stamp, 'count')
-        .mockResolvedValueOnce(5)
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0);
+      vi.spyOn(prisma.stamp, 'aggregate')
+        .mockResolvedValueOnce({ _sum: { amount: 5 } } as any)
+        .mockResolvedValueOnce({ _sum: { amount: 0 } } as any)
+        .mockResolvedValueOnce({ _sum: { amount: 0 } } as any)
+        .mockResolvedValueOnce({ _sum: { amount: 0 } } as any);
 
       vi.spyOn(googleWalletService, 'updateLoyaltyObject').mockImplementation(async (data) => {
         executionOrder.push(`update-${data.activeStamps}`);
@@ -469,7 +470,7 @@ describe('PassesService', () => {
         createMockPromotion({ id: 'promo-almuerzo', targetStamps: 10, rewardName: 'Almuerzo' }),
       ] as any);
 
-      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(6);
+      vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 6 } } as any);
 
       await service.notifyPassUpdate(mockPassId);
 

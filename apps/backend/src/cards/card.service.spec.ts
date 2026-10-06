@@ -146,10 +146,10 @@ describe('CardService', () => {
       });
       expect(prisma.promotion.update).toHaveBeenCalledWith({
         where: { id: rewardA },
-        data: { name: 'Café gratis', rewardName: 'Café gratis', targetStamps: 8, isActive: true },
+        data: { name: 'Café gratis', rewardName: 'Café gratis', targetStamps: 8, isActive: true, currency: 'STAMPS' },
       });
       expect(prisma.promotion.create).toHaveBeenCalledWith({
-        data: { name: 'Torta', rewardName: 'Torta', targetStamps: 12, isActive: true, programId },
+        data: { name: 'Torta', rewardName: 'Torta', targetStamps: 12, isActive: true, programId, currency: 'STAMPS' },
       });
       // B no se canjeó nunca: se borra.
       expect(prisma.promotion.delete).toHaveBeenCalledWith({ where: { id: rewardB } });

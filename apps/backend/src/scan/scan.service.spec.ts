@@ -126,10 +126,13 @@ describe('ScanService', () => {
           return { count: data.length };
         }),
         count: vi.fn().mockResolvedValue(5),
+        aggregate: vi.fn().mockResolvedValue({ _sum: { amount: 5 } }),
         findMany: vi.fn(),
         findFirst: vi.fn(),
         create: vi.fn(),
-        updateMany: vi.fn(),
+        updateMany: vi.fn(async (args) => {
+          return { count: args?.where?.id?.in?.length || 0 };
+        }),
       },
       $queryRaw: vi.fn().mockResolvedValue([]),
       $transaction: vi.fn((callback) => callback(prisma)),
@@ -191,9 +194,9 @@ describe('ScanService', () => {
     const stubSuccessfulStamp = () => {
       vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
       vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
-      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-l' } as any);
-      vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-l' } as any);
-      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(1);
+      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-l', amount: 1 } as any);
+      vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-l', amount: 1 } as any);
+      vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 1 } } as any);
       vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
     };
 
@@ -316,7 +319,7 @@ describe('ScanService', () => {
       createdAt: thirtySecondsAgo,
     } as any);
 
-    vi.spyOn(prisma.stamp, 'count').mockResolvedValue(3);
+    vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 3 } } as any);
     vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue({
       expiresAt: new Date(Date.now() + 86400000),
     } as any);
@@ -353,7 +356,7 @@ describe('ScanService', () => {
       } as any);
 
     beforeEach(() => {
-      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(2);
+      vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 2 } } as any);
       vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
     });
 
@@ -376,8 +379,8 @@ describe('ScanService', () => {
     it('should allow a new stamp once 30 minutes have passed', async () => {
       vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
       lastStampAt(31);
-      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-new-2' } as any);
-      vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-new-2' } as any);
+      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-new-2', amount: 1 } as any);
+      vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-new-2', amount: 1 } as any);
 
       const result = await service.processScan(
         { passToken: mockToken, action: ScanActionType.STAMP, merchantId: mockMerchantId },
@@ -423,8 +426,8 @@ describe('ScanService', () => {
 
     const mockCreatedScan = { id: 'scan-new-1', passId: mockPassId };
     const scanCreateSpy = vi.spyOn(prisma.scan, 'create').mockResolvedValue(mockCreatedScan as any);
-    const stampCreateSpy = vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-new-1' } as any);
-    vi.spyOn(prisma.stamp, 'count').mockResolvedValue(5);
+    const stampCreateSpy = vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-new-1', amount: 1 } as any);
+    vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 5 } } as any);
     vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
 
     const result = await service.processScan(
@@ -480,9 +483,9 @@ describe('ScanService', () => {
     } as any);
     vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
     vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
-    vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-1' } as any);
-    const stampCreateSpy = vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-1' } as any);
-    vi.spyOn(prisma.stamp, 'count').mockResolvedValue(1);
+    vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-1', amount: 1 } as any);
+    const stampCreateSpy = vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-1', amount: 1 } as any);
+    vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 1 } } as any);
 
     await service.processScan(
       {
@@ -512,18 +515,18 @@ describe('ScanService', () => {
     vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null); // No recent redeem
 
     const mockStamps = [
-      { id: 'stamp-1', earnedAt: new Date('2026-01-01T00:00:00Z') }, // oldest
-      { id: 'stamp-2', earnedAt: new Date('2026-01-02T00:00:00Z') },
-      { id: 'stamp-3', earnedAt: new Date('2026-01-03T00:00:00Z') },
-      { id: 'stamp-4', earnedAt: new Date('2026-01-04T00:00:00Z') },
-      { id: 'stamp-5', earnedAt: new Date('2026-01-05T00:00:00Z') },
+      { id: 'stamp-1', earnedAt: new Date('2026-01-01T00:00:00Z'), amount: 1 }, // oldest
+      { id: 'stamp-2', earnedAt: new Date('2026-01-02T00:00:00Z'), amount: 1 },
+      { id: 'stamp-3', earnedAt: new Date('2026-01-03T00:00:00Z'), amount: 1 },
+      { id: 'stamp-4', earnedAt: new Date('2026-01-04T00:00:00Z'), amount: 1 },
+      { id: 'stamp-5', earnedAt: new Date('2026-01-05T00:00:00Z'), amount: 1 },
     ];
 
     vi.spyOn(prisma.stamp, 'findMany').mockResolvedValue(mockStamps as any);
-    vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'redeem-scan-1' } as any);
+    vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'redeem-scan-1', amount: 1 } as any);
     const stampUpdateManySpy = vi.spyOn(prisma.stamp, 'updateMany').mockResolvedValue({ count: 3 } as any);
     vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
-    vi.spyOn(prisma.stamp, 'count').mockResolvedValue(2);
+    vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 2 } } as any);
 
     const result = await service.processScan(
       {
@@ -572,13 +575,13 @@ describe('ScanService', () => {
     vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
 
     const mockStamps = [
-      { id: 'stamp-1', earnedAt: new Date('2026-01-01T00:00:00Z') },
-      { id: 'stamp-2', earnedAt: new Date('2026-01-02T00:00:00Z') },
-      { id: 'stamp-3', earnedAt: new Date('2026-01-03T00:00:00Z') },
+      { id: 'stamp-1', earnedAt: new Date('2026-01-01T00:00:00Z'), amount: 1 },
+      { id: 'stamp-2', earnedAt: new Date('2026-01-02T00:00:00Z'), amount: 1 },
+      { id: 'stamp-3', earnedAt: new Date('2026-01-03T00:00:00Z'), amount: 1 },
     ];
 
     vi.spyOn(prisma.stamp, 'findMany').mockResolvedValue(mockStamps as any);
-    vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'redeem-scan-1' } as any);
+    vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'redeem-scan-1', amount: 1 } as any);
     // Concurrent transaction already consumed one stamp, so count = 2 instead of 3
     vi.spyOn(prisma.stamp, 'updateMany').mockResolvedValue({ count: 2 } as any);
 
@@ -606,7 +609,7 @@ describe('ScanService', () => {
       createdAt: twentySecondsAgo,
     } as any);
 
-    vi.spyOn(prisma.stamp, 'count').mockResolvedValue(0);
+    vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 0 } } as any);
 
     const result = await service.processScan(
       {
@@ -629,8 +632,8 @@ describe('ScanService', () => {
     vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
 
     vi.spyOn(prisma.stamp, 'findMany').mockResolvedValue([
-      { id: 'stamp-1' },
-      { id: 'stamp-2' },
+      { id: 'stamp-1', amount: 1 },
+      { id: 'stamp-2', amount: 1 },
     ] as any);
 
     await expect(
@@ -657,9 +660,9 @@ describe('ScanService', () => {
 
     it('should add a stamp without asking which promotion it belongs to', async () => {
       vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
-      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-new' } as any);
-      const stampCreateSpy = vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-new' } as any);
-      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(4);
+      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-new', amount: 1 } as any);
+      const stampCreateSpy = vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-new', amount: 1 } as any);
+      vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 4 } } as any);
       vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
 
       const result = await service.processScan(
@@ -683,11 +686,11 @@ describe('ScanService', () => {
 
     it('should redeem the promotion the customer chose, consuming only its target from the shared balance', async () => {
       vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
-      const mockStamps = [1, 2, 3, 4].map((n) => ({ id: `stamp-${n}`, earnedAt: new Date(`2026-01-0${n}T00:00:00Z`) }));
+      const mockStamps = [1, 2, 3, 4].map((n) => ({ id: `stamp-${n}`, earnedAt: new Date(`2026-01-0${n}T00:00:00Z`), amount: 1 }));
       vi.spyOn(prisma.stamp, 'findMany').mockResolvedValue(mockStamps as any);
-      const scanCreateSpy = vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'redeem-small' } as any);
+      const scanCreateSpy = vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'redeem-small', amount: 1 } as any);
       const updateManySpy = vi.spyOn(prisma.stamp, 'updateMany').mockResolvedValue({ count: 3 } as any);
-      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(1);
+      vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 1 } } as any);
       vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
 
       const result = await service.processScan(
@@ -711,7 +714,7 @@ describe('ScanService', () => {
 
     it('should reject redeeming a promotion the balance does not cover', async () => {
       vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
-      vi.spyOn(prisma.stamp, 'findMany').mockResolvedValue([{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }] as any);
+      vi.spyOn(prisma.stamp, 'findMany').mockResolvedValue([{ id: 'a', amount: 1 }, { id: 'b', amount: 1 }, { id: 'c', amount: 1 }, { id: 'd', amount: 1 }] as any);
 
       await expect(
         service.processScan(
@@ -751,9 +754,9 @@ describe('ScanService', () => {
   describe('manual lookup by customer (camera fallback)', () => {
     const stampTheNextOne = () => {
       vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
-      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-manual-1' } as any);
-      vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-manual-1' } as any);
-      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(2);
+      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-manual-1', amount: 1 } as any);
+      vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-manual-1', amount: 1 } as any);
+      vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 2 } } as any);
       vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
     };
 
@@ -850,9 +853,9 @@ describe('ScanService', () => {
     it('queries the cooldown against the last STAMP_ADDED of this pass in any location of the brand', async () => {
       vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
       vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
-      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-q' } as any);
-      vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-q' } as any);
-      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(1);
+      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-q', amount: 1 } as any);
+      vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-q', amount: 1 } as any);
+      vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 1 } } as any);
       vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
 
       await service.processScan(
@@ -864,7 +867,7 @@ describe('ScanService', () => {
         where: { passId: mockPassId, type: ScanType.STAMP_ADDED, method: { not: ScanMethod.WELCOME }, stampCount: { gt: 0 } },
         orderBy: { createdAt: 'desc' },
       });
-      expect(prisma.stamp.count).toHaveBeenCalledWith({
+      expect(prisma.stamp.aggregate).toHaveBeenCalledWith({ _sum: { amount: true },
         where: {
           passId: mockPassId,
           consumedAt: null,
@@ -877,9 +880,9 @@ describe('ScanService', () => {
     it('ignores promotionId on STAMP: the stamp goes to the pass balance', async () => {
       vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
       vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
-      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-p' } as any);
-      const stampCreate = vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-p' } as any);
-      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(1);
+      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-p', amount: 1 } as any);
+      const stampCreate = vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-p', amount: 1 } as any);
+      vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 1 } } as any);
       vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
 
       await service.processScan(
@@ -903,9 +906,9 @@ describe('ScanService', () => {
         type: ScanType.STAMP_ADDED,
         createdAt: new Date(Date.now() + 1000), // incluso "en el futuro" por desfase de reloj
       } as any);
-      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-0' } as any);
-      vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-0' } as any);
-      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(2);
+      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-0', amount: 1 } as any);
+      vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-0', amount: 1 } as any);
+      vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 2 } } as any);
       vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
 
       const result = await noCooldown.processScan(
@@ -920,9 +923,9 @@ describe('ScanService', () => {
     it('never exposes the internal customer id to the cashier', async () => {
       vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
       vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
-      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-m' } as any);
-      vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-m' } as any);
-      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(1);
+      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-m', amount: 1 } as any);
+      vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-m', amount: 1 } as any);
+      vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 1 } } as any);
       vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
 
       const result = await service.processScan(
@@ -951,14 +954,14 @@ describe('ScanService', () => {
           where.type === ScanType.REWARD_REDEEMED && where.promotionId === 'promo-a'
             ? { id: 'redeem-a', promotionId: 'promo-a', createdAt: new Date(Date.now() - 10_000) }
             : null) as any);
-        vi.spyOn(prisma.stamp, 'count').mockResolvedValue(10);
+        vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 10 } } as any);
         vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
       });
 
       it('redeems B right after A (it is not a duplicate) and consumes its stamps', async () => {
-        const stamps = Array.from({ length: 10 }, (_, i) => ({ id: `s${i}` }));
+        const stamps = Array.from({ length: 10 }, (_, i) => ({ id: `s${i}`, amount: 1 }));
         vi.spyOn(prisma.stamp, 'findMany').mockResolvedValue(stamps as any);
-        vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'redeem-b' } as any);
+        vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'redeem-b', amount: 1 } as any);
         const updateMany = vi.spyOn(prisma.stamp, 'updateMany').mockResolvedValue({ count: 5 } as any);
 
         const result = await service.processScan(
@@ -989,10 +992,10 @@ describe('ScanService', () => {
     it('redeems through manual entry by phone', async () => {
       vi.spyOn(prisma.pass, 'findFirst').mockResolvedValue(mockPass as any);
       vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
-      vi.spyOn(prisma.stamp, 'findMany').mockResolvedValue([1, 2, 3, 4, 5].map((n) => ({ id: `s${n}` })) as any);
-      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'redeem-phone' } as any);
+      vi.spyOn(prisma.stamp, 'findMany').mockResolvedValue([1, 2, 3, 4, 5].map((n) => ({ id: `s${n}`, amount: 1 })) as any);
+      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'redeem-phone', amount: 1 } as any);
       vi.spyOn(prisma.stamp, 'updateMany').mockResolvedValue({ count: 5 } as any);
-      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(0);
+      vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 0 } } as any);
       vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
 
       const result = await service.processScan(
@@ -1040,9 +1043,9 @@ describe('ScanService', () => {
       vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
       vi.spyOn(prisma.pass, 'findFirst').mockResolvedValue(mockPass as any);
       vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
-      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-audit-1' } as any);
-      vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-audit-1' } as any);
-      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(1);
+      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'scan-audit-1', amount: 1 } as any);
+      vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'stamp-audit-1', amount: 1 } as any);
+      vi.spyOn(prisma.stamp, 'aggregate').mockResolvedValue({ _sum: { amount: 1 } } as any);
       vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
     });
 
@@ -1069,7 +1072,7 @@ describe('ScanService', () => {
     });
 
     it('records method QR when passToken is provided (REDEEM)', async () => {
-      const stamps = Array.from({ length: 5 }, (_, i) => ({ id: `s${i}` }));
+      const stamps = Array.from({ length: 5 }, (_, i) => ({ id: `s${i}`, amount: 1 }));
       vi.spyOn(prisma.stamp, 'findMany').mockResolvedValue(stamps as any);
       vi.spyOn(prisma.stamp, 'updateMany').mockResolvedValue({ count: 5 } as any);
       const scanCreateSpy = vi.spyOn(prisma.scan, 'create');
@@ -1138,7 +1141,7 @@ describe('ScanService', () => {
     });
 
     it('records method MANUAL when searching manually with phone (REDEEM)', async () => {
-      const stamps = Array.from({ length: 5 }, (_, i) => ({ id: `s${i}` }));
+      const stamps = Array.from({ length: 5 }, (_, i) => ({ id: `s${i}`, amount: 1 }));
       vi.spyOn(prisma.stamp, 'findMany').mockResolvedValue(stamps as any);
       vi.spyOn(prisma.stamp, 'updateMany').mockResolvedValue({ count: 5 } as any);
       const scanCreateSpy = vi.spyOn(prisma.scan, 'create');

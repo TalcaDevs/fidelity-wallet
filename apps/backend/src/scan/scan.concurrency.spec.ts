@@ -110,6 +110,7 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
         }),
         create: vi.fn().mockResolvedValue({ id: 'stamp-1' }),
         count: vi.fn().mockResolvedValue(1),
+        aggregate: vi.fn().mockResolvedValue({ _sum: { amount: 1 } }),
         findFirst: vi.fn().mockResolvedValue(null),
       },
     };
@@ -148,12 +149,12 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
     let redeemed = false;
 
     // 5 active stamps initially in DB
-    const stampsInDb: Array<{ id: string; earnedAt: Date; consumedAt: Date | null }> = [
-      { id: 's1', earnedAt: new Date('2026-01-01'), consumedAt: null },
-      { id: 's2', earnedAt: new Date('2026-01-02'), consumedAt: null },
-      { id: 's3', earnedAt: new Date('2026-01-03'), consumedAt: null },
-      { id: 's4', earnedAt: new Date('2026-01-04'), consumedAt: null },
-      { id: 's5', earnedAt: new Date('2026-01-05'), consumedAt: null },
+    const stampsInDb: Array<{ id: string; earnedAt: Date; consumedAt: Date | null; amount: number }> = [
+      { id: 's1', earnedAt: new Date('2026-01-01'), consumedAt: null, amount: 1 },
+      { id: 's2', earnedAt: new Date('2026-01-02'), consumedAt: null, amount: 1 },
+      { id: 's3', earnedAt: new Date('2026-01-03'), consumedAt: null, amount: 1 },
+      { id: 's4', earnedAt: new Date('2026-01-04'), consumedAt: null, amount: 1 },
+      { id: 's5', earnedAt: new Date('2026-01-05'), consumedAt: null, amount: 1 },
     ];
 
     const createTx = () => {
@@ -185,6 +186,9 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
           }),
           count: vi.fn(async () => {
             return stampsInDb.filter((s) => s.consumedAt === null).length;
+          }),
+          aggregate: vi.fn(async () => {
+            return { _sum: { amount: stampsInDb.filter((s) => s.consumedAt === null).reduce((acc, s) => acc + s.amount, 0) } };
           }),
           findMany: vi.fn(async () => {
             return stampsInDb.filter((s) => s.consumedAt === null);
@@ -301,6 +305,7 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
           return { id: `stamp-${stampCreates.length}` };
         }),
         count: vi.fn(async () => stampCreates.length),
+        aggregate: vi.fn(async () => ({ _sum: { amount: stampCreates.length } })),
         findFirst: vi.fn().mockResolvedValue(null),
       },
     });
