@@ -1,3 +1,4 @@
+import { PanelTitle } from '../../components/admin/PanelTitle';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { listCustomers, deleteCustomer, type CustomerRow } from '../../services/customersService';
@@ -89,14 +90,14 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
 
   return (
     <>
-      <header className="mb-12 flex flex-col md:flex-row md:justify-between md:items-center gap-6">
+      <header className="mb-8 flex flex-col md:flex-row md:justify-between md:items-center gap-6">
         <div>
-          <h1 className="text-4xl font-extrabold tracking-tight mb-2">Clientes</h1>
-          <p className="text-slate-500 dark:text-slate-400 text-lg">Tu base de datos: quién vuelve y cuántos sellos lleva.</p>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text"><PanelTitle text="Clientes" /></h1>
+          <p className="text-panel-muted text-sm sm:text-base">Tu base de datos: quién vuelve y cuántos sellos lleva.</p>
         </div>
         <button
           onClick={handleExport}
-          className="px-6 py-3 bg-brand-blue hover:bg-blue-600 text-white shadow-lg shadow-brand-blue/20 rounded-xl font-bold transition-all flex items-center gap-2 shrink-0"
+          className="px-6 py-3 bg-panel-primary hover:bg-panel-primary/90 text-white shadow-lg shadow-brand-blue/20 rounded-xl font-bold transition-all flex items-center gap-2 shrink-0"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
           Exportar CSV
@@ -113,41 +114,41 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar por nombre, correo, RUT o teléfono..."
-          className="w-full md:max-w-sm px-5 py-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-4 focus:ring-brand-blue/20 focus:border-brand-blue transition-all text-slate-800 dark:text-slate-100 font-medium"
+          className="w-full md:max-w-sm px-5 py-3 bg-panel-surface rounded-2xl border border-panel-border focus:outline-none focus:ring-4 focus:ring-panel-accent/20 focus:border-panel-accent transition-all text-panel-text font-medium"
         />
       </div>
 
-      <div className="bg-white dark:bg-slate-800 rounded-[2rem] border border-slate-200/60 dark:border-slate-700/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.1)] overflow-hidden">
+      <div data-panel-reveal className="bg-panel-surface rounded-2xl border border-panel-border shadow-panel overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50/80 dark:bg-slate-900/50 border-b border-slate-200/60 dark:border-slate-700/60 backdrop-blur-sm">
-                <th className="p-6 text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Cliente</th>
-                <th className="p-6 text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Sellos vigentes</th>
-                <th className="p-6 text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Cliente desde</th>
-                <th className="p-6 text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Última actividad</th>
-                <th className="p-6 text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">Acciones</th>
+              <tr className="bg-panel-soft border-b border-panel-border backdrop-blur-sm">
+                <th className="p-6 text-sm font-bold text-panel-muted uppercase tracking-wider">Cliente</th>
+                <th className="p-6 text-sm font-bold text-panel-muted uppercase tracking-wider">Sellos vigentes</th>
+                <th className="p-6 text-sm font-bold text-panel-muted uppercase tracking-wider">Cliente desde</th>
+                <th className="p-6 text-sm font-bold text-panel-muted uppercase tracking-wider">Última actividad</th>
+                <th className="p-6 text-sm font-bold text-panel-muted uppercase tracking-wider text-right">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+            <tbody className="divide-y divide-panel-border">
               {loading ? (
                 Array.from({ length: 3 }).map((_, i) => (
                   <tr key={i}>
                     <td colSpan={5} className="p-5">
-                      <div className="h-12 rounded-2xl bg-slate-50 dark:bg-slate-800/50 animate-pulse" />
+                      <div className="h-12 rounded-2xl bg-panel-soft animate-pulse" />
                     </td>
                   </tr>
                 ))
               ) : visible.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="p-16 text-center">
-                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-400 mb-4">
+                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-panel-soft text-panel-muted mb-4">
                       <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                     </div>
-                    <p className="text-lg font-bold text-slate-600 dark:text-slate-300">
+                    <p className="text-lg font-bold text-panel-muted">
                       {customers.length === 0 ? 'Aún no tienes clientes registrados.' : 'Ningún cliente coincide con tu búsqueda.'}
                     </p>
-                    <p className="text-slate-500 dark:text-slate-400 mt-1">
+                    <p className="text-panel-muted mt-1">
                       {customers.length === 0
                         ? 'Aparecerán aquí en cuanto empiecen a guardar su tarjeta.'
                         : 'Prueba con otro nombre, correo, RUT o teléfono.'}
@@ -158,41 +159,41 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
                 visible.map((row) => {
                   const expiryLabel = formatStampExpiry(row.nextExpiryAt, now);
                   return (
-                    <tr key={row.passId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                    <tr key={row.passId} className="hover:bg-panel-soft transition-colors">
                       <td className="p-5">
                         <Link
                           to={customerDetailPath(row.customerId)}
-                          className="font-bold text-slate-900 dark:text-slate-100 hover:text-brand-blue hover:underline"
+                          className="font-bold text-panel-text hover:text-panel-accent hover:underline"
                         >
                           {row.name ?? maskIdentifier(row.rut) ?? maskIdentifier(row.phone) ?? maskIdentifier(row.email) ?? 'Anónimo'}
                         </Link>
                         {row.name && (
-                          <span className="block text-sm text-slate-500 dark:text-slate-400 font-medium">
+                          <span className="block text-sm text-panel-muted font-medium">
                             {maskIdentifier(row.phone) ?? maskIdentifier(row.email) ?? maskIdentifier(row.rut)}
                           </span>
                         )}
                       </td>
                       <td className="p-5">
-                        <span className="inline-flex items-center justify-center min-w-10 h-10 px-3 rounded-full bg-brand-blue/10 dark:bg-brand-blue/20 text-brand-blue font-bold">
+                        <span className="inline-flex items-center justify-center min-w-10 h-10 px-3 rounded-full bg-panel-accent/10 dark:bg-panel-accent/20 text-panel-accent font-bold">
                           {row.activeStamps}
                         </span>
                         {/* Si la promoción no vence, no mostramos nada: un guion o un "null" solo confunde. */}
                         {expiryLabel && (
-                          <span className="block text-sm text-slate-500 dark:text-slate-400 font-medium mt-1">
+                          <span className="block text-sm text-panel-muted font-medium mt-1">
                             {expiryLabel}
                           </span>
                         )}
                       </td>
-                      <td className="p-5 text-slate-600 dark:text-slate-300 font-medium">
+                      <td className="p-5 text-panel-muted font-medium">
                         {new Date(row.joinedAt).toLocaleDateString([], DATE_FORMAT)}
                       </td>
-                      <td className="p-5 text-slate-600 dark:text-slate-300 font-medium">
+                      <td className="p-5 text-panel-muted font-medium">
                         {new Date(row.lastActivityAt).toLocaleDateString([], DATE_FORMAT)}
                       </td>
                       <td className="p-5 text-right whitespace-nowrap">
                         <Link
                           to={customerDetailPath(row.customerId)}
-                          className="mr-2 px-3 py-1.5 text-brand-blue bg-brand-blue/10 hover:bg-brand-blue/20 rounded-xl transition-all inline-flex items-center text-xs font-semibold"
+                          className="mr-2 px-3 py-1.5 text-panel-accent bg-panel-accent/10 hover:bg-panel-accent/20 rounded-xl transition-all inline-flex items-center text-xs font-semibold"
                         >
                           Historial
                         </Link>
@@ -218,7 +219,7 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
       </div>
 
       {customerToDelete && (
-        <ConfirmDialog
+        <ConfirmDialog trapFocus
           title="¿Eliminar datos de este cliente?"
           message={`¿Estás seguro de que deseas eliminar permanentemente a este cliente (${
             customerToDelete.name ?? maskIdentifier(customerToDelete.rut) ?? maskIdentifier(customerToDelete.phone) ?? maskIdentifier(customerToDelete.email) ?? 'Anónimo'

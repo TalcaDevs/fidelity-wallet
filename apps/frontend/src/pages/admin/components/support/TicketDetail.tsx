@@ -18,7 +18,7 @@ function Attachments({ items }: { items: TicketAttachmentDto[] }) {
     <div className="flex flex-wrap gap-2 mt-2">
       {items.map((a) => (
         // La URL firmada vence en 5 minutos: se abre en el momento, no se guarda.
-        <a key={a.id} href={a.url} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-brand-blue underline">
+        <a key={a.id} href={a.url} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-panel-accent underline">
           {a.fileName}
         </a>
       ))}
@@ -58,45 +58,45 @@ export function TicketDetail({
   }
 
   return (
-    <Modal title={ticket ? `Solicitud #${ticket.number}` : 'Solicitud'} onClose={onClose}>
+    <Modal trapFocus title={ticket ? `Solicitud #${ticket.number}` : 'Solicitud'} onClose={onClose}>
       {error ? (
         <ErrorAlert message={error} />
       ) : loading || !ticket ? (
-        <div className="animate-pulse h-40 bg-slate-100 dark:bg-slate-800 rounded-xl" />
+        <div className="animate-pulse h-40 bg-panel-soft rounded-xl" />
       ) : (
         <div className="space-y-5">
           <div className="flex flex-wrap items-center gap-2">
             <TicketStatusBadge status={ticket.status} />
-            <span className="text-sm text-slate-500">
+            <span className="text-sm text-panel-muted">
               {TICKET_CATEGORY_LABELS[ticket.category]}
               {ticket.locationName ? ` · ${ticket.locationName}` : ''}
             </span>
           </div>
 
-          <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
-            <p className="text-xs text-slate-400 mb-1">Tú · {formatDateTime(ticket.createdAt)}</p>
-            <p className="text-slate-900 dark:text-white whitespace-pre-wrap">{ticket.description}</p>
+          <div className="bg-panel-soft p-4 rounded-xl border border-panel-border">
+            <p className="text-xs text-panel-muted mb-1">Tú · {formatDateTime(ticket.createdAt)}</p>
+            <p className="text-panel-text whitespace-pre-wrap">{ticket.description}</p>
             <Attachments items={ticket.attachments} />
           </div>
 
           {ticket.messages.map((message) => (
             <div
               key={message.id}
-              className={`p-4 rounded-xl border ${message.authorType === 'PLATFORM' ? 'bg-brand-blue/5 border-brand-blue/20' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700'}`}
+              className={`p-4 rounded-xl border ${message.authorType === 'PLATFORM' ? 'bg-panel-accent/5 border-panel-accent/20' : 'bg-panel-soft border-panel-border '}`}
             >
-              <p className="text-xs text-slate-400 mb-1">
+              <p className="text-xs text-panel-muted mb-1">
                 {message.authorType === 'PLATFORM' ? message.authorName : 'Tú'} · {formatDateTime(message.createdAt)}
               </p>
-              <p className="text-slate-900 dark:text-white whitespace-pre-wrap">{message.body}</p>
+              <p className="text-panel-text whitespace-pre-wrap">{message.body}</p>
               <Attachments items={message.attachments} />
             </div>
           ))}
 
           {ticket.status === 'CLOSED' ? (
-            <p className="text-sm text-slate-500">Esta solicitud está cerrada. Si necesitas más ayuda, crea una nueva.</p>
+            <p className="text-sm text-panel-muted">Esta solicitud está cerrada. Si necesitas más ayuda, crea una nueva.</p>
           ) : (
             <form onSubmit={handleReply} className="space-y-3">
-              <label htmlFor="ticket-reply" className="block text-sm font-bold text-slate-700 dark:text-slate-300">
+              <label htmlFor="ticket-reply" className="block text-sm font-bold text-panel-text">
                 {ticket.status === 'RESOLVED' ? 'Responder (reabre la solicitud)' : 'Responder'}
               </label>
               <textarea
@@ -105,13 +105,13 @@ export function TicketDetail({
                 onChange={(e) => setBody(e.target.value)}
                 maxLength={TICKET_TEXT_MAX}
                 rows={3}
-                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-blue/50 resize-y"
+                className="w-full bg-panel-soft border border-panel-border rounded-xl px-4 py-3 text-panel-text focus:outline-none focus:ring-2 focus:ring-panel-accent/50 resize-y"
               />
               <AttachmentPicker id="ticket-reply-attachment" file={attachment} onChange={setAttachment} />
               <button
                 type="submit"
                 disabled={!body.trim() || sending}
-                className="w-full py-3 rounded-xl bg-brand-blue hover:bg-blue-600 text-white font-bold disabled:opacity-50"
+                className="w-full py-3 rounded-xl bg-panel-primary hover:bg-panel-primary/90 text-white font-bold disabled:opacity-50"
               >
                 {sending ? 'Enviando...' : 'Enviar respuesta'}
               </button>

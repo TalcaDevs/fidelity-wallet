@@ -132,20 +132,20 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
   };
 
   const inputClass =
-    'w-full bg-slate-800 border-2 border-slate-700 focus:border-blue-500 rounded-2xl px-4 py-3 text-base font-medium text-white outline-none placeholder:text-slate-500';
+    'w-full bg-panel-soft border-2 border-panel-border focus:border-panel-accent rounded-2xl px-4 py-3 text-base font-medium text-panel-text outline-none placeholder:text-panel-muted';
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <div className="flex-1 overflow-y-auto pt-2 pb-4 space-y-4">
-        <section aria-label="Cliente" className="bg-slate-900 border border-slate-800 rounded-3xl p-5">
+      <div data-entry-stagger className="flex-1 overflow-y-auto pt-2 pb-4 space-y-4">
+        <section aria-label="Cliente" className="bg-panel-surface border border-panel-border rounded-3xl p-5">
           <div className="flex items-center gap-4">
-            <div aria-hidden="true" className="w-14 h-14 shrink-0 rounded-2xl bg-blue-600 flex items-center justify-center text-2xl font-black">
+            <div aria-hidden="true" className="w-14 h-14 shrink-0 rounded-2xl bg-panel-primary text-white flex items-center justify-center text-2xl font-extrabold">
               {validation.hasName ? validation.customerLabel.charAt(0).toUpperCase() : '?'}
             </div>
             <div className="min-w-0">
-              <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Cliente</p>
-              <h2 className="text-2xl font-black truncate">{validation.customerLabel || 'Sin nombre'}</h2>
-              <p className="text-slate-400 text-sm font-medium">
+              <p className="text-panel-muted text-xs font-bold uppercase tracking-widest">Cliente</p>
+              <h2 className="text-2xl font-extrabold truncate">{validation.customerLabel || 'Sin nombre'}</h2>
+              <p className="text-panel-muted text-sm font-medium">
                 {validation.method === 'QR' ? 'Tarjeta escaneada' : 'Búsqueda manual'}
               </p>
             </div>
@@ -153,9 +153,9 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
 
           <div className="mt-5">
             <div className="flex items-baseline justify-between mb-2">
-              <span className="text-slate-400 text-sm font-bold">Progreso a recompensa</span>
-              <span className="text-2xl font-black">
-                {primaryBalance} <span className="text-slate-500 text-lg">/ {validation.targetStamps}</span>
+              <span className="text-panel-muted text-sm font-bold">Progreso a recompensa</span>
+              <span className="text-2xl font-extrabold">
+                {primaryBalance} <span className="text-panel-muted text-lg">/ {validation.targetStamps}</span>
               </span>
             </div>
             <div
@@ -164,19 +164,19 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
               aria-valuemin={0}
               aria-valuemax={validation.targetStamps}
               aria-valuenow={primaryBalance}
-              className="h-2 rounded-full bg-slate-800 overflow-hidden"
+              className="h-2 rounded-full bg-panel-soft overflow-hidden"
             >
-              <div className="h-full rounded-full bg-blue-500" style={{ width: `${progress}%` }} />
+              <div className="h-full rounded-full bg-panel-primary" style={{ width: `${progress}%` }} />
             </div>
           </div>
 
           {validation.rewardUnlocked && (
             <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">
-              <p className="text-sm font-bold text-amber-200">Puede canjear un premio</p>
+              <p className="text-sm font-bold text-panel-gold">Puede canjear un premio</p>
               <button
                 type="button"
                 onClick={onRedeem}
-                className="shrink-0 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-amber-950 font-black text-sm transition-colors"
+                className="shrink-0 min-h-11 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-amber-950 font-extrabold text-sm transition-colors"
               >
                 Canjear premio
               </button>
@@ -185,54 +185,54 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
         </section>
 
         {hasStamps && validation.nextStampAvailableAt && (
-          <p role="status" className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-bold text-amber-200">
+          <p role="status" className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-bold text-panel-gold">
             {blockedText(validation, false)}
           </p>
         )}
         
         {hasPoints && validation.nextPointsAvailableAt && (
-          <p role="status" className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-bold text-amber-200">
+          <p role="status" className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-bold text-panel-gold">
             {blockedText(validation, true)}
           </p>
         )}
 
-        <section aria-label="Datos de la compra" className="space-y-4">
+        <section aria-label="Datos de la compra" className="space-y-4 rounded-3xl border border-panel-border bg-panel-surface p-5">
           {hasStamps && validation.canStamp && isOwnerLoad && (
             <div>
-              <span id={`${ids}-count`} className="block text-sm font-bold text-slate-300 mb-2 px-1">Sellos a sumar</span>
+              <span id={`${ids}-count`} className="block text-sm font-bold text-panel-muted mb-2 px-1">Sellos a sumar</span>
               <div role="group" aria-labelledby={`${ids}-count`} className="flex items-center gap-3">
                 <button
                   type="button"
                   aria-label="Un sello menos"
                   disabled={stampCount <= 1}
                   onClick={() => setStampCount((n) => Math.max(1, n - 1))}
-                  className="w-12 h-12 rounded-2xl bg-slate-800 text-2xl font-black disabled:opacity-40"
+                  className="w-12 h-12 rounded-2xl bg-panel-soft text-2xl font-extrabold disabled:opacity-40"
                 >
                   −
                 </button>
-                <output aria-live="polite" className="w-12 text-center text-3xl font-black">{stampCount}</output>
+                <output aria-live="polite" className="w-12 text-center text-3xl font-extrabold">{stampCount}</output>
                 <button
                   type="button"
                   aria-label="Un sello más"
                   disabled={stampCount >= validation.maxStampsPerLoad}
                   onClick={() => setStampCount((n) => Math.min(validation.maxStampsPerLoad, n + 1))}
-                  className="w-12 h-12 rounded-2xl bg-slate-800 text-2xl font-black disabled:opacity-40"
+                  className="w-12 h-12 rounded-2xl bg-panel-soft text-2xl font-extrabold disabled:opacity-40"
                 >
                   +
                 </button>
-                <span className="text-sm text-slate-500 font-medium">Máximo {validation.maxStampsPerLoad}</span>
+                <span className="text-sm text-panel-muted font-medium">Máximo {validation.maxStampsPerLoad}</span>
               </div>
             </div>
           )}
 
           {(hasPoints ? validation.canAddPoints : validation.canStamp) && (
             <div>
-              <label htmlFor={`${ids}-amount`} className="block text-sm font-bold text-slate-300 mb-2 px-1">
+              <label htmlFor={`${ids}-amount`} className="block text-sm font-bold text-panel-muted mb-2 px-1">
                 Monto de la compra{' '}
-                {!validation.amountRequired && <span className="font-medium text-slate-500">(opcional)</span>}
+                {!validation.amountRequired && <span className="font-medium text-panel-muted">(opcional)</span>}
               </label>
-              <div className="flex items-center bg-slate-800 border-2 border-slate-700 focus-within:border-blue-500 rounded-2xl">
-                <span aria-hidden="true" className="pl-4 pr-2 text-lg font-bold text-slate-400">$</span>
+              <div className="flex items-center bg-panel-soft border-2 border-panel-border focus-within:border-panel-accent rounded-2xl">
+                <span aria-hidden="true" className="pl-4 pr-2 text-lg font-bold text-panel-muted">$</span>
                 <input
                   id={`${ids}-amount`}
                   type="text"
@@ -242,23 +242,23 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
                   onChange={(e) => setAmount(amountDigits(e.target.value))}
                   placeholder="0"
                   aria-invalid={Boolean(amountProblem)}
-                  className="w-full min-w-0 bg-transparent pr-4 py-3 text-lg font-bold text-white outline-none placeholder:text-slate-500"
+                  className="w-full min-w-0 bg-transparent pr-4 py-3 text-lg font-bold text-panel-text outline-none placeholder:text-panel-muted"
                 />
               </div>
               {hasPoints && points > 0 && !amountProblem && (
-                <p className="text-sm font-bold text-emerald-300 mt-2 px-1">
+                <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 mt-2 px-1">
                   Suma {clp.format(points)} {balanceUnit('POINTS', points)} (1 punto cada ${clp.format(validation.pesosPerPoint)})
                 </p>
               )}
               {amountProblem && (submitted || amountValue !== undefined) && (
-                <p role="alert" className="text-sm font-bold text-red-400 mt-2 px-1">{amountProblem}</p>
+                <p role="alert" className="text-sm font-bold text-red-600 dark:text-red-400 mt-2 px-1">{amountProblem}</p>
               )}
             </div>
           )}
 
           {needsReason && (
             <div>
-              <label htmlFor={`${ids}-reason`} className="block text-sm font-bold text-slate-300 mb-2 px-1">Motivo</label>
+              <label htmlFor={`${ids}-reason`} className="block text-sm font-bold text-panel-muted mb-2 px-1">Motivo</label>
               <textarea
                 id={`${ids}-reason`}
                 rows={2}
@@ -271,14 +271,14 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
                 className={`${inputClass} resize-none`}
               />
               {submitted && reasonProblem && (
-                <p id={`${ids}-reason-error`} role="alert" className="text-sm font-bold text-red-400 mt-2 px-1">{reasonProblem}</p>
+                <p id={`${ids}-reason-error`} role="alert" className="text-sm font-bold text-red-600 dark:text-red-400 mt-2 px-1">{reasonProblem}</p>
               )}
             </div>
           )}
 
           <div>
-            <label htmlFor={`${ids}-note`} className="block text-sm font-bold text-slate-300 mb-2 px-1">
-              Nota <span className="font-medium text-slate-500">(opcional)</span>
+            <label htmlFor={`${ids}-note`} className="block text-sm font-bold text-panel-muted mb-2 px-1">
+              Nota <span className="font-medium text-panel-muted">(opcional)</span>
             </label>
             <textarea
               id={`${ids}-note`}
@@ -293,18 +293,18 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
 
           {(validation.canStamp || validation.canAddPoints) && (
             <div>
-              <span className="block text-sm font-bold text-slate-300 mb-2 px-1">
+              <span className="block text-sm font-bold text-panel-muted mb-2 px-1">
                 Foto de la boleta{' '}
-                {!receiptIsRequired && <span className="font-medium text-slate-500">(opcional)</span>}
+                {!receiptIsRequired && <span className="font-medium text-panel-muted">(opcional)</span>}
               </span>
               {receipt && previewUrl ? (
-                <div className="flex items-center gap-3 rounded-2xl bg-slate-800 border-2 border-slate-700 p-2">
+                <div className="flex items-center gap-3 rounded-2xl bg-panel-soft border-2 border-panel-border p-2">
                   <img src={previewUrl} alt="Foto de la boleta" className="w-16 h-16 rounded-xl object-cover" />
-                  <span className="flex-1 min-w-0 truncate text-sm font-medium text-slate-300">{receipt.name}</span>
+                  <span className="flex-1 min-w-0 truncate text-sm font-medium text-panel-muted">{receipt.name}</span>
                   <button
                     type="button"
                     onClick={() => setReceiptFile(null)}
-                    className="px-3 py-2 rounded-xl text-sm font-bold text-red-300 hover:bg-red-950/40"
+                    className="px-3 py-2 rounded-xl text-sm font-bold text-red-600 dark:text-red-300 hover:bg-red-950/40"
                   >
                     Quitar
                   </button>
@@ -312,7 +312,7 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
               ) : (
                 <label
                   htmlFor={`${ids}-receipt`}
-                  className="flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-700 hover:border-slate-500 py-4 text-slate-300 font-bold cursor-pointer"
+                  className="flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-panel-border hover:border-panel-accent/50 has-[+input:focus-visible]:outline-2 has-[+input:focus-visible]:outline-panel-accent py-4 text-panel-muted font-bold cursor-pointer"
                 >
                   <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
@@ -332,21 +332,21 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
                   e.target.value = '';
                 }}
               />
-              {receiptProblem && <p role="alert" className="text-sm font-bold text-red-400 mt-2 px-1">{receiptProblem}</p>}
+              {receiptProblem && <p role="alert" className="text-sm font-bold text-red-600 dark:text-red-400 mt-2 px-1">{receiptProblem}</p>}
               {!receiptProblem && submitted && receiptMissing && (
-                <p role="alert" className="text-sm font-bold text-red-400 mt-2 px-1">{receiptMissing}</p>
+                <p role="alert" className="text-sm font-bold text-red-600 dark:text-red-400 mt-2 px-1">{receiptMissing}</p>
               )}
             </div>
           )}
         </section>
       </div>
 
-      <div className="shrink-0 pt-3 space-y-2 border-t border-slate-800">
+      <div className="shrink-0 pt-3 space-y-2 border-t border-panel-border">
         <button
           type="button"
           onClick={handleAdd}
           disabled={!((hasStamps && validation.canStamp) || (hasPoints && validation.canAddPoints)) || preparingReceipt}
-          className="w-full py-4 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:hover:bg-blue-600 rounded-2xl font-black text-xl shadow-lg shadow-blue-600/30 transition-all active:scale-[0.98]"
+          className="w-full py-4 bg-panel-primary text-white hover:bg-panel-primary/90 disabled:opacity-40 disabled:hover:bg-panel-primary rounded-2xl font-extrabold text-xl shadow-lg shadow-panel-primary/15 transition-colors"
         >
           {hasPoints && hasStamps
             ? 'Registrar operación'
@@ -357,7 +357,7 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
         <button
           type="button"
           onClick={onScanAnother}
-          className="w-full py-4 bg-slate-800 hover:bg-slate-700 rounded-2xl font-bold text-lg transition-colors"
+          className="w-full py-4 bg-panel-soft hover:bg-panel-border/60 rounded-2xl font-bold text-lg transition-colors"
         >
           Escanear otro cliente
         </button>

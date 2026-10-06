@@ -92,6 +92,7 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
   beforeEach(() => {
     passesService = {
       notifyPassUpdate: vi.fn().mockResolvedValue(undefined),
+      enqueuePassUpdate: vi.fn().mockResolvedValue(undefined),
     } as unknown as PassesService;
   });
 

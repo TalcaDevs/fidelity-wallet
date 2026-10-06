@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ErrorAlert } from '../../../components/ui/ErrorAlert';
 import { useToast } from '../../../hooks/useToast';
 import { CardPreview } from './CardPreview';
@@ -7,6 +7,8 @@ import { DetailsStep } from './DetailsStep';
 import { InfoStep } from './InfoStep';
 import { TypeStep } from './TypeStep';
 import { useCardEditor } from './useCardEditor';
+import { usePanelMotion } from '../../../hooks/usePanelMotion';
+import { PANEL_PAGE } from '../../../components/admin/panelStyles';
 
 const STEPS = ['Tipo', 'Información', 'Diseño', 'Detalles'] as const;
 const STEP_INDEX = { TYPE: 0, INFO: 1, DESIGN: 2, DETAILS: 3 } as const;
@@ -31,10 +33,10 @@ function Stepper({ current, onSelect }: { current: number; onSelect: (step: numb
                 aria-hidden="true"
                 className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-extrabold ${
                   active
-                    ? 'bg-brand-blue text-white ring-4 ring-brand-blue/20'
+                    ? 'bg-panel-primary text-white ring-4 ring-panel-accent/20'
                     : done
-                      ? 'bg-brand-blue text-white'
-                      : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300'
+                      ? 'bg-panel-primary text-white'
+                      : 'bg-panel-soft text-panel-muted '
                 }`}
               >
                 {done ? (
@@ -45,12 +47,12 @@ function Stepper({ current, onSelect }: { current: number; onSelect: (step: numb
                   i + 1
                 )}
               </span>
-              <span className={`text-sm font-bold ${active ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
+              <span className={`text-sm font-bold ${active ? 'text-panel-text ' : 'text-panel-muted '}`}>
                 {label}
               </span>
             </button>
             {i < STEPS.length - 1 && (
-              <span aria-hidden="true" className={`flex-1 h-0.5 min-w-6 rounded ${done ? 'bg-brand-blue' : 'bg-slate-200 dark:bg-slate-700'}`} />
+              <span aria-hidden="true" className={`flex-1 h-0.5 min-w-6 rounded ${done ? 'bg-panel-primary' : 'bg-panel-soft '}`} />
             )}
           </li>
         );
@@ -72,11 +74,13 @@ function CardEditorPage({ brandId }: { brandId: string }) {
   const editor = useCardEditor(brandId);
   const { notifySuccess } = useToast();
   const [step, setStep] = useState(0);
+  const reducedMotion = usePanelMotion();
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const { config, saved, loading, loadError, dirty, problems, saving, saveError } = editor;
 
   const goTo = (next: number) => {
     setStep(next);
-    window.scrollTo?.({ top: 0, behavior: 'smooth' });
+    headingRef.current?.scrollIntoView?.({ block: 'start', behavior: reducedMotion ? 'instant' : 'smooth' });
   };
 
   const handleSave = async () => {
@@ -93,8 +97,8 @@ function CardEditorPage({ brandId }: { brandId: string }) {
   if (loading || !config || !saved) {
     return (
       <div className="space-y-4" aria-busy="true">
-        <div className="h-10 w-64 rounded-xl bg-slate-200/70 dark:bg-slate-800 animate-pulse" />
-        <div className="h-96 rounded-[2rem] bg-slate-200/70 dark:bg-slate-800 animate-pulse" />
+        <div className="h-10 w-64 rounded-xl bg-panel-soft animate-pulse" />
+        <div className="h-96 rounded-2xl bg-panel-soft animate-pulse" />
       </div>
     );
   }
@@ -102,14 +106,14 @@ function CardEditorPage({ brandId }: { brandId: string }) {
   const nav = (
     <div className="flex items-center justify-between gap-3">
       {step > 0 ? (
-        <button type="button" onClick={() => goTo(step - 1)} className="px-4 py-2.5 rounded-xl font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
+        <button type="button" onClick={() => goTo(step - 1)} className="px-4 py-2.5 rounded-xl font-bold text-panel-muted hover:bg-panel-soft">
           ← Atrás
         </button>
       ) : (
         <span />
       )}
       {step < STEPS.length - 1 ? (
-        <button type="button" onClick={() => goTo(step + 1)} className="px-6 py-3 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold">
+        <button type="button" onClick={() => goTo(step + 1)} className="px-6 py-3 rounded-xl bg-panel-primary text-white font-bold">
           Continuar →
         </button>
       ) : (
@@ -117,7 +121,7 @@ function CardEditorPage({ brandId }: { brandId: string }) {
           type="button"
           onClick={handleSave}
           disabled={saving || !dirty}
-          className="px-6 py-3 rounded-xl bg-brand-blue hover:bg-blue-600 text-white font-bold shadow-lg shadow-brand-blue/20 disabled:opacity-50"
+          className="px-6 py-3 rounded-xl bg-panel-primary hover:bg-panel-primary/90 text-white font-bold shadow-lg shadow-brand-blue/20 disabled:opacity-50"
         >
           {saving ? 'Guardando…' : 'Guardar tarjeta'}
         </button>
@@ -129,12 +133,12 @@ function CardEditorPage({ brandId }: { brandId: string }) {
     <>
       <header className="flex flex-wrap items-start justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-4xl font-extrabold tracking-tight">{config.name || 'Tu tarjeta'}</h1>
-          <p className="text-slate-500 dark:text-slate-400 text-lg mt-1">
+          <h1 ref={headingRef} className="scroll-mt-6 text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text break-words">{config.name || 'Tu tarjeta'}</h1>
+          <p className="text-panel-muted text-sm sm:text-base mt-1">
             {TYPE_LABEL[config.type]} · la tarjeta que tus clientes guardan en su billetera
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <span
             role="status"
             className={`inline-flex items-center gap-1.5 text-xs font-bold rounded-full px-3 py-1 ${
@@ -147,7 +151,7 @@ function CardEditorPage({ brandId }: { brandId: string }) {
             {dirty ? 'Cambios sin guardar' : 'Publicada'}
           </span>
           {dirty && (
-            <button type="button" onClick={editor.discard} disabled={saving} className="px-4 py-2.5 rounded-xl font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
+            <button type="button" onClick={editor.discard} disabled={saving} className="px-4 py-2.5 rounded-xl font-bold text-panel-muted hover:bg-panel-soft">
               Descartar
             </button>
           )}
@@ -155,7 +159,7 @@ function CardEditorPage({ brandId }: { brandId: string }) {
             type="button"
             onClick={handleSave}
             disabled={saving || !dirty}
-            className="px-5 py-2.5 rounded-xl bg-brand-blue hover:bg-blue-600 text-white font-bold shadow-lg shadow-brand-blue/20 disabled:opacity-50"
+            className="px-5 py-2.5 rounded-xl bg-panel-primary hover:bg-panel-primary/90 text-white font-bold shadow-lg shadow-brand-blue/20 disabled:opacity-50"
           >
             {saving ? 'Guardando…' : 'Guardar'}
           </button>
@@ -187,9 +191,9 @@ function CardEditorPage({ brandId }: { brandId: string }) {
         </div>
       )}
 
-      <div className="grid lg:grid-cols-[minmax(0,1fr)_360px] gap-8 items-start">
+      <div className="grid lg:grid-cols-[minmax(0,1fr)_360px] gap-5 sm:gap-6 items-start">
         <div className="space-y-6 min-w-0">
-          <div className="bg-white dark:bg-slate-800 rounded-[2rem] border border-slate-200/60 dark:border-slate-700/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-6 sm:p-8">
+          <div key={step} className={`${PANEL_PAGE} bg-panel-surface rounded-2xl border border-panel-border shadow-panel p-4 sm:p-6 lg:p-8`}>
             {step === 0 && <TypeStep editor={editor} />}
             {step === 1 && <InfoStep editor={editor} />}
             {step === 2 && <DesignStep brandId={brandId} editor={editor} />}
@@ -200,7 +204,7 @@ function CardEditorPage({ brandId }: { brandId: string }) {
         <div className="lg:sticky lg:top-6">
           <CardPreview config={config} brandName={saved.brandName} face={step === 3 ? 'DETAILS' : 'FRONT'} />
           {saved.customers > 0 && (
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 px-2">
+            <p className="text-xs text-panel-muted mt-3 px-2">
               Al guardar, los cambios llegan también a {saved.customers === 1 ? 'el cliente que ya tiene' : `los ${saved.customers} clientes que ya tienen`} la tarjeta.
             </p>
           )}

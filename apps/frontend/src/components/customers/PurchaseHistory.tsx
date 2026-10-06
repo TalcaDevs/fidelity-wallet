@@ -10,13 +10,13 @@ const METHOD_LABELS: Record<PurchaseHistoryEntryDto['method'], string> = {
   WELCOME: 'bienvenida',
 };
 
-const CARD = 'bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/70 dark:border-slate-700/70';
+const CARD = 'bg-panel-surface rounded-2xl border border-panel-border';
 
 function Field({ label, value }: { label: string; value: string | null }) {
   return (
     <div className="min-w-0">
-      <dt className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{label}</dt>
-      <dd className="mt-1 font-semibold text-slate-900 dark:text-slate-100 break-words">{value ?? '—'}</dd>
+      <dt className="text-xs font-bold uppercase tracking-wider text-panel-muted">{label}</dt>
+      <dd className="mt-1 font-semibold text-panel-text break-words">{value ?? '—'}</dd>
     </div>
   );
 }
@@ -24,8 +24,8 @@ function Field({ label, value }: { label: string; value: string | null }) {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className={`${CARD} p-4`}>
-      <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{label}</p>
-      <p className="mt-1 text-2xl font-black text-slate-900 dark:text-slate-100 tabular-nums">{value}</p>
+      <p className="text-xs font-bold uppercase tracking-wider text-panel-muted">{label}</p>
+      <p className="mt-1 text-2xl font-extrabold text-panel-text tabular-nums">{value}</p>
     </div>
   );
 }
@@ -41,33 +41,33 @@ function EntryRow({ entry, cardType }: { entry: PurchaseHistoryEntryDto; cardTyp
       />
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <p className="font-bold text-slate-900 dark:text-slate-100">
+          <p className="font-bold text-panel-text">
             {isStamp
               ? cardType === 'STAMPS' && entry.stamps === 1 ? 'Sello' : `${entry.stamps} ${unit}`
               : `Canje: ${entry.rewardName ?? 'premio'}`}
             {entry.purchaseAmount !== null && (
-              <span className="ml-2 font-black tabular-nums">{clp.format(entry.purchaseAmount)}</span>
+              <span className="ml-2 font-extrabold tabular-nums">{clp.format(entry.purchaseAmount)}</span>
             )}
           </p>
-          <time dateTime={entry.createdAt} className="text-sm font-medium text-slate-500 dark:text-slate-400">
+          <time dateTime={entry.createdAt} className="text-sm font-medium text-panel-muted">
             {formatDateTime(entry.createdAt)}
           </time>
         </div>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+        <p className="text-sm text-panel-muted">
           {entry.locationName}
           {entry.staffEmail && <> · {entry.staffEmail}</>}
           {' · '}
           {METHOD_LABELS[entry.method]}
           {!isStamp && <> · {entry.stamps} {unit} usados</>}
         </p>
-        {entry.note && <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">“{entry.note}”</p>}
+        {entry.note && <p className="mt-1 text-sm text-panel-text">“{entry.note}”</p>}
       </div>
       {entry.receiptUrl && (
         <a
           href={entry.receiptUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="shrink-0 block w-16 h-16 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700"
+          className="shrink-0 block w-16 h-16 rounded-xl overflow-hidden border border-panel-border"
           title="Ver foto de la boleta"
         >
           <img src={entry.receiptUrl} alt="Foto de la boleta" className="w-full h-full object-cover" />
@@ -81,15 +81,17 @@ function EntryRow({ entry, cardType }: { entry: PurchaseHistoryEntryDto; cardTyp
 export function PurchaseHistory({
   data,
   onPage,
+  className = '',
 }: {
   data: CustomerHistoryDto;
   onPage: (page: number) => void;
+  className?: string;
 }) {
   const { customer, totals, history } = data;
   const pages = Math.max(1, Math.ceil(history.total / history.pageSize));
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 ${className}`}>
       <section aria-label="Datos del cliente" className={`${CARD} p-5 sm:p-6`}>
         <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           <Field label="Nombre" value={customer.name} />
@@ -109,32 +111,32 @@ export function PurchaseHistory({
       </section>
 
       <section aria-labelledby="purchase-history-title" className={CARD}>
-        <h2 id="purchase-history-title" className="px-5 pt-5 text-lg font-black text-slate-900 dark:text-slate-100">
+        <h2 id="purchase-history-title" className="px-5 pt-5 text-lg font-extrabold text-panel-text">
           Historial de compras
         </h2>
         {history.items.length === 0 ? (
-          <p className="p-5 text-slate-500 dark:text-slate-400">Todavía no tiene {balanceUnit(data.cardType)} ni canjes.</p>
+          <p className="p-5 text-panel-muted">Todavía no tiene {balanceUnit(data.cardType)} ni canjes.</p>
         ) : (
-          <ol className="divide-y divide-slate-100 dark:divide-slate-700/60">
+          <ol className="divide-y divide-panel-border">
             {history.items.map((entry) => <EntryRow key={entry.id} entry={entry} cardType={data.cardType} />)}
           </ol>
         )}
         {pages > 1 && (
-          <div className="flex items-center justify-between gap-3 p-4 border-t border-slate-100 dark:border-slate-700/60 text-sm">
+          <div className="flex items-center justify-between gap-3 p-4 border-t border-panel-border text-sm">
             <button
               type="button"
               disabled={history.page <= 1}
               onClick={() => onPage(history.page - 1)}
-              className="px-3 py-2 rounded-xl font-bold bg-slate-100 dark:bg-slate-700 disabled:opacity-40"
+              className="px-3 py-2 rounded-xl font-bold bg-panel-soft disabled:opacity-40"
             >
               Anterior
             </button>
-            <span className="text-slate-500 dark:text-slate-400">Página {history.page} de {pages}</span>
+            <span className="text-panel-muted">Página {history.page} de {pages}</span>
             <button
               type="button"
               disabled={history.page >= pages}
               onClick={() => onPage(history.page + 1)}
-              className="px-3 py-2 rounded-xl font-bold bg-slate-100 dark:bg-slate-700 disabled:opacity-40"
+              className="px-3 py-2 rounded-xl font-bold bg-panel-soft disabled:opacity-40"
             >
               Siguiente
             </button>

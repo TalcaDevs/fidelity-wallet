@@ -31,7 +31,7 @@ function RemoveButton({ label, onClick }: { label: string; onClick: () => void }
       type="button"
       aria-label={label}
       onClick={onClick}
-      className="shrink-0 p-3 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
+      className="shrink-0 p-3 rounded-xl text-panel-muted hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
     >
       <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -82,26 +82,26 @@ export function DetailsStep({ editor }: { editor: CardEditor }) {
             const front = details.frontFields.includes(key);
             const frontFull = !front && details.frontFields.length >= CARD_FRONT_FIELDS_MAX;
             return (
-              <li key={key} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 px-4 py-3">
+              <li key={key} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-panel-soft px-4 py-3">
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={visible}
                     onChange={(e) => toggleField(key, e.target.checked)}
-                    className="mt-1 w-4 h-4 accent-brand-blue"
+                    className="mt-1 w-4 h-4 accent-panel-accent"
                   />
                   <span>
-                    <span className="block text-sm font-bold text-slate-800 dark:text-slate-100">{fieldLabels[key].label}</span>
-                    <span className="block text-xs text-slate-500 dark:text-slate-400">{fieldLabels[key].description}</span>
+                    <span className="block text-sm font-bold text-panel-text">{fieldLabels[key].label}</span>
+                    <span className="block text-xs text-panel-muted">{fieldLabels[key].description}</span>
                   </span>
                 </label>
-                <label className={`flex items-center gap-2 text-xs font-bold ${visible && !frontFull ? 'text-slate-600 dark:text-slate-300 cursor-pointer' : 'text-slate-400'}`}>
+                <label className={`flex items-center gap-2 text-xs font-bold ${visible && !frontFull ? 'text-panel-muted cursor-pointer' : 'text-panel-muted'}`}>
                   <input
                     type="checkbox"
                     checked={front}
                     disabled={!visible || frontFull}
                     onChange={(e) => toggleFront(key, e.target.checked)}
-                    className="w-4 h-4 accent-brand-blue"
+                    className="w-4 h-4 accent-panel-accent"
                   />
                   En el frente
                 </label>
@@ -183,7 +183,7 @@ export function DetailsStep({ editor }: { editor: CardEditor }) {
       <Section title="Secciones adicionales" description="Textos en el detalle del pase: condiciones, horarios, cómo canjear.">
         <ul className="space-y-3">
           {details.sections.map((section, i) => (
-            <li key={i} className="rounded-2xl border border-slate-200 dark:border-slate-700 p-4">
+            <li key={i} className="rounded-2xl border border-panel-border p-4">
               <div className="flex gap-2 items-start">
                 <input
                   aria-label={`Título de la sección ${i + 1}`}

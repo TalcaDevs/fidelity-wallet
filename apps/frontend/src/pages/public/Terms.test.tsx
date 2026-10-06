@@ -38,6 +38,17 @@ describe('Terms', () => {
     expect(screen.getByRole('link', { name: /fidelity wallet/i })).toHaveAttribute('href', '/');
   });
 
+  it('links each index entry to its matching section', () => {
+    renderTerms();
+    const index = screen.getByRole('navigation', { name: 'Secciones de los términos' });
+    for (const link of index.querySelectorAll('a')) {
+      const id = link.getAttribute('href')!.slice(1);
+      const section = document.getElementById(id);
+      expect(section).toBeInTheDocument();
+      expect(link.textContent).toContain(section!.querySelector('h2')!.textContent!.replace(/^\d+\. /, ''));
+    }
+  });
+
   it('uses the same TERMS_VERSION the backend stores in Customer.termsVersion', () => {
     // Si alguien cambia el texto y sube solo una de las dos versiones, la página mostraría una
     // fecha y la BD guardaría otra: el consentimiento quedaría asociado a un texto distinto.

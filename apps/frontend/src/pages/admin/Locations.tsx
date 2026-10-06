@@ -1,3 +1,4 @@
+import { PanelTitle } from '../../components/admin/PanelTitle';
 import { useCallback, useMemo, useState } from 'react';
 import { getPlan, type LocationDto, type LocationInput } from '@fidelity/shared';
 import { LocationForm } from '../../components/locations/LocationForm';
@@ -73,8 +74,8 @@ export function Locations({ brandId }: { brandId: string | null }) {
     <div className="space-y-8 max-w-6xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">Sucursales</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-2 text-lg">
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text"><PanelTitle text="Sucursales" /></h1>
+          <p className="text-panel-muted mt-2 text-sm sm:text-base">
             Tus locales comparten el saldo de sellos: el cliente junta en uno y canjea en otro.
           </p>
         </div>
@@ -83,14 +84,14 @@ export function Locations({ brandId }: { brandId: string | null }) {
           onClick={() => setEditing({ kind: 'new' })}
           disabled={atLimit}
           title={atLimit ? 'Llegaste al límite de sucursales de tu plan' : undefined}
-          className="px-6 py-3 rounded-xl bg-brand-blue hover:bg-blue-600 text-white font-bold shadow-lg shadow-brand-blue/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-brand-blue"
+          className="px-6 py-3 rounded-xl bg-panel-primary hover:bg-panel-primary/90 text-white font-bold shadow-lg shadow-brand-blue/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-panel-primary"
         >
           Agregar sucursal
         </button>
       </div>
 
       {limit !== null && (
-        <p className={`text-sm font-bold ${atLimit ? 'text-orange-600' : 'text-slate-500'}`}>
+        <p className={`text-sm font-bold ${atLimit ? 'text-orange-600' : 'text-panel-muted'}`}>
           {activeCount} de {limit} sucursales activas de tu plan
           {atLimit ? ' · llegaste al límite: sube de plan para agregar o activar más' : ''}
         </p>
@@ -102,30 +103,30 @@ export function Locations({ brandId }: { brandId: string | null }) {
 
       {loading ? (
         <div className="animate-pulse grid gap-4 md:grid-cols-2">
-          {[1, 2].map((i) => <div key={i} className="h-32 bg-slate-100 dark:bg-slate-800 rounded-3xl" />)}
+          {[1, 2].map((i) => <div key={i} className="h-32 bg-panel-soft rounded-2xl" />)}
         </div>
       ) : (
-        <ul className="grid gap-4 md:grid-cols-2">
+        <ul data-panel-stagger className="grid gap-4 md:grid-cols-2">
           {locations.map((l) => (
-            <li key={l.id} className="bg-white dark:bg-slate-800/80 rounded-3xl p-6 border border-slate-200 dark:border-slate-700 space-y-3">
+            <li key={l.id} className="bg-panel-surface rounded-2xl p-6 border border-panel-border space-y-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h2 className="font-bold text-lg text-slate-900 dark:text-white truncate">{l.name}</h2>
-                  <p className="text-sm text-slate-500 truncate">{addressOf(l) || 'Sin dirección'}</p>
+                  <h2 className="font-bold text-lg text-panel-text truncate">{l.name}</h2>
+                  <p className="text-sm text-panel-muted truncate">{addressOf(l) || 'Sin dirección'}</p>
                 </div>
-                <span className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-bold ${l.isActive ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'}`}>
+                <span className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-bold ${l.isActive ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' : 'bg-panel-soft text-panel-muted '}`}>
                   {l.isActive ? 'Activo' : 'Inactivo'}
                 </span>
               </div>
-              <p className="text-xs text-slate-500 break-all">
-                Registro: <a href={publicJoinUrl(l.slug)} target="_blank" rel="noopener noreferrer" className="text-brand-blue font-bold">{publicJoinUrl(l.slug)}</a>
+              <p className="text-xs text-panel-muted break-all">
+                Registro: <a href={publicJoinUrl(l.slug)} target="_blank" rel="noopener noreferrer" className="text-panel-accent font-bold">{publicJoinUrl(l.slug)}</a>
               </p>
               {l.latitude == null && <p className="text-xs font-bold text-orange-600">Falta ubicarlo en el mapa</p>}
               <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => setEditing({ kind: 'edit', location: l })} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-brand-blue/10 hover:text-brand-blue">
+                <button type="button" onClick={() => setEditing({ kind: 'edit', location: l })} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-panel-soft text-panel-text hover:bg-panel-accent/10 hover:text-panel-accent">
                   Editar
                 </button>
-                <button type="button" onClick={() => setEditing({ kind: 'qr', location: l })} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-brand-blue/10 hover:text-brand-blue">
+                <button type="button" onClick={() => setEditing({ kind: 'qr', location: l })} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-panel-soft text-panel-text hover:bg-panel-accent/10 hover:text-panel-accent">
                   Link y QR
                 </button>
                 <button
@@ -133,7 +134,7 @@ export function Locations({ brandId }: { brandId: string | null }) {
                   onClick={() => void toggleActive(l)}
                   disabled={!l.isActive && atLimit}
                   title={!l.isActive && atLimit ? 'Llegaste al límite de sucursales de tu plan' : undefined}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-panel-soft text-panel-text hover:bg-panel-soft disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {l.isActive ? 'Desactivar' : 'Activar'}
                 </button>
@@ -144,7 +145,7 @@ export function Locations({ brandId }: { brandId: string | null }) {
       )}
 
       {editing?.kind === 'qr' && (
-        <Modal title={`Link y QR · ${editing.location.name}`} onClose={() => setEditing(null)}>
+        <Modal trapFocus title={`Link y QR · ${editing.location.name}`} onClose={() => setEditing(null)}>
           <LocationQrPanel
             location={editing.location}
             onSlugChange={(slug) => {
@@ -157,7 +158,7 @@ export function Locations({ brandId }: { brandId: string | null }) {
       )}
 
       {editing && editing.kind !== 'qr' && (
-        <Modal
+        <Modal trapFocus
           size="lg"
           title={editing.kind === 'new' ? 'Nueva sucursal' : `Editar ${editing.location.name}`}
           description={editing.kind === 'new' ? 'El link de registro (/join) se genera a partir del nombre.' : undefined}

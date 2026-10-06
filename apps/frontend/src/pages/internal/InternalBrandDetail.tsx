@@ -54,8 +54,8 @@ function UsageBars({ brand }: { brand: InternalBrandDetailDto }) {
               <span>{USAGE_LABELS[key]}</span>
               <span className={`font-bold ${over ? 'text-red-600' : ''}`}>{used} / {limit ?? '∞'}</span>
             </div>
-            <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden">
-              <div className={`h-full ${over ? 'bg-red-500' : 'bg-violet-500'}`} style={{ width: `${limit === null ? 0 : pct}%` }} />
+            <div className="h-2 rounded-full bg-panel-soft overflow-hidden">
+              <div className={`h-full ${over ? 'bg-red-500' : 'bg-panel-primary'}`} style={{ width: `${limit === null ? 0 : pct}%` }} />
             </div>
           </li>
         );
@@ -241,7 +241,7 @@ export function InternalBrandDetail() {
 
   return (
     <div className="space-y-6">
-      <Link to="/internal/brands" className="text-sm font-bold text-violet-600 hover:underline">← Marcas</Link>
+      <Link to="/internal/brands" className="text-sm font-bold text-panel-accent hover:underline">← Marcas</Link>
       <PageHeader
         title={brand.name}
         subtitle={`${brand.ownerEmail ?? 'Sin dueño'} · alta ${formatDate(brand.createdAt)}`}
@@ -259,12 +259,12 @@ export function InternalBrandDetail() {
         <div className="xl:col-span-2 space-y-6">
           <Section title={`Locales (${brand.locationsList.length})`}>
             <LocationMap pins={pins} className="h-64 mb-4" />
-            <ul className="divide-y divide-slate-100 dark:divide-slate-700/60">
+            <ul className="divide-y divide-panel-border">
               {brand.locationsList.map((l) => (
                 <li key={l.id} className="py-3 flex flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="font-bold">{l.name} {!l.isActive && <span className="text-xs text-slate-500">(inactivo)</span>}</p>
-                    <p className="text-xs text-slate-500">/join/{l.slug} · {[l.address, l.commune, l.region].filter(Boolean).join(', ') || 'sin dirección'}{l.phone ? ` · ${l.phone}` : ''}{l.contactName ? ` · ${l.contactName}` : ''}</p>
+                    <p className="font-bold">{l.name} {!l.isActive && <span className="text-xs text-panel-muted">(inactivo)</span>}</p>
+                    <p className="text-xs text-panel-muted">/join/{l.slug} · {[l.address, l.commune, l.region].filter(Boolean).join(', ') || 'sin dirección'}{l.phone ? ` · ${l.phone}` : ''}{l.contactName ? ` · ${l.contactName}` : ''}</p>
                   </div>
                   {isSuperadmin && <button type="button" className={SECONDARY} onClick={() => setEditingLocation(l)}>Editar</button>}
                 </li>
@@ -277,14 +277,14 @@ export function InternalBrandDetail() {
               const unit = p.type === 'POINTS' ? 'puntos' : 'sellos';
               return (
               <div key={p.id} className="mb-4 last:mb-0">
-                <p className="font-bold">{p.name} <span className="text-xs text-slate-500">· {p.type === 'POINTS' ? `puntos (1 cada $${brand.pesosPerPoint.toLocaleString('es-CL')})` : 'sellos'} · {p.stampValidityDays ? `vencen a los ${p.stampValidityDays} días` : 'sin vencimiento'}{p.isActive ? '' : ' · inactivo'}</span></p>
+                <p className="font-bold">{p.name} <span className="text-xs text-panel-muted">· {p.type === 'POINTS' ? `puntos (1 cada $${brand.pesosPerPoint.toLocaleString('es-CL')})` : 'sellos'} · {p.stampValidityDays ? `vencen a los ${p.stampValidityDays} días` : 'sin vencimiento'}{p.isActive ? '' : ' · inactivo'}</span></p>
                 <ul className="mt-2 grid gap-2 sm:grid-cols-2">
                   {p.promotions.map((pr) => (
-                    <li key={pr.id} className={`rounded-xl p-3 text-sm bg-slate-50 dark:bg-slate-900/60 ${pr.isActive ? '' : 'opacity-60'}`}>
+                    <li key={pr.id} className={`rounded-xl p-3 text-sm bg-panel-soft ${pr.isActive ? '' : 'opacity-60'}`}>
                       <span className="font-bold">{pr.name}</span> · {pr.targetStamps} {unit} → {pr.rewardName}
                     </li>
                   ))}
-                  {p.promotions.length === 0 && <li className="text-sm text-slate-500">Sin promociones</li>}
+                  {p.promotions.length === 0 && <li className="text-sm text-panel-muted">Sin promociones</li>}
                 </ul>
               </div>
               );
@@ -293,13 +293,13 @@ export function InternalBrandDetail() {
 
           <Section title="Actividad reciente">
             {brand.recentActivity.length === 0 ? (
-              <p className="text-sm text-slate-500">Todavía no hay escaneos.</p>
+              <p className="text-sm text-panel-muted">Todavía no hay escaneos.</p>
             ) : (
-              <ul className="text-sm divide-y divide-slate-100 dark:divide-slate-700/60">
+              <ul className="text-sm divide-y divide-panel-border">
                 {brand.recentActivity.map((a) => (
                   <li key={a.id} className="py-2 flex flex-wrap justify-between gap-2">
-                    <span>{a.type === 'STAMP_ADDED' ? 'Sello' : 'Canje'} · {a.customer} · {a.locationName} <span className="text-xs text-slate-500">({a.method === 'QR' ? 'QR' : a.method === 'PANEL' ? 'panel' : 'manual'})</span></span>
-                    <span className="text-slate-500 whitespace-nowrap">{formatDateTime(a.createdAt)}</span>
+                    <span>{a.type === 'STAMP_ADDED' ? 'Sello' : 'Canje'} · {a.customer} · {a.locationName} <span className="text-xs text-panel-muted">({a.method === 'QR' ? 'QR' : a.method === 'PANEL' ? 'panel' : 'manual'})</span></span>
+                    <span className="text-panel-muted whitespace-nowrap">{formatDateTime(a.createdAt)}</span>
                   </li>
                 ))}
               </ul>
@@ -311,7 +311,7 @@ export function InternalBrandDetail() {
           <Section title="Plan y uso">
             <p className="text-sm mb-4">
               {sub.status === 'TRIALING' && `Prueba hasta el ${formatDate(sub.trialEndsAt!)}`}
-              {sub.status === 'PAST_DUE' && <span className="font-bold text-orange-600">Prueba vencida el {formatDate(sub.trialEndsAt!)}</span>}
+              {sub.status === 'PAST_DUE' && <span className="font-bold text-panel-orange">Prueba vencida el {formatDate(sub.trialEndsAt!)}</span>}
               {sub.status === 'ACTIVE' && `Plan ${getPlan(sub.planId).name} activo`}
             </p>
             <UsageBars brand={brand} />
@@ -324,18 +324,18 @@ export function InternalBrandDetail() {
           )}
 
           <Section title={`Equipo (${brand.members.length})`}>
-            <ul className="text-sm divide-y divide-slate-100 dark:divide-slate-700/60">
+            <ul className="text-sm divide-y divide-panel-border">
               {brand.members.map((m) => (
                 <li key={m.userId} className="py-2">
                   <p className="font-bold truncate">{m.email ?? m.userId}</p>
-                  <p className="text-xs text-slate-500">{m.role === 'OWNER' ? 'Dueño' : `Mesero · ${m.locationName ?? '—'}`} · último ingreso {m.lastSignInAt ? formatDate(m.lastSignInAt) : 'nunca'}</p>
+                  <p className="text-xs text-panel-muted">{m.role === 'OWNER' ? 'Dueño' : `Mesero · ${m.locationName ?? '—'}`} · último ingreso {m.lastSignInAt ? formatDate(m.lastSignInAt) : 'nunca'}</p>
                 </li>
               ))}
             </ul>
           </Section>
 
           {!isSuperadmin && (
-            <p className="text-xs text-slate-500">Editar la cuenta, el plan o los locales requiere rol Superadmin.</p>
+            <p className="text-xs text-panel-muted">Editar la cuenta, el plan o los locales requiere rol Superadmin.</p>
           )}
         </div>
       </div>

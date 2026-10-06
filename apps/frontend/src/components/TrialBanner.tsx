@@ -8,13 +8,13 @@ export function TrialBanner({ brandId }: { brandId: string | null }) {
   if (subscription?.status !== 'TRIALING' || trialDaysLeft <= 0) return null;
 
   return (
-    <div className="mb-8 rounded-2xl bg-gradient-to-r from-brand-blue to-blue-600 text-white px-5 py-3 text-sm font-medium flex flex-wrap items-center gap-3 shadow-lg shadow-brand-blue/20">
+    <div data-panel-reveal className="mb-8 rounded-2xl border border-panel-accent/20 bg-panel-accent/10 text-panel-text px-5 py-4 text-sm font-medium flex flex-wrap items-center gap-3">
       <span>
         Estás en periodo de prueba — te {trialDaysLeft === 1 ? 'queda 1 día' : `quedan ${trialDaysLeft} días`}.
       </span>
       <Link
         to={ROUTES.billing}
-        className="ml-auto bg-white/20 hover:bg-white/30 px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors whitespace-nowrap"
+        className="ml-auto bg-panel-primary hover:bg-panel-primary/90 text-white px-4 py-3 rounded-xl text-xs font-bold transition-colors whitespace-nowrap"
       >
         Suscribirme
       </Link>

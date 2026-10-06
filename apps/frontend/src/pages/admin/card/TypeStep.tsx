@@ -92,10 +92,10 @@ export function TypeStep({ editor }: { editor: CardEditor }) {
 
   return (
     <div>
-      <h2 className="text-xs font-extrabold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+      <h2 className="text-xs font-extrabold uppercase tracking-widest text-panel-muted">
         ¿Qué beneficios quieres ofrecer?
       </h2>
-      <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-5">
+      <p className="text-sm text-panel-muted mt-1 mb-5">
         Puedes activar uno o ambos sistemas a la vez para tu tarjeta de fidelidad.
       </p>
 
@@ -148,13 +148,13 @@ export function TypeStep({ editor }: { editor: CardEditor }) {
               }}
               className={`w-full text-left flex items-start gap-4 rounded-2xl border-2 p-5 transition-colors disabled:cursor-not-allowed ${
                 selected
-                  ? 'border-brand-blue bg-brand-blue/5'
-                  : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 disabled:opacity-60'
+                  ? 'border-panel-accent bg-panel-accent/5'
+                  : 'border-panel-border hover:border-panel-border disabled:opacity-60'
               } ${!!reason && !selected ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
               <span
                 className={`w-12 h-12 shrink-0 rounded-xl flex items-center justify-center ${
-                  selected ? 'bg-brand-blue text-white' : 'bg-slate-100 dark:bg-slate-700 text-brand-blue'
+                  selected ? 'bg-panel-primary text-white' : 'bg-panel-soft text-panel-accent'
                 }`}
               >
                 <svg aria-hidden="true" className="w-6 h-6" fill={option.type === 'STAMPS' ? 'currentColor' : 'none'} stroke={option.type === 'STAMPS' ? 'none' : 'currentColor'} viewBox="0 0 24 24">
@@ -162,9 +162,9 @@ export function TypeStep({ editor }: { editor: CardEditor }) {
                 </svg>
               </span>
               <span className="flex-1 min-w-0">
-                <span className="block font-extrabold text-slate-900 dark:text-white">{option.title}</span>
-                <span className="block text-sm text-slate-600 dark:text-slate-300 mt-0.5">{option.description}</span>
-                <span className="inline-block mt-2 text-xs font-bold rounded-lg px-2 py-1 bg-slate-100 dark:bg-slate-700/70 text-slate-600 dark:text-slate-300">
+                <span className="block font-extrabold text-panel-text">{option.title}</span>
+                <span className="block text-sm text-panel-muted mt-0.5">{option.description}</span>
+                <span className="inline-block mt-2 text-xs font-bold rounded-lg px-2 py-1 bg-panel-soft text-panel-muted">
                   {example}
                 </span>
                 {reason && <span className={`block text-xs font-bold mt-2 ${selected ? 'text-amber-700 dark:text-amber-300' : 'text-slate-500'}`}>{reason}</span>}
@@ -172,7 +172,7 @@ export function TypeStep({ editor }: { editor: CardEditor }) {
               <span
                 aria-hidden="true"
                 className={`w-6 h-6 shrink-0 rounded-full border-2 flex items-center justify-center ${
-                  selected ? 'border-brand-blue bg-brand-blue text-white' : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
+                  selected ? 'border-panel-accent bg-panel-primary text-white' : 'border-panel-border'
                 }`}
               >
                 {selected && (
@@ -187,21 +187,21 @@ export function TypeStep({ editor }: { editor: CardEditor }) {
       </div>
 
       {!saved.points.enabled && (
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-3">
+        <p className="text-sm text-panel-muted mt-3">
           ¿Quieres usar puntos? Actívalos en{' '}
-          <Link to={ROUTES.settings} className="font-bold text-brand-blue underline underline-offset-2">
+          <Link to={ROUTES.settings} className="font-bold text-panel-accent underline underline-offset-2">
             Configuración
           </Link>
           .
         </p>
       )}
 
-      <h3 className="text-xs font-extrabold uppercase tracking-widest text-slate-400 mt-8 mb-3">Próximamente</h3>
+      <h3 className="text-xs font-extrabold uppercase tracking-widest text-panel-muted mt-8 mb-3">Próximamente</h3>
       <ul className="grid sm:grid-cols-2 gap-3">
         {SOON.map((item) => (
-          <li key={item.title} className="rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 p-4 opacity-70">
-            <p className="font-bold text-slate-700 dark:text-slate-200">{item.title}</p>
-            <p className="text-sm text-slate-500 dark:text-slate-400">{item.description}</p>
+          <li key={item.title} className="rounded-2xl border border-dashed border-panel-border p-4 opacity-70">
+            <p className="font-bold text-panel-text">{item.title}</p>
+            <p className="text-sm text-panel-muted">{item.description}</p>
           </li>
         ))}
       </ul>

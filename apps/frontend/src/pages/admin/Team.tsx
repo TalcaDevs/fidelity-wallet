@@ -1,3 +1,4 @@
+import { PanelTitle } from '../../components/admin/PanelTitle';
 import { useState } from 'react';
 import { getPlan, type StaffMemberDto } from '@fidelity/shared';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -41,15 +42,15 @@ export function Team({ brandId }: { brandId: string | null }) {
     <div className="space-y-8 max-w-6xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">Equipo</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-2 text-lg">Administra el acceso de tus cajeros y meseros.</p>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text"><PanelTitle text="Equipo" /></h1>
+          <p className="text-panel-muted mt-2 text-sm sm:text-base">Administra el acceso de tus cajeros y meseros.</p>
         </div>
         <button
           type="button"
           onClick={() => setDialog({ kind: 'invite' })}
           disabled={atLimit}
           title={atLimit ? 'Llegaste al límite de usuarios de tu plan' : undefined}
-          className="px-6 py-3 rounded-xl bg-brand-blue hover:bg-blue-600 text-white font-bold transition-all shadow-lg shadow-brand-blue/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-brand-blue"
+          className="px-6 py-3 rounded-xl bg-panel-primary hover:bg-panel-primary/90 text-white font-bold transition-all shadow-lg shadow-brand-blue/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-panel-primary"
         >
           Agregar usuario
         </button>
@@ -62,11 +63,11 @@ export function Team({ brandId }: { brandId: string | null }) {
         </p>
       </div>
 
-      <section className="bg-white dark:bg-slate-800/80 rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-200/20 dark:shadow-none">
+      <section data-panel-reveal className="bg-panel-surface rounded-2xl p-6 md:p-8 border border-panel-border shadow-panel">
         <div className="flex flex-wrap items-baseline justify-between gap-2 mb-6">
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white">Usuarios</h2>
+          <h2 className="text-xl font-bold text-panel-text">Usuarios</h2>
           {teamLimit !== null && (
-            <p className={`text-sm font-bold ${atLimit ? 'text-orange-600' : 'text-slate-500'}`}>
+            <p className={`text-sm font-bold ${atLimit ? 'text-orange-600' : 'text-panel-muted'}`}>
               {teamUsers} de {teamLimit} usuarios de equipo
               {atLimit ? ' · llegaste al límite: sube de plan para agregar más' : ''}
             </p>
@@ -78,7 +79,7 @@ export function Team({ brandId }: { brandId: string | null }) {
         ) : team.loading ? (
           <div className="animate-pulse space-y-4">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-16 bg-slate-100 dark:bg-slate-900 rounded-xl" />
+              <div key={i} className="h-16 bg-panel-soft rounded-xl" />
             ))}
           </div>
         ) : (
@@ -110,7 +111,7 @@ export function Team({ brandId }: { brandId: string | null }) {
         />
       )}
       {dialog?.kind === 'remove' && (
-        <ConfirmDialog
+        <ConfirmDialog trapFocus
           title="¿Dar de baja?"
           message={`${dialog.member.email ?? 'Este usuario'} pierde el acceso al escáner de inmediato.`}
           confirmLabel="Dar de baja"

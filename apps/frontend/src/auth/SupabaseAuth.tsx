@@ -1,183 +1,95 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, type FormEvent } from 'react';
 import { supabase } from '../lib/supabase';
-import { ROUTES, passwordResetUrl } from '../components/routing/routePaths';
-import { useTheme } from '../hooks/useTheme';
+import { passwordResetUrl } from '../components/routing/routePaths';
+import { AuthFrame } from './AuthFrame';
+import { AUTH_FIELD, AUTH_LABEL, AUTH_SUBMIT } from './authStyles';
 
 export function SupabaseAuth() {
-  // El login vive fuera del Layout, que es quien normalmente aplica la clase
-  // `dark`: sin esto las variantes oscuras de esta pantalla nunca se activan.
-  useTheme();
   const [mode, setMode] = useState<'login' | 'reset'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [noticeMsg, setNoticeMsg] = useState('');
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
     setIsLoading(true);
     setErrorMsg('');
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    setIsLoading(false);
-
-    if (error) {
-      setErrorMsg(error.message);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) setErrorMsg(error.message);
+    } catch {
+      setErrorMsg('No pudimos conectar. Revisa tu conexión e intenta de nuevo.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleResetRequest = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleResetRequest = async (event: FormEvent) => {
+    event.preventDefault();
     setIsLoading(true);
     setErrorMsg('');
     setNoticeMsg('');
-
-    // Con la landing pública en "/", el enlace del correo tiene que apuntar al
-    // formulario de nueva contraseña y no a la página de marketing.
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: passwordResetUrl(),
-    });
-
-    setIsLoading(false);
-
-    if (error) {
-      setErrorMsg(error.message);
-      return;
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: passwordResetUrl(),
+      });
+      if (error) {
+        setErrorMsg(error.message);
+        return;
+      }
+      // Neutro: no confirma si el correo tiene una cuenta.
+      setNoticeMsg('Si ese correo tiene una cuenta, le enviamos un enlace para restablecer la contraseña.');
+    } catch {
+      setErrorMsg('No pudimos conectar. Revisa tu conexión e intenta de nuevo.');
+    } finally {
+      setIsLoading(false);
     }
-
-    // Mensaje deliberadamente neutro: confirmar si un correo existe o no
-    // permitiría enumerar las cuentas de comercios registrados.
-    setNoticeMsg('Si ese correo tiene una cuenta, le enviamos un enlace para restablecer la contraseña.');
   };
 
   const switchMode = (next: 'login' | 'reset') => {
     setMode(next);
+    setShowPassword(false);
     setErrorMsg('');
     setNoticeMsg('');
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#15202b] flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <div className="inline-flex justify-center mb-6">
-          <div className="w-16 h-16 rounded-2xl bg-brand-blue flex items-center justify-center text-white font-black text-3xl shadow-xl shadow-brand-blue/30">
-            W
+    <AuthFrame
+      title={mode === 'login' ? 'Inicia sesión' : 'Recupera tu acceso'}
+      description={mode === 'login' ? 'Entra con el correo de tu cuenta para seguir con tu negocio.' : 'Te enviamos un enlace para crear una contraseña nueva.'}
+    >
+      <form className="space-y-5" aria-busy={isLoading} onSubmit={mode === 'login' ? handleSubmit : handleResetRequest}>
+        <div>
+          <label htmlFor="login-email" className={AUTH_LABEL}>Correo electrónico</label>
+          <input id="login-email" name="email" type="email" autoComplete="email" required disabled={isLoading} value={email} onChange={(event) => setEmail(event.target.value)} className={AUTH_FIELD} placeholder="tu@comercio.cl" />
+        </div>
+        {mode === 'login' && (
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <label htmlFor="login-password" className="text-sm font-semibold text-panel-text">Contraseña</label>
+              <button type="button" onClick={() => switchMode('reset')} disabled={isLoading} className="text-xs font-semibold text-panel-accent transition-colors hover:underline disabled:opacity-60">¿Olvidaste tu contraseña?</button>
+            </div>
+            <div className="relative">
+              <input id="login-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" required disabled={isLoading} value={password} onChange={(event) => setPassword(event.target.value)} className={`${AUTH_FIELD} pr-20`} placeholder="Tu contraseña" />
+              <button type="button" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-pressed={showPassword} onClick={() => setShowPassword((shown) => !shown)} className="absolute inset-y-1 right-1 rounded-lg px-3 text-[11px] font-semibold text-panel-muted transition-colors hover:text-panel-accent">{showPassword ? 'Ocultar' : 'Mostrar'}</button>
+            </div>
           </div>
-        </div>
-        <h2 className="mt-2 text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-          {mode === 'login' ? 'Inicia Sesión' : 'Recupera tu acceso'}
-        </h2>
-        <p className="mt-3 text-base text-slate-500 dark:text-slate-400 font-medium">
-          {mode === 'login'
-            ? 'Fidelity Wallet para Comercios'
-            : 'Te enviamos un enlace para crear una contraseña nueva.'}
-        </p>
-      </div>
-
-      <div className="mt-10 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white dark:bg-brand-slate py-10 px-6 sm:px-12 shadow-2xl shadow-brand-blue/5 dark:shadow-black/50 sm:rounded-3xl border border-slate-100 dark:border-brand-slate/50">
-          <form className="space-y-6" onSubmit={mode === 'login' ? handleSubmit : handleResetRequest}>
-            <div>
-              <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
-                Correo Electrónico
-              </label>
-              <div className="mt-1">
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="appearance-none block w-full px-5 py-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-brand-blue/20 focus:border-brand-blue transition-all font-medium"
-                  placeholder="admin@local.com"
-                />
-              </div>
-            </div>
-
-            {mode === 'login' && (
-            <div>
-              <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
-                Contraseña
-              </label>
-              <div className="mt-1">
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="appearance-none block w-full px-5 py-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-brand-blue/20 focus:border-brand-blue transition-all font-medium"
-                  placeholder="••••••••"
-                />
-              </div>
-            </div>
-            )}
-
-            <div className="flex items-center justify-between pt-2">
-              {mode === 'login' ? (
-                <div className="flex items-center">
-                  <input
-                    id="remember-me"
-                    name="remember-me"
-                    type="checkbox"
-                    className="h-5 w-5 text-brand-blue focus:ring-brand-blue border-slate-300 rounded cursor-pointer"
-                  />
-                  <label htmlFor="remember-me" className="ml-3 block text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
-                    Recordarme
-                  </label>
-                </div>
-              ) : (
-                <span />
-              )}
-
-              <div className="text-sm">
-                <button
-                  type="button"
-                  onClick={() => switchMode(mode === 'login' ? 'reset' : 'login')}
-                  className="font-bold text-brand-blue hover:text-blue-500 transition-colors"
-                >
-                  {mode === 'login' ? '¿Olvidaste tu contraseña?' : 'Volver a iniciar sesión'}
-                </button>
-              </div>
-            </div>
-
-            {noticeMsg && (
-              <div className="p-4 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-sm font-medium rounded-xl border border-emerald-100 dark:border-emerald-500/20">
-                {noticeMsg}
-              </div>
-            )}
-
-            {errorMsg && (
-              <div className="p-4 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-sm font-medium rounded-xl border border-red-100 dark:border-red-500/20 flex items-center gap-3">
-                <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                {errorMsg}
-              </div>
-            )}
-
-            <div className="pt-2">
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full flex justify-center py-4 px-4 border border-transparent rounded-2xl shadow-lg shadow-brand-blue/20 text-base font-bold text-white bg-brand-blue hover:bg-blue-600 focus:outline-none focus:ring-4 focus:ring-brand-blue/30 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {mode === 'login'
-                  ? (isLoading ? 'Iniciando sesión...' : 'Entrar al Panel')
-                  : (isLoading ? 'Enviando enlace...' : 'Enviar enlace de recuperación')}
-              </button>
-            </div>
-          </form>
-        </div>
-
-        <p className="mt-8 text-center">
-          <Link to={ROUTES.home} className="text-sm font-bold text-slate-500 dark:text-slate-400 hover:text-brand-blue transition-colors">
-            ← Volver al inicio
-          </Link>
-        </p>
-      </div>
-    </div>
+        )}
+        {noticeMsg && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-relaxed text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">{noticeMsg}</p>}
+        {errorMsg && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-relaxed text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">{errorMsg}</p>}
+        <button type="submit" disabled={isLoading} className={AUTH_SUBMIT}>
+          {mode === 'login' ? (isLoading ? 'Iniciando sesión…' : 'Entrar a mi cuenta') : (isLoading ? 'Enviando enlace…' : 'Enviar enlace de recuperación')}
+          {!isLoading && <span aria-hidden="true">→</span>}
+        </button>
+        {mode === 'reset' ? (
+          <button type="button" onClick={() => switchMode('login')} disabled={isLoading} className="mx-auto block py-1 text-xs font-semibold text-panel-accent hover:underline disabled:opacity-60">← Volver a iniciar sesión</button>
+        ) : (
+          <p className="text-center text-xs leading-relaxed text-panel-muted">Para el dueño y el equipo de tu comercio.</p>
+        )}
+      </form>
+    </AuthFrame>
   );
 }

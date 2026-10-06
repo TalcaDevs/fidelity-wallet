@@ -37,19 +37,19 @@ export function InternalAudit() {
         }
       />
       {error && <ErrorAlert message={error} />}
-      <div className={`${CARD} divide-y divide-slate-100 dark:divide-slate-700/60`}>
+      <div className={`${CARD} divide-y divide-panel-border`}>
         {loading && !data ? (
           <div className="p-6 h-24 animate-pulse" />
         ) : data && data.items.length > 0 ? (
           data.items.map((a) => (
             <div key={a.id} className="p-4 text-sm">
               <div className="flex flex-wrap justify-between gap-2">
-                <p><span className="font-bold">{a.action}</span> · {a.entity} <span className="text-slate-500 font-mono text-xs">{a.entityId}</span></p>
-                <p className="text-slate-500 whitespace-nowrap">{formatDateTime(a.createdAt)}</p>
+                <p><span className="font-bold">{a.action}</span> · {a.entity} <span className="text-panel-muted font-mono text-xs">{a.entityId}</span></p>
+                <p className="text-panel-muted whitespace-nowrap">{formatDateTime(a.createdAt)}</p>
               </div>
-              <p className="text-slate-500 mt-1">{a.actorEmail ?? a.actorUserId} ({a.actorType === 'PLATFORM' ? 'equipo interno' : 'dueño'})</p>
+              <p className="text-panel-muted mt-1">{a.actorEmail ?? a.actorUserId} ({a.actorType === 'PLATFORM' ? 'equipo interno' : 'dueño'})</p>
               {(a.before != null || a.after != null) && (
-                <p className="mt-1 text-xs"><span className="text-slate-500">{formatChange(a.before)}</span> → <span className="font-bold">{formatChange(a.after)}</span></p>
+                <p className="mt-1 text-xs"><span className="text-panel-muted">{formatChange(a.before)}</span> → <span className="font-bold">{formatChange(a.after)}</span></p>
               )}
               {a.reason && <p className="mt-1 text-xs italic">Motivo: {a.reason}</p>}
             </div>

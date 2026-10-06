@@ -37,13 +37,13 @@ export function CustomerDetail({ brandId }: { brandId: string | null }) {
 
   return (
     <>
-      <Link to={ROUTES.customers} className="inline-block mb-6 text-sm font-bold text-brand-blue hover:underline">
+      <Link to={ROUTES.customers} className="inline-block mb-6 text-sm font-bold text-panel-accent hover:underline">
         ← Clientes
       </Link>
       <header className="mb-8 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-4xl font-extrabold tracking-tight mb-2 break-words">{customerName}</h1>
-          <p className="text-slate-500 dark:text-slate-400 text-lg">
+          <h1 className="break-words text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text">{customerName}</h1>
+          <p className="text-panel-muted text-sm sm:text-base">
             Sus compras validadas en caja, con el monto, la nota y la foto de la boleta cuando se registraron.
           </p>
         </div>
@@ -51,7 +51,7 @@ export function CustomerDetail({ brandId }: { brandId: string | null }) {
           <button
             type="button"
             onClick={() => setAdding(true)}
-            className="shrink-0 px-6 py-3 bg-brand-blue hover:bg-blue-600 text-white shadow-lg shadow-brand-blue/20 rounded-xl font-bold transition-all inline-flex items-center justify-center gap-2"
+            className="shrink-0 px-6 py-3 bg-panel-primary hover:bg-panel-primary/90 text-white shadow-lg shadow-brand-blue/20 rounded-xl font-bold transition-all inline-flex items-center justify-center gap-2"
           >
             <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 5v14m-7-7h14" />
@@ -65,11 +65,15 @@ export function CustomerDetail({ brandId }: { brandId: string | null }) {
 
       {loading && !data ? (
         <div className="space-y-4" aria-busy="true">
-          <div className="h-32 rounded-2xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
-          <div className="h-64 rounded-2xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
+          <div className="h-32 rounded-2xl bg-panel-soft animate-pulse" />
+          <div className="h-64 rounded-2xl bg-panel-soft animate-pulse" />
         </div>
       ) : (
-        data && <PurchaseHistory data={data} onPage={setPage} />
+        data && <PurchaseHistory
+          data={data}
+          onPage={setPage}
+          className="[&_section]:bg-panel-surface [&_section]:border-panel-border [&_section]:shadow-panel [&_[aria-label=Totales]>div]:bg-panel-surface [&_[aria-label=Totales]>div]:border-panel-border [&_dt]:text-panel-muted [&_dd]:text-panel-text [&_h2]:text-panel-text [&_p]:text-panel-muted [&_p.font-bold]:text-panel-text [&_p.font-black]:text-panel-text [&_time]:text-panel-muted [&_button]:bg-panel-soft [&_button]:text-panel-text [&_ol]:divide-panel-border"
+        />
       )}
 
       {adding && data && brandId && customerId && (

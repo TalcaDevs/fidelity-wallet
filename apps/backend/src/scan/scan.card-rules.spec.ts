@@ -91,7 +91,10 @@ describe('ScanService: reglas de la tarjeta', () => {
 
     service = new ScanService(
       prisma,
-      { notifyPassUpdate: vi.fn().mockResolvedValue(undefined) } as unknown as PassesService,
+      {
+        notifyPassUpdate: vi.fn().mockResolvedValue(undefined),
+        enqueuePassUpdate: vi.fn().mockResolvedValue(undefined),
+      } as unknown as PassesService,
       config,
       new ManualLookupLimiter(),
       {

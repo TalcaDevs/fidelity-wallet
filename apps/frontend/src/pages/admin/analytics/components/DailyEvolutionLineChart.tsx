@@ -11,12 +11,12 @@ export function DailyEvolutionLineChart({ timeSeries }: DailyEvolutionLineChartP
   if (!timeSeries || timeSeries.length === 0) {
     return (
       <div
-        className="h-64 flex flex-col items-center justify-center text-slate-400 text-sm gap-2"
+        className="h-64 flex flex-col items-center justify-center text-panel-muted text-sm gap-2"
         role="status"
         aria-live="polite"
       >
         <svg
-          className="w-10 h-10 text-slate-300 dark:text-slate-600"
+          className="w-10 h-10 text-panel-muted"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -88,7 +88,7 @@ export function DailyEvolutionLineChart({ timeSeries }: DailyEvolutionLineChartP
   const hoveredPoint = hoveredIndex !== null ? timeSeries[hoveredIndex] : null;
 
   return (
-    <div className="relative w-full overflow-hidden">
+    <div className="relative w-full overflow-hidden motion-safe:animate-[fw-panel-enter_300ms_ease-out]">
       <svg
         viewBox={`0 0 ${svgWidth} ${svgHeight}`}
         className="w-full h-auto select-none"
@@ -98,12 +98,12 @@ export function DailyEvolutionLineChart({ timeSeries }: DailyEvolutionLineChartP
         <desc>Evolución de sellos entregados y premios canjeados a lo largo del tiempo</desc>
         <defs>
           <linearGradient id="stampsGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.25" />
-            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.0" />
+            <stop offset="0%" stopColor="var(--fw-panel-accent, #087bd7)" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="var(--fw-panel-accent, #087bd7)" stopOpacity="0.0" />
           </linearGradient>
           <linearGradient id="rewardsGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#f97316" stopOpacity="0.25" />
-            <stop offset="100%" stopColor="#f97316" stopOpacity="0.0" />
+            <stop offset="0%" stopColor="var(--fw-panel-orange, #ba5200)" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="var(--fw-panel-orange, #ba5200)" stopOpacity="0.0" />
           </linearGradient>
         </defs>
 
@@ -112,7 +112,7 @@ export function DailyEvolutionLineChart({ timeSeries }: DailyEvolutionLineChartP
           x={paddingLeft - 38}
           y={paddingTop - 12}
           textAnchor="start"
-          className="text-[11px] font-bold fill-slate-500 dark:fill-slate-400"
+          className="text-[11px] font-bold fill-panel-muted"
         >
           Cantidad
         </text>
@@ -122,7 +122,7 @@ export function DailyEvolutionLineChart({ timeSeries }: DailyEvolutionLineChartP
           x={svgWidth - paddingRight + 5}
           y={paddingTop + plotHeight + 18}
           textAnchor="start"
-          className="text-[11px] font-bold fill-slate-500 dark:fill-slate-400"
+          className="text-[11px] font-bold fill-panel-muted"
         >
           Días
         </text>
@@ -137,7 +137,7 @@ export function DailyEvolutionLineChart({ timeSeries }: DailyEvolutionLineChartP
                 y1={yPos}
                 x2={paddingLeft + plotWidth}
                 y2={yPos}
-                stroke="#94a3b8"
+                stroke="var(--fw-panel-muted, #556c7d)"
                 strokeOpacity="0.2"
                 strokeDasharray="4 4"
               />
@@ -145,7 +145,7 @@ export function DailyEvolutionLineChart({ timeSeries }: DailyEvolutionLineChartP
                 x={paddingLeft - 10}
                 y={yPos + 4}
                 textAnchor="end"
-                className="text-[10px] fill-slate-400 font-medium"
+                className="text-[10px] fill-panel-muted font-medium tabular-nums"
               >
                 {val}
               </text>
@@ -159,7 +159,7 @@ export function DailyEvolutionLineChart({ timeSeries }: DailyEvolutionLineChartP
           y1={paddingTop + plotHeight}
           x2={paddingLeft + plotWidth}
           y2={paddingTop + plotHeight}
-          stroke="#94a3b8"
+          stroke="var(--fw-panel-muted, #556c7d)"
           strokeOpacity="0.3"
         />
 
@@ -171,7 +171,7 @@ export function DailyEvolutionLineChart({ timeSeries }: DailyEvolutionLineChartP
         <path
           d={stampsPath}
           fill="none"
-          stroke="#2563eb"
+          stroke="var(--fw-panel-accent, #087bd7)"
           strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -181,7 +181,7 @@ export function DailyEvolutionLineChart({ timeSeries }: DailyEvolutionLineChartP
         <path
           d={rewardsPath}
           fill="none"
-          stroke="#f97316"
+          stroke="var(--fw-panel-orange, #ba5200)"
           strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -194,10 +194,10 @@ export function DailyEvolutionLineChart({ timeSeries }: DailyEvolutionLineChartP
             cx={getX(i)}
             cy={getY(point.stamps)}
             r={hoveredIndex === i ? 6 : 3.5}
-            fill="#2563eb"
-            stroke="#ffffff"
+            fill="var(--fw-panel-accent, #087bd7)"
+            stroke="var(--fw-panel-surface, #fff)"
             strokeWidth="2"
-            className="transition-all duration-150"
+            className="motion-safe:transition-all motion-safe:duration-150"
           />
         ))}
 
@@ -208,10 +208,10 @@ export function DailyEvolutionLineChart({ timeSeries }: DailyEvolutionLineChartP
             cx={getX(i)}
             cy={getY(point.rewards)}
             r={hoveredIndex === i ? 6 : 3.5}
-            fill="#f97316"
-            stroke="#ffffff"
+            fill="var(--fw-panel-orange, #ba5200)"
+            stroke="var(--fw-panel-surface, #fff)"
             strokeWidth="2"
-            className="transition-all duration-150"
+            className="motion-safe:transition-all motion-safe:duration-150"
           />
         ))}
 
@@ -225,7 +225,7 @@ export function DailyEvolutionLineChart({ timeSeries }: DailyEvolutionLineChartP
               x={xPos}
               y={paddingTop + plotHeight + 18}
               textAnchor="middle"
-              className="text-[10px] fill-slate-500 dark:fill-slate-400 font-medium"
+              className="text-[10px] fill-panel-muted font-medium tabular-nums"
             >
               {point.date.slice(5)}
             </text>
@@ -239,7 +239,7 @@ export function DailyEvolutionLineChart({ timeSeries }: DailyEvolutionLineChartP
             y1={paddingTop}
             x2={getX(hoveredIndex)}
             y2={paddingTop + plotHeight}
-            stroke="#94a3b8"
+            stroke="var(--fw-panel-muted, #556c7d)"
             strokeWidth="1.5"
             strokeDasharray="3 3"
           />
@@ -282,19 +282,19 @@ export function DailyEvolutionLineChart({ timeSeries }: DailyEvolutionLineChartP
             left: `${(getX(hoveredIndex) / svgWidth) * 100}%`,
             top: '8px',
           }}
-          className="absolute -translate-x-1/2 bg-slate-900/95 dark:bg-slate-950/95 text-white text-xs px-3 py-2 rounded-xl shadow-xl pointer-events-none z-20 whitespace-nowrap border border-slate-700 flex flex-col gap-1"
+          className="absolute -translate-x-1/2 bg-panel-surface text-panel-text text-xs px-3 py-2 rounded-xl shadow-panel pointer-events-none z-20 whitespace-nowrap border border-panel-border flex flex-col gap-1"
         >
-          <span className="font-bold text-slate-300 text-[11px]">{hoveredPoint.date}</span>
+          <span className="font-bold text-panel-muted text-[11px] tabular-nums">{hoveredPoint.date}</span>
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" />
-            <span className="font-medium text-slate-200">
-              Sellos: <strong className="text-white">{hoveredPoint.stamps}</strong>
+            <span className="w-2.5 h-2.5 rounded-full bg-panel-accent inline-block" />
+            <span className="font-medium text-panel-muted">
+              Sellos: <strong className="text-panel-text tabular-nums">{hoveredPoint.stamps}</strong>
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block" />
-            <span className="font-medium text-slate-200">
-              Canjes: <strong className="text-white">{hoveredPoint.rewards}</strong>
+            <span className="w-2.5 h-2.5 rounded-full bg-panel-orange inline-block" />
+            <span className="font-medium text-panel-muted">
+              Canjes: <strong className="text-panel-text tabular-nums">{hoveredPoint.rewards}</strong>
             </span>
           </div>
         </div>
