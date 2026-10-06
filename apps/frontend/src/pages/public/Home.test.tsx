@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { Home } from "./Home";
 
 // The animated card's interaction and lifecycle are covered in its own tests.
-vi.mock("./home/LoyaltyCardStage", () => ({ LoyaltyCardStage: () => null }));
+vi.mock("./home/components/LoyaltyCardStage", () => ({ LoyaltyCardStage: () => null }));
 
 beforeEach(() => {
   // Layout visibility is a browser concern; keep observers available to the

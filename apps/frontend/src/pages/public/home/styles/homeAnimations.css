@@ -1,0 +1,286 @@
+/* Animation keyframes are the only Home styles that require CSS. */
+@keyframes fw-atmosphere-drift {
+  from {
+    transform: translate3d(0, -4%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(12%, 17%, 0) scale(1.1);
+  }
+}
+
+@keyframes fw-atmosphere-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fw-hero-ring {
+  from {
+    transform: translate(-50%, -50%) rotateX(17deg) rotateZ(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotateX(17deg) rotateZ(360deg);
+  }
+}
+
+@keyframes fw-hero-ring-inner {
+  from {
+    transform: translate(-50%, -50%) rotateY(28deg) rotateZ(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotateY(28deg) rotateZ(360deg);
+  }
+}
+
+@keyframes fw-star-turn {
+  from {
+    transform: rotate(15deg);
+  }
+  to {
+    transform: rotate(375deg);
+  }
+}
+
+@keyframes fw-glow-breathe {
+  from {
+    transform: scale(0.94);
+    opacity: 0.65;
+  }
+  to {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+}
+
+@keyframes fw-experience-flow {
+  from {
+    transform: translateY(-45px);
+  }
+  to {
+    transform: translateY(100px);
+  }
+}
+
+@keyframes fw-card-hover {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -7px;
+  }
+}
+
+@keyframes fw-gift-float {
+  0%,
+  100% {
+    transform: rotate(-15deg) rotateY(-20deg) translateY(0);
+  }
+  50% {
+    transform: rotate(-7deg) rotateY(15deg) translateY(-9px);
+  }
+}
+
+@keyframes fw-spark-turn {
+  0%,
+  100% {
+    transform: rotate(0) scale(0.95);
+  }
+  50% {
+    transform: rotate(80deg) scale(1.1);
+  }
+}
+
+@keyframes fw-node-float {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -5px;
+  }
+}
+
+@keyframes fw-connection-travel {
+  0% {
+    left: 0;
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.6;
+  }
+  85% {
+    opacity: 0.6;
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+
+@keyframes fw-business-light {
+  from {
+    transform: translate(-4%, -3%) rotate(-8deg);
+  }
+  to {
+    transform: translate(8%, 5%) rotate(8deg);
+  }
+}
+
+@keyframes fw-business-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-9deg);
+  }
+  50% {
+    transform: translateY(-7px) rotate(-3deg);
+  }
+}
+
+@keyframes fw-business-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fw-business-icon-in {
+  from {
+    opacity: 0.35;
+    transform: scale(0.65) rotate(-22deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+  }
+}
+
+@keyframes fw-business-icon-sway {
+  0%,
+  100% {
+    transform: rotate(0) translateY(0);
+  }
+  50% {
+    transform: rotate(9deg) translateY(-4px);
+  }
+}
+
+@keyframes fw-business-copy-in {
+  from {
+    opacity: 0.35;
+    translate: 0 12px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes fw-card-stamp-land {
+  0% {
+    transform: translateY(-15px) rotate(-35deg) scale(1.85);
+    opacity: 0;
+  }
+  30% {
+    transform: translateY(1px) rotate(7deg) scale(0.88);
+    opacity: 1;
+  }
+  58% {
+    transform: translateY(-2px) rotate(-14deg) scale(1.14);
+  }
+  100% {
+    transform: translateY(0) rotate(-8deg) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes fw-card-stamp-ring {
+  0%,
+  14% {
+    transform: scale(0.82);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+@keyframes fw-card-stamp-spark {
+  0%,
+  12% {
+    transform: rotate(var(--fw-spark-angle)) translateY(-10px) scaleY(0.4);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(var(--fw-spark-angle)) translateY(-40px) scaleY(0.5);
+    opacity: 0;
+  }
+}
+
+@keyframes fw-card-reward-particle {
+  0% {
+    transform: translate(0, 0) rotate(0) scale(0);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--fw-particle-x), var(--fw-particle-y))
+      rotate(var(--fw-particle-rotation)) scale(0.65);
+    opacity: 0;
+  }
+}
+
+@keyframes fw-card-reward-halo {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.75;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+@keyframes fw-card-reward-badge {
+  0% {
+    transform: rotate(-7deg) scale(0.82);
+  }
+  45% {
+    transform: rotate(8deg) scale(1.11);
+  }
+  100% {
+    transform: rotate(5deg) scale(1);
+  }
+}
+
+@keyframes fw-map-travel {
+  to {
+    stroke-dashoffset: -168;
+  }
+}
+
+@keyframes fw-map-pulse {
+  0% {
+    transform: scale(0.65);
+    opacity: 0.55;
+  }
+  70%,
+  100% {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
