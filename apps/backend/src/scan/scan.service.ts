@@ -224,7 +224,8 @@ export class ScanService {
 
     const { activeStamps, activePoints, nextExpiryAt } = await this.readBalance(this.prisma, pass.id, now);
     const { latestStamp, latestPoints } = await this.findLatestScans(this.prisma, pass.id);
-    const nextStampAvailableAt = this.cooldownUntil(card, latestStamp, latestPoints, now);
+    const stampBlock = this.cooldownUntil(card, latestStamp, null, now);
+    const pointsBlock = this.cooldownUntil(card, null, latestPoints, now);
     const availablePromotions = toPromotionOptions(activePromotions, activeStamps, activePoints);
     const isOwner = membership.role === MerchantRole.OWNER;
 
@@ -248,10 +249,13 @@ export class ScanService {
       rewardUnlocked: availablePromotions.some((p) => p.canRedeem),
       availablePromotions,
       nextExpiryAt,
-      nextStampAvailableAt: nextStampAvailableAt?.until ?? null,
-      canStamp: isOwner || nextStampAvailableAt === null,
+      nextStampAvailableAt: stampBlock?.until ?? null,
+      canStamp: isOwner || stampBlock === null,
       maxStampsPerLoad: isOwner && card.type === 'STAMPS' ? this.ownerMaxStamps : 1,
-      reasonRequired: isOwner && nextStampAvailableAt !== null,
+      reasonRequired: isOwner && stampBlock !== null,
+      nextPointsAvailableAt: pointsBlock?.until ?? null,
+      canAddPoints: isOwner || pointsBlock === null,
+      pointsReasonRequired: isOwner && pointsBlock !== null,
       cardType: card.type,
       stampsEnabled: card.stampsEnabled,
       pointsEnabled: card.pointsEnabled,

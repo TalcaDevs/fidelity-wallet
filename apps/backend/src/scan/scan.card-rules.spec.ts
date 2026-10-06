@@ -240,6 +240,42 @@ describe('ScanService: reglas de la tarjeta', () => {
       });
     });
 
+    describe('validación en caja', () => {
+      it('tarjeta dual + puntos recientes -> canStamp=true, canAddPoints=false', async () => {
+        latestStamp = {
+          id: 'prev',
+          createdAt: new Date(Date.now() - 60_000), // Hace 1 min
+          method: ScanMethod.QR,
+          type: ScanType.STAMP_ADDED,
+          isPoints: true,
+          isStamp: false,
+        } as any;
+        
+        const validation = await service.validate({ passToken: 'qr-token', merchantId }, userId);
+        expect(validation.canStamp).toBe(true);
+        expect(validation.nextStampAvailableAt).toBeNull();
+        expect(validation.canAddPoints).toBe(false);
+        expect(validation.nextPointsAvailableAt).toBeDefined();
+      });
+
+      it('tarjeta dual + sello reciente -> canStamp=false, canAddPoints=true', async () => {
+        latestStamp = {
+          id: 'prev',
+          createdAt: new Date(Date.now() - 60_000), // Hace 1 min
+          method: ScanMethod.QR,
+          type: ScanType.STAMP_ADDED,
+          isPoints: false,
+          isStamp: true,
+        } as any;
+        
+        const validation = await service.validate({ passToken: 'qr-token', merchantId }, userId);
+        expect(validation.canStamp).toBe(false);
+        expect(validation.nextStampAvailableAt).toBeDefined();
+        expect(validation.canAddPoints).toBe(true);
+        expect(validation.nextPointsAvailableAt).toBeNull();
+      });
+    });
+
     it('puntos-only previo + sello-only actual -> el sello debe pasar', async () => {
       // Compra anterior de solo puntos hace 1 minuto (bloquearía puntos pero no sellos)
       latestStamp = {

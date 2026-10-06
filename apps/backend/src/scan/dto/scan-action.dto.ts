@@ -378,6 +378,23 @@ export class ScanValidationDto {
   })
   reasonRequired: boolean;
 
+  @ApiProperty({
+    description: 'Si el pase está en el bloqueo de puntos: desde cuándo puede volver a sumar puntos',
+    nullable: true,
+    type: Date,
+  })
+  nextPointsAvailableAt?: Date | null;
+
+  @ApiProperty({
+    description: 'Verdadero si quien escanea puede sumar puntos ahora. El STAFF no puede durante el bloqueo; el OWNER sí, con motivo',
+  })
+  canAddPoints?: boolean;
+
+  @ApiProperty({
+    description: 'Verdadero si sumar puntos ahora exige motivo (OWNER dentro del bloqueo de puntos)',
+  })
+  pointsReasonRequired?: boolean;
+
   @ApiProperty({ enum: CARD_TYPES, description: 'Tarjeta de sellos (por visita) o de puntos (por monto)' })
   cardType: CardType;
 
