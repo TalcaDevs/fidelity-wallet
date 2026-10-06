@@ -780,7 +780,12 @@ export class ScanService {
       // así que dos cajeros escaneando a la vez no pueden colar un segundo sello. Es por marca:
       // sellar en un local también bloquea sellar en otro. El OWNER lo puede saltar dando motivo.
       const { latestStamp, latestPoints } = await this.findLatestScans(tx, pass.id);
-      const block = this.cooldownUntil(card, latestStamp, latestPoints, now);
+      const block = this.cooldownUntil(
+        card,
+        options.stampCount > 0 ? latestStamp : null,
+        options.pointsEarned > 0 ? latestPoints : null,
+        now,
+      );
       const overridesCooldown = block !== null && options.isOwner && !!options.reason;
       const responseContext = { passId: pass.id, card, promotions: activePromotions, customer: maskedCustomer, options, now };
 
