@@ -8,6 +8,13 @@ export default [
     languageOptions: { parser },
     plugins: { sonarjs },
     rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "JSXOpeningElement[name.name='svg']",
+          message: "Import an SVG asset instead of embedding its markup in a Home component.",
+        },
+      ],
       complexity: ["error", 10],
       "sonarjs/cognitive-complexity": ["error", 10],
     },

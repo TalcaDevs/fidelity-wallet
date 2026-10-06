@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import { ActivityPlot } from "./ActivityPlot";
+import { useEffect, useRef, useState } from "react";
+import { useReducedMotion } from "motion/react";
 import "./ActivityChart.css";
 
 const SERIES = {
@@ -31,17 +32,10 @@ export function ActivityChart({
   const [visible, setVisible] = useState(false);
   const [pageVisible, setPageVisible] = useState(true);
   const ref = useRef<HTMLDivElement>(null);
-  const gradientId = useId().replace(/:/g, "");
   const reducedMotion = useReducedMotion();
   const stopped = motionPaused || !!reducedMotion;
   const data = SERIES[metric];
   const values = frame % 2 === 0 ? data.points : data.next;
-  const points = values.map(
-    (value, index) => [14 + index * 43, 110 - value] as const,
-  );
-  const line = points
-    .map(([x, y], index) => `${index ? "L" : "M"} ${x} ${y}`)
-    .join(" ");
 
   useEffect(() => {
     const onVisibility = () => setPageVisible(!document.hidden);
@@ -73,12 +67,15 @@ export function ActivityChart({
   }, [stopped, visible, pageVisible]);
 
   return (
-    <div className="fw-report-demo" ref={ref}>
-      <div className="fw-report-header">
+    <div
+      className="fw-report-demo mt-[25px] p-[19px] [border:1px_solid_var(--fw-border)] rounded-[15px]"
+      ref={ref}
+    >
+      <div className="fw-report-header flex justify-between items-center gap-[12px] text-[10px] font-bold">
         <span>Tu negocio, en perspectiva</span>
         <span>DATOS DE EJEMPLO</span>
       </div>
-      <div className="fw-report-metrics">
+      <div className="fw-report-metrics flex justify-between gap-[12px] mt-[19px] items-start">
         <div>
           <strong>
             {data.total + (frame % 2 === 0 ? 0 : metric === "visits" ? 17 : 4)}
@@ -86,7 +83,7 @@ export function ActivityChart({
           <span>{data.unit}</span>
         </div>
         <div
-          className="fw-report-switch"
+          className="fw-report-switch flex gap-[3px] p-[3px] [border:1px_solid_var(--fw-border)] rounded-[7px]"
           role="group"
           aria-label="Métrica del gráfico de ejemplo"
         >
@@ -104,66 +101,17 @@ export function ActivityChart({
           ))}
         </div>
       </div>
-      <svg
-        className="fw-report-chart"
-        viewBox="0 0 286 128"
-        role="img"
-        aria-label={`${data.label} de ejemplo de lunes a domingo`}
+      <ActivityPlot values={values} label={data.label} stopped={stopped} />
+      <div
+        className="fw-report-days flex justify-between px-[4px] text-[color:var(--fw-muted)] text-[8px]"
+        aria-hidden="true"
       >
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="currentColor" stopOpacity="0.3" />
-            <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {[30, 65, 100].map((y) => (
-          <line
-            key={y}
-            x1="10"
-            x2="277"
-            y1={y}
-            y2={y}
-            className="fw-report-grid"
-          />
-        ))}
-        <motion.path
-          d={`${line} L 272 118 L 14 118 Z`}
-          animate={{ d: `${line} L 272 118 L 14 118 Z` }}
-          initial={false}
-          transition={{ duration: stopped ? 0 : 1.35, ease: "easeInOut" }}
-          fill={`url(#${gradientId})`}
-        />
-        <motion.path
-          d={line}
-          animate={{ d: line }}
-          initial={false}
-          transition={{ duration: stopped ? 0 : 1.35, ease: "easeInOut" }}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.4"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-        {points.map(([x, y], i) => (
-          <motion.circle
-            key={i}
-            cx={x}
-            cy={y}
-            animate={{ cy: y }}
-            initial={false}
-            transition={{ duration: stopped ? 0 : 1.35, ease: "easeInOut" }}
-            r={i === 6 ? 4 : 2}
-            fill="currentColor"
-          />
-        ))}
-      </svg>
-      <div className="fw-report-days" aria-hidden="true">
         {DAYS.map((day, index) => (
           <span key={index}>{day}</span>
         ))}
       </div>
-      <div className="fw-report-bottom">
-        <span className="fw-report-dot" />
+      <div className="fw-report-bottom flex items-center gap-[6px] mt-[15px] [border-top:1px_solid_var(--fw-border)] pt-[11px] text-[8px] text-[color:var(--fw-muted)]">
+        <span className="fw-report-dot w-[5px] h-[5px] rounded-full" />
         Visitas que se convierten en información útil.
       </div>
     </div>

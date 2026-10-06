@@ -1,4 +1,7 @@
-import { useId, useRef, useState } from "react";
+import { HomeContainer } from "./HomeContainer";
+import LocationsMap from "../../../assets/home/locations-map.svg?react";
+import LocationIcon from "../../../assets/home/location.svg?react";
+import { useRef, useState } from "react";
 import {
   motion,
   useInView,
@@ -14,22 +17,6 @@ const BRANCHES = [
   { name: "Ribera", address: "Costanera 280", x: 71, y: 68, number: "03" },
 ] as const;
 
-function LocationIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      aria-hidden="true"
-    >
-      <path d="M19 10c0 5-7 11-7 11S5 15 5 10a7 7 0 1 1 14 0Z" />
-      <circle cx="12" cy="10" r="2.5" />
-    </svg>
-  );
-}
-
 export function LocationsStory({
   motionPaused = false,
 }: {
@@ -41,7 +28,6 @@ export function LocationsStory({
   const inView = useInView(mapRef, { margin: "80px" });
   const [branchIndex, setBranchIndex] = useState(0);
   const branch = BRANCHES[branchIndex];
-  const gradientId = `fw-map-water-${useId().replaceAll(":", "")}`;
   const { scrollYProgress } = useScroll({
     target: sectionRef,
     offset: ["start end", "end end"],
@@ -53,30 +39,34 @@ export function LocationsStory({
 
   return (
     <section
-      className="fw-locations fw-section"
+      className="fw-locations relative fw-section py-[100px]"
       id="sucursales"
       ref={sectionRef}
       aria-labelledby="fw-locations-title"
     >
-      <div className="fw-container fw-locations-layout">
-        <div className="fw-locations-copy">
+      <HomeContainer className="fw-locations-layout grid [grid-template-columns:minmax(0,_0.83fr)_minmax(0,_1.17fr)] items-start gap-[74px] min-h-[auto]">
+        <div className="fw-locations-copy [padding-block:32px_52px]">
           <div className="fw-locations-intro">
-            <span className="fw-section-label">
+            <span className="fw-section-label block text-[color:var(--fw-blue)] text-[9px] font-extrabold tracking-[0.16em] mb-[17px]">
               UNA MARCA. MUCHOS PUNTOS DE ENCUENTRO.
             </span>
             <h2 id="fw-locations-title">
               En cada esquina,
               <br />
-              <span className="fw-blue-text">la misma conexión.</span>
+              <span className="fw-blue-text text-[color:var(--fw-blue)]">
+                la misma conexión.
+              </span>
             </h2>
             <p>
               Tu negocio puede estar en más de un lugar. La experiencia de tus
               clientes sigue siendo una sola.
             </p>
           </div>
-          <ol className="fw-locations-steps">
+          <ol className="fw-locations-steps grid [gap:clamp(42px,_6vh,_80px)] list-none p-0 [margin:80px_0_48px]">
             <li>
-              <span className="fw-locations-step-number">01</span>
+              <span className="fw-locations-step-number [flex:0_0_33px] h-[33px] grid place-items-center [border:1px_solid_var(--fw-border)] rounded-full text-[color:var(--fw-blue)] text-[10px] font-extrabold">
+                01
+              </span>
               <div>
                 <h3>Pon tus locales en el mapa.</h3>
                 <p>
@@ -86,7 +76,9 @@ export function LocationsStory({
               </div>
             </li>
             <li>
-              <span className="fw-locations-step-number">02</span>
+              <span className="fw-locations-step-number [flex:0_0_33px] h-[33px] grid place-items-center [border:1px_solid_var(--fw-border)] rounded-full text-[color:var(--fw-blue)] text-[10px] font-extrabold">
+                02
+              </span>
               <div>
                 <h3>Un equipo, bien conectado.</h3>
                 <p>
@@ -96,7 +88,9 @@ export function LocationsStory({
               </div>
             </li>
             <li>
-              <span className="fw-locations-step-number">03</span>
+              <span className="fw-locations-step-number [flex:0_0_33px] h-[33px] grid place-items-center [border:1px_solid_var(--fw-border)] rounded-full text-[color:var(--fw-blue)] text-[10px] font-extrabold">
+                03
+              </span>
               <div>
                 <h3>Más lugares para volver.</h3>
                 <p>
@@ -106,167 +100,72 @@ export function LocationsStory({
               </div>
             </li>
           </ol>
-          <a className="fw-locations-cta" href="#contacto">
+          <a
+            className="fw-locations-cta inline-flex items-center gap-[20px] text-[color:var(--fw-blue)] text-[12px] font-extrabold"
+            href="#contacto"
+          >
             Conectemos tus sucursales <span aria-hidden="true">↗</span>
           </a>
         </div>
 
         <div
-          className="fw-locations-sticky"
+          className="fw-locations-sticky sticky top-[150px] py-[24px] [width:min(100%,_calc((100svh_-_455px)_*_1.44))] [justify-self:center]"
           ref={mapRef}
           data-motion={!staticMotion && inView ? "running" : "paused"}
         >
           <motion.div
-            className="fw-location-map-card"
+            className="fw-location-map-card relative [border:1px_solid_var(--fw-border)] rounded-[26px] isolate"
             style={staticMotion ? {} : { rotateX, rotateZ, y }}
           >
-            <div className="fw-location-map-header">
-              <span className="fw-location-map-brand">
-                <LocationIcon /> Tu marca, cerca.
+            <div className="fw-location-map-header [padding:22px_24px] flex justify-between items-center gap-[16px]">
+              <span className="fw-location-map-brand flex items-center gap-[9px] text-[13px] font-extrabold tracking-[-0.35px]">
+                <LocationIcon aria-hidden="true" /> Tu marca, cerca.
               </span>
-              <span className="fw-location-map-example">Mapa de ejemplo</span>
+              <span className="fw-location-map-example text-[9px] text-[color:var(--fw-muted)] [padding:5px_9px] [border:1px_solid_var(--fw-border)] rounded-[30px] whitespace-nowrap">
+                Mapa de ejemplo
+              </span>
             </div>
-            <div className="fw-location-map-scene">
-              <svg
-                className="fw-location-map-art"
-                viewBox="0 0 720 500"
-                fill="none"
-                aria-hidden="true"
-              >
-                <defs>
-                  <linearGradient
-                    id={gradientId}
-                    x1="90"
-                    y1="0"
-                    x2="200"
-                    y2="500"
-                    gradientUnits="userSpaceOnUse"
-                  >
-                    <stop stopColor="#087BD7" stopOpacity=".2" />
-                    <stop offset="1" stopColor="#087BD7" stopOpacity=".09" />
-                  </linearGradient>
-                </defs>
-                <path className="fw-map-land" d="M0 0h720v500H0z" />
-                <g className="fw-map-blocks">
-                  <rect x="218" y="22" width="95" height="75" rx="14" />
-                  <rect x="334" y="22" width="117" height="75" rx="14" />
-                  <rect x="480" y="22" width="101" height="68" rx="14" />
-                  <rect x="610" y="22" width="100" height="103" rx="14" />
-                  <rect x="198" y="127" width="127" height="65" rx="14" />
-                  <rect x="354" y="127" width="56" height="65" rx="14" />
-                  <rect x="514" y="165" width="73" height="96" rx="14" />
-                  <rect x="619" y="157" width="84" height="106" rx="14" />
-                  <rect x="238" y="261" width="87" height="73" rx="14" />
-                  <rect x="357" y="272" width="81" height="62" rx="14" />
-                  <rect x="581" y="296" width="123" height="58" rx="14" />
-                  <rect x="245" y="372" width="80" height="113" rx="14" />
-                  <rect x="360" y="375" width="138" height="108" rx="14" />
-                  <rect x="534" y="391" width="171" height="93" rx="14" />
-                  <rect x="13" y="31" width="56" height="117" rx="14" />
-                  <rect x="12" y="301" width="63" height="83" rx="14" />
-                  <rect x="15" y="412" width="86" height="73" rx="14" />
-                </g>
-                <path
-                  d="M130-35c98 112-72 190-9 286s35 174 67 285"
-                  stroke={`url(#${gradientId})`}
-                  strokeWidth="57"
-                />
-                <path
-                  className="fw-map-river-line"
-                  d="M130-35c98 112-72 190-9 286s35 174 67 285"
-                  stroke="#087BD7"
-                  strokeOpacity=".2"
-                  strokeWidth="1.5"
-                  strokeDasharray="12 12"
-                />
-                <g
-                  className="fw-map-streets"
-                  strokeWidth="15"
-                  strokeLinecap="round"
-                >
-                  <path d="M0 220h378c53 0 65 14 78 39l59 95h205" />
-                  <path d="M340 0v500M598 0v284M206 0v176M160 354h310" />
-                  <path d="M173 112h420M156 247l48 253M463 0v185M463 290l58 210" />
-                </g>
-                <path
-                  className="fw-map-park"
-                  d="M451 151c35-3 64 20 62 55-2 44-35 63-68 51-28-10-45-45-31-72 9-18 20-31 37-34Z"
-                />
-                <path
-                  d="M436 184c26-11 51 5 49 29-1 19-27 26-39 12"
-                  stroke="#799C83"
-                  strokeOpacity=".35"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                />
-                <g className="fw-map-trees">
-                  <circle cx="442" cy="173" r="10" />
-                  <circle cx="475" cy="200" r="12" />
-                  <circle cx="447" cy="236" r="8" />
-                  <circle cx="271" cy="294" r="9" />
-                  <circle cx="299" cy="294" r="9" />
-                  <circle cx="643" cy="320" r="10" />
-                  <circle cx="255" cy="54" r="8" />
-                  <circle cx="525" cy="59" r="9" />
-                  <circle cx="572" cy="436" r="9" />
-                </g>
-                <g
-                  className="fw-map-route-base"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                >
-                  <path d="M194 220h146V112h114v18" />
-                  <path d="M454 130v55c0 29 14 57 31 91l26 64" />
-                  <path d="M194 220h146v134h135q20 0 36-14" />
-                </g>
-                <g
-                  className="fw-map-route-flow"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeDasharray="4 17"
-                >
-                  <path d="M194 220h146V112h114v18" />
-                  <path d="M454 130v55c0 29 14 57 31 91l26 64" />
-                  <path d="M194 220h146v134h135q20 0 36-14" />
-                </g>
-                <text x="231" y="214" className="fw-map-street-label">
-                  PASEO DEL CAFÉ
-                </text>
-                <text x="387" y="409" className="fw-map-street-label">
-                  BARRIO RIBERA
-                </text>
-                <text x="601" y="111" className="fw-map-street-label">
-                  LA CIUDAD
-                </text>
-              </svg>
+            <div className="fw-location-map-scene relative [aspect-ratio:720_/_500] w-full [border-block:1px_solid_var(--fw-border)] overflow-hidden">
+              <LocationsMap className="fw-location-map-art block w-full h-full" />
               {BRANCHES.map((item, index) => (
                 <button
                   key={item.name}
                   type="button"
-                  className={`fw-map-pin${branchIndex === index ? " is-selected" : ""}`}
+                  className={`fw-map-pin absolute w-[56px] h-[72px] p-0 [border:0] flex flex-col items-center justify-center z-[2] text-[#087bd7]${branchIndex === index ? " is-selected" : ""}`}
                   style={{ left: `${item.x}%`, top: `${item.y}%` }}
                   aria-label={`Ver sucursal ${item.name} en el mapa`}
                   aria-pressed={branchIndex === index}
                   aria-controls="fw-branch-detail"
                   onClick={() => setBranchIndex(index)}
                 >
-                  <span className="fw-map-pin-ripple" aria-hidden="true" />
-                  <span className="fw-map-pin-head">
-                    <LocationIcon />
+                  <span
+                    className="fw-map-pin-ripple absolute w-[40px] h-[15px] left-[8px] top-[49px] [border:1px_solid_#087bd7] rounded-full opacity-0 z-[-1]"
+                    aria-hidden="true"
+                  />
+                  <span className="fw-map-pin-head grid place-items-center w-[43px] h-[43px] [border:1px_solid_#087bd724] rounded-[14px]">
+                    <LocationIcon aria-hidden="true" />
                   </span>
-                  <span className="fw-map-pin-name">{item.name}</span>
+                  <span className="fw-map-pin-name text-[9px] leading-[1.4] font-extrabold text-[#2f4557] [padding:3px_7px] rounded-[6px] mt-[3px]">
+                    {item.name}
+                  </span>
                 </button>
               ))}
-              <div className="fw-map-compass" aria-hidden="true">
+              <div
+                className="fw-map-compass absolute top-[13px] right-[14px] grid place-items-center leading-[1.2] text-[#698296] text-[24px]"
+                aria-hidden="true"
+              >
                 <span>N</span>↑
               </div>
-              <div className="fw-map-network" aria-hidden="true">
+              <div
+                className="fw-map-network absolute left-[20px] bottom-[14px] flex items-center gap-[7px] [padding:8px_10px] [border:1px_solid_#fff] rounded-[10px] text-[#2f4557] text-[9px] font-[750]"
+                aria-hidden="true"
+              >
                 <span /> Una tarjeta. Tres destinos.
               </div>
             </div>
-            <div className="fw-location-map-bottom">
+            <div className="fw-location-map-bottom [padding:20px_24px_23px]">
               <div
-                className="fw-branch-selector"
+                className="fw-branch-selector grid [grid-template-columns:repeat(3,_1fr)] gap-[8px]"
                 role="group"
                 aria-label="Explora las sucursales de ejemplo"
               >
@@ -283,31 +182,34 @@ export function LocationsStory({
                 ))}
               </div>
               <div
-                className="fw-branch-detail"
+                className="fw-branch-detail flex items-center gap-[12px] mt-[22px] min-h-[40px]"
                 id="fw-branch-detail"
                 role="status"
                 aria-live="polite"
                 aria-atomic="true"
               >
-                <span className="fw-branch-detail-icon">
-                  <LocationIcon />
+                <span className="fw-branch-detail-icon grid [flex:0_0_35px] h-[35px] place-items-center rounded-[10px] text-[#b88100]">
+                  <LocationIcon aria-hidden="true" />
                 </span>
                 <div>
                   <strong>Café Esquina · {branch.name}</strong>
                   <span>{branch.address} · Dirección de ejemplo</span>
                 </div>
-                <span className="fw-branch-detail-arrow" aria-hidden="true">
+                <span
+                  className="fw-branch-detail-arrow ml-[auto] text-[22px] text-[color:var(--fw-muted)]"
+                  aria-hidden="true"
+                >
                   ↗
                 </span>
               </div>
             </div>
           </motion.div>
-          <p className="fw-location-map-caption">
+          <p className="fw-location-map-caption text-center text-[color:var(--fw-muted)] text-[10px]">
             Toca un local y explora. Tu próxima sucursal también puede estar
             aquí.
           </p>
         </div>
-      </div>
+      </HomeContainer>
     </section>
   );
 }

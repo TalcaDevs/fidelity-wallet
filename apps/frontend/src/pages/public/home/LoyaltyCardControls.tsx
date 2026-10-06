@@ -82,12 +82,14 @@ export function LoyaltyCardControls({ demo }: { demo: DemoState }) {
   const canReset = demo.mode === "manual" && demo.stamps > 2 && !demo.complete;
   return (
     <>
-      <div className="fw-card-demo">
-        <p className="fw-card-demo-narrative">{copy.narrative}</p>
-        <div className="fw-card-demo-controls">
+      <div className="fw-card-demo relative flex items-center flex-col gap-[8px] pb-[5px] w-full">
+        <p className="fw-card-demo-narrative [margin:0_0_2px] px-[10px] text-[color:var(--fw-text,_#2f4557)] text-[12px] leading-[1.6] text-center">
+          {copy.narrative}
+        </p>
+        <div className="fw-card-demo-controls flex items-center justify-center flex-wrap gap-[12px]">
           <button
             type="button"
-            className="fw-card-demo-button"
+            className="fw-card-demo-button inline-flex items-center justify-center gap-[9px] min-h-[42px] [padding:9px_17px] [border:1px_solid_var(--fw-border,_#d8e3eb)] rounded-[99px] text-[color:var(--fw-text,_#2f4557)] [font:inherit] text-[12px] font-semibold [cursor:pointer]"
             onClick={takeOver ? demo.startManualDemo : demo.addStamp}
             disabled={!demo.ready}
           >
@@ -97,19 +99,19 @@ export function LoyaltyCardControls({ demo }: { demo: DemoState }) {
           {canReset && (
             <button
               type="button"
-              className="fw-card-demo-reset"
+              className="fw-card-demo-reset [border:0] [padding:10px_4px] min-h-[42px] text-[color:var(--fw-muted,_#526a7b)] [font:inherit] text-[11px] [text-decoration:underline] [text-underline-offset:4px] [cursor:pointer]"
               onClick={demo.startManualDemo}
             >
               Reiniciar
             </button>
           )}
         </div>
-        <span className="fw-card-example-label">
+        <span className="fw-card-example-label text-[color:var(--fw-muted,_#526a7b)] text-[9px]">
           Tarjeta de ejemplo · {copy.label}
         </span>
       </div>
       <span
-        className="fw-card-sr-only"
+        className="fw-card-sr-only absolute w-[1px] h-[1px] p-0 m-[-1px] overflow-hidden whitespace-nowrap [border:0]"
         role="status"
         aria-live="polite"
         aria-atomic="true"

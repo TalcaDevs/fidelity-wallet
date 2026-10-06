@@ -1,3 +1,6 @@
+import StarIcon from "../../../assets/home/star-stamp.svg?react";
+import GiftIcon from "../../../assets/home/gift-stamp.svg?react";
+import CoffeeIcon from "../../../assets/home/coffee-stamp.svg?react";
 import type { CSSProperties } from "react";
 import { motion } from "motion/react";
 import type { LoyaltyCardState } from "./useLoyaltyCard";
@@ -12,52 +15,6 @@ const PARTICLES = Array.from({ length: 22 }, (_, index) => {
   } as CSSProperties;
 });
 
-function CoffeeIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M5 8h12v6a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5V8ZM17 9h1a3 3 0 1 1 0 6h-1M4 22h15M8 2v3m4-3v3m4-3v3"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function GiftIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M4 11h16v10H4V11ZM3 7h18v4H3V7Zm9 0v14M12 7H8a2.5 2.5 0 1 1 2.4-3.2L12 7Zm0 0h4a2.5 2.5 0 1 0-2.4-3.2L12 7Z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function StarIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="m12 3 2.6 5.3 5.9.9-4.3 4.2 1 5.9-5.2-2.8-5.2 2.8 1-5.9-4.3-4.2 5.9-.9L12 3Z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 type CardProps = Pick<
   LoyaltyCardState,
   "stamps" | "complete" | "burst" | "motionAllowed"
@@ -69,18 +26,18 @@ type ChipProps = Pick<
 >;
 
 function StampFace({ index, filled }: { index: number; filled: boolean }) {
-  if (index === 9) return <GiftIcon />;
-  if (filled) return <CoffeeIcon />;
+  if (index === 9) return <GiftIcon aria-hidden="true" />;
+  if (filled) return <CoffeeIcon aria-hidden="true" />;
   return <span>{String(index + 1).padStart(2, "0")}</span>;
 }
 
 function StampBurst() {
   return (
-    <span className="fw-card-stamp-burst">
-      <span className="fw-card-stamp-ring" />
+    <span className="fw-card-stamp-burst absolute inset-0 pointer-events-none">
+      <span className="fw-card-stamp-ring absolute inset-[-2px] [border:2px_solid_#ffe298] rounded-full" />
       {Array.from({ length: 8 }, (_, spark) => (
         <span
-          className="fw-card-stamp-spark"
+          className="fw-card-stamp-spark absolute [left:calc(50%_-_1px)] [top:calc(50%_-_3px)] w-[2px] h-[6px] rounded-[2px]"
           key={spark}
           style={{ "--fw-spark-angle": spark * 45 + "deg" } as CSSProperties}
         />
@@ -91,7 +48,7 @@ function StampBurst() {
 
 function stampClassName(filled: boolean, last: boolean, landing: boolean) {
   return [
-    "fw-card-stamp",
+    "fw-card-stamp relative grid place-items-center min-w-0 aspect-[1] [border:1px_dashed_rgb(229_244_255_/_57%)] rounded-full text-[#ecf6ff] text-[12px]",
     filled && "fw-card-stamp-filled",
     last && "fw-card-stamp-gift",
     landing && "fw-card-stamp-landing",
@@ -128,7 +85,10 @@ function Stamp({
 
 function StampGrid(props: StampProps) {
   return (
-    <div className="fw-card-stamps" aria-hidden="true">
+    <div
+      className="fw-card-stamps grid [grid-template-columns:repeat(5,_minmax(0,_1fr))] gap-[12px]"
+      aria-hidden="true"
+    >
       {Array.from({ length: 10 }, (_, index) => (
         <Stamp key={index} index={index} {...props} />
       ))}
@@ -144,15 +104,18 @@ export function CardPass({
 }: CardProps) {
   return (
     <div
-      className={`fw-card-pass${complete ? " fw-card-pass-complete" : ""}`}
+      className={`fw-card-pass relative overflow-hidden w-full [padding:25px_25px_20px] text-[#fff] [border:1px_solid_rgb(255_255_255_/_48%)] rounded-[26px] [box-sizing:border-box]${complete ? " fw-card-pass-complete [border-color:#ffe298]" : ""}`}
       role="group"
       aria-label={`Tarjeta de ejemplo de Café Esquina: ${stamps} de 10 sellos`}
     >
-      <div className="fw-card-sheen" aria-hidden="true" />
+      <div
+        className="fw-card-sheen absolute inset-0 pointer-events-none"
+        aria-hidden="true"
+      />
       <div className="fw-card-pass-top">
-        <div className="fw-card-brand">
-          <span className="fw-card-brand-mark">
-            <CoffeeIcon />
+        <div className="fw-card-brand justify-start gap-[9px] text-[9px] tracking-[0.13em] leading-[1.5]">
+          <span className="fw-card-brand-mark grid place-items-center w-[35px] h-[35px] [border:1px_solid_rgb(255_255_255_/_45%)] rounded-full">
+            <CoffeeIcon aria-hidden="true" />
           </span>
           <span>
             CAFÉ
@@ -160,15 +123,15 @@ export function CardPass({
             <strong>ESQUINA.</strong>
           </span>
         </div>
-        <span className="fw-card-member">
+        <span className="fw-card-member text-[#dff1ff] text-[7px] font-semibold tracking-[0.12em] leading-[1.7] text-right">
           BUEN CAFÉ.
           <br />
           MEJORES RECOMPENSAS.
         </span>
       </div>
 
-      <div className="fw-card-reward-copy">
-        <span className="fw-card-eyebrow">
+      <div className="fw-card-reward-copy [margin:24px_0_20px]">
+        <span className="fw-card-eyebrow text-[#d8efff] text-[8px] font-semibold tracking-[0.2em]">
           {complete ? "VOLVER TIENE SU PREMIO" : "TU PRÓXIMO FAVORITO"}
         </span>
         <p>
@@ -181,7 +144,7 @@ export function CardPass({
       </div>
 
       <StampGrid stamps={stamps} burst={burst} motionAllowed={motionAllowed} />
-      <div className="fw-card-progress-copy">
+      <div className="fw-card-progress-copy [margin:17px_0_8px] text-[#dff1ff] text-[9px]">
         <span>
           <strong>{stamps}</strong> / 10 sellos
         </span>
@@ -191,19 +154,27 @@ export function CardPass({
             : `${10 - stamps} para tu recompensa`}
         </span>
       </div>
-      <div className="fw-card-progress" aria-hidden="true">
+      <div
+        className="fw-card-progress overflow-hidden h-[3px] rounded-[3px]"
+        aria-hidden="true"
+      >
         <motion.span
           animate={{ width: `${stamps * 10}%` }}
           transition={{ duration: motionAllowed ? 0.35 : 0 }}
         />
       </div>
 
-      <div className="fw-card-pass-bottom">
+      <div className="fw-card-pass-bottom mt-[18px] text-[8px] text-[#d7eaf8]">
         <span>
           hecho con <strong>fidelity</strong>
-          <span className="fw-card-brand-dot">.</span>
+          <span className="fw-card-brand-dot text-[#ffd371] text-[15px]">
+            .
+          </span>
         </span>
-        <span className="fw-card-barcode" aria-hidden="true" />
+        <span
+          className="fw-card-barcode w-[60px] h-[17px] opacity-[0.72]"
+          aria-hidden="true"
+        />
       </div>
     </div>
   );
@@ -217,14 +188,18 @@ export function VisitChip({
 }: ChipProps) {
   return (
     <motion.div
-      className={`fw-card-chip fw-card-chip-visit${complete ? " fw-card-chip-reward" : ""}`}
+      className={`fw-card-chip absolute z-[3] flex items-center gap-[10px] [padding:13px_17px] [border:1px_solid_var(--fw-border,_rgb(255_255_255_/_80%))] rounded-[15px] text-[color:var(--fw-text,_#2f4557)] pointer-events-none fw-card-chip-visit top-[20%] right-[-1%]${complete ? " fw-card-chip-reward [border-color:#d69e09] text-[#624409]" : ""}`}
       initial={false}
       animate={{ opacity: ready ? 1 : 0, y: ready ? 0 : 12 }}
       transition={{ duration: motionAllowed ? 0.4 : 0 }}
       aria-hidden="true"
     >
-      <span className="fw-card-chip-icon">
-        {complete ? <GiftIcon /> : <StarIcon />}
+      <span className="fw-card-chip-icon grid place-items-center w-[34px] h-[34px] rounded-[10px] text-[#a36b00]">
+        {complete ? (
+          <GiftIcon aria-hidden="true" />
+        ) : (
+          <StarIcon aria-hidden="true" />
+        )}
       </span>
       <span>
         <strong>
@@ -244,7 +219,7 @@ export function WalletChip({
 }: Pick<ChipProps, "ready" | "motionAllowed">) {
   return (
     <motion.div
-      className="fw-card-chip fw-card-chip-wallet"
+      className="fw-card-chip absolute z-[3] flex items-center gap-[10px] [padding:13px_17px] [border:1px_solid_var(--fw-border,_rgb(255_255_255_/_80%))] rounded-[15px] text-[color:var(--fw-text,_#2f4557)] pointer-events-none fw-card-chip-wallet bottom-[8%] left-0"
       initial={false}
       animate={{ opacity: ready ? 1 : 0, y: ready ? 0 : 12 }}
       transition={{
@@ -253,7 +228,7 @@ export function WalletChip({
       }}
       aria-hidden="true"
     >
-      <span className="fw-card-wallet-icon">
+      <span className="fw-card-wallet-icon relative block w-[28px] h-[24px] overflow-hidden rounded-[5px]">
         <span />
         <span />
         <span />
@@ -272,10 +247,18 @@ export function CardCelebration({
 }: Pick<CardProps, "burst" | "motionAllowed">) {
   if (!motionAllowed || burst?.stamp !== 10) return null;
   return (
-    <div className="fw-card-celebration" key={burst.id} aria-hidden="true">
-      <span className="fw-card-celebration-halo" />
+    <div
+      className="fw-card-celebration absolute inset-0 z-[4] overflow-hidden pointer-events-none"
+      key={burst.id}
+      aria-hidden="true"
+    >
+      <span className="fw-card-celebration-halo absolute [left:calc(50%_-_90px)] [top:calc(52%_-_90px)] w-[180px] h-[180px] [border:2px_solid_rgb(214_158_9_/_55%)] rounded-full" />
       {PARTICLES.map((style, index) => (
-        <span className="fw-card-particle" key={index} style={style} />
+        <span
+          className="fw-card-particle absolute left-[50%] top-[52%] w-[6px] h-[11px] rounded-[2px]"
+          key={index}
+          style={style}
+        />
       ))}
     </div>
   );

@@ -1,0 +1,98 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 720 500"
+  fill="none"
+  aria-hidden="true"
+>
+  <defs>
+    <linearGradient
+      id="map-water"
+      x1="90"
+      y1="0"
+      x2="200"
+      y2="500"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop stop-color="#087BD7" stop-opacity=".2" />
+      <stop offset="1" stop-color="#087BD7" stop-opacity=".09" />
+    </linearGradient>
+  </defs>
+  <path class="fw-map-land" d="M0 0h720v500H0z" />
+  <g class="fw-map-blocks">
+    <rect x="218" y="22" width="95" height="75" rx="14" />
+    <rect x="334" y="22" width="117" height="75" rx="14" />
+    <rect x="480" y="22" width="101" height="68" rx="14" />
+    <rect x="610" y="22" width="100" height="103" rx="14" />
+    <rect x="198" y="127" width="127" height="65" rx="14" />
+    <rect x="354" y="127" width="56" height="65" rx="14" />
+    <rect x="514" y="165" width="73" height="96" rx="14" />
+    <rect x="619" y="157" width="84" height="106" rx="14" />
+    <rect x="238" y="261" width="87" height="73" rx="14" />
+    <rect x="357" y="272" width="81" height="62" rx="14" />
+    <rect x="581" y="296" width="123" height="58" rx="14" />
+    <rect x="245" y="372" width="80" height="113" rx="14" />
+    <rect x="360" y="375" width="138" height="108" rx="14" />
+    <rect x="534" y="391" width="171" height="93" rx="14" />
+    <rect x="13" y="31" width="56" height="117" rx="14" />
+    <rect x="12" y="301" width="63" height="83" rx="14" />
+    <rect x="15" y="412" width="86" height="73" rx="14" />
+  </g>
+  <path
+    d="M130-35c98 112-72 190-9 286s35 174 67 285"
+    stroke="url(#map-water)"
+    stroke-width="57"
+  />
+  <path
+    class="fw-map-river-line"
+    d="M130-35c98 112-72 190-9 286s35 174 67 285"
+    stroke="#087BD7"
+    stroke-opacity=".2"
+    stroke-width="1.5"
+    stroke-dasharray="12 12"
+  />
+  <g class="fw-map-streets" stroke-width="15" stroke-linecap="round">
+    <path d="M0 220h378c53 0 65 14 78 39l59 95h205" />
+    <path d="M340 0v500M598 0v284M206 0v176M160 354h310" />
+    <path d="M173 112h420M156 247l48 253M463 0v185M463 290l58 210" />
+  </g>
+  <path
+    class="fw-map-park"
+    d="M451 151c35-3 64 20 62 55-2 44-35 63-68 51-28-10-45-45-31-72 9-18 20-31 37-34Z"
+  />
+  <path
+    d="M436 184c26-11 51 5 49 29-1 19-27 26-39 12"
+    stroke="#799C83"
+    stroke-opacity=".35"
+    stroke-width="3"
+    stroke-linecap="round"
+  />
+  <g class="fw-map-trees">
+    <circle cx="442" cy="173" r="10" />
+    <circle cx="475" cy="200" r="12" />
+    <circle cx="447" cy="236" r="8" />
+    <circle cx="271" cy="294" r="9" />
+    <circle cx="299" cy="294" r="9" />
+    <circle cx="643" cy="320" r="10" />
+    <circle cx="255" cy="54" r="8" />
+    <circle cx="525" cy="59" r="9" />
+    <circle cx="572" cy="436" r="9" />
+  </g>
+  <g class="fw-map-route-base" stroke-width="3" stroke-linecap="round">
+    <path d="M194 220h146V112h114v18" />
+    <path d="M454 130v55c0 29 14 57 31 91l26 64" />
+    <path d="M194 220h146v134h135q20 0 36-14" />
+  </g>
+  <g
+    class="fw-map-route-flow"
+    stroke-width="3"
+    stroke-linecap="round"
+    stroke-dasharray="4 17"
+  >
+    <path d="M194 220h146V112h114v18" />
+    <path d="M454 130v55c0 29 14 57 31 91l26 64" />
+    <path d="M194 220h146v134h135q20 0 36-14" />
+  </g>
+  <text x="231" y="214" class="fw-map-street-label">PASEO DEL CAFÉ</text>
+  <text x="387" y="409" class="fw-map-street-label">BARRIO RIBERA</text>
+  <text x="601" y="111" class="fw-map-street-label">LA CIUDAD</text>
+</svg>
