@@ -17,6 +17,7 @@ import { GeneratePassDto, PassEmissionResponseDto } from './dto/generate-pass.dt
 import type { CardClassData, PassData } from './interfaces/pass-data.interface.js';
 import { ApplePassService } from './services/apple-pass.service.js';
 import { GoogleWalletService } from './services/google-wallet.service.js';
+import { PassUpdateWorkerService } from './services/pass-update-worker.service.js';
 
 /** Nombre que muestra la tarjeta en la billetera: el primer nombre, o un dato enmascarado. */
 export function passCustomerLabel(customer: Customer | null): string {
@@ -62,7 +63,10 @@ export class PassesService {
     private readonly prisma: PrismaService,
     private readonly applePassService: ApplePassService,
     private readonly googleWalletService: GoogleWalletService,
-  ) {}
+    private readonly updateWorker: PassUpdateWorkerService,
+  ) {
+    this.updateWorker.registerDispatcher((passId) => this.dispatchPassUpdate(passId));
+  }
 
   /**
    * Punto único de emisión y recuperación de pases con entropía de 32 bytes y manejo de P2002.
@@ -215,13 +219,23 @@ export class PassesService {
     return this.applePassService.generatePassBuffer(passData);
   }
 
-  async notifyPassUpdate(passId: string): Promise<void> {
+  async enqueuePassUpdate(passId: string, tx?: Prisma.TransactionClient): Promise<void> {
+    await this.updateWorker.enqueue(passId, tx);
+  }
+
+  async notifyPassUpdate(passId: string, tx?: Prisma.TransactionClient): Promise<void> {
+    const task = await this.updateWorker.enqueue(passId, tx);
+
+    if (tx) {
+      return;
+    }
+
     const previousQueue = this.passUpdateQueues.get(passId) ?? Promise.resolve();
 
     const currentTask = previousQueue
       .catch(() => {})
       .then(async () => {
-        await this.dispatchPassUpdate(passId);
+        await this.updateWorker.processPass(passId, task.id);
       })
       .finally(() => {
         if (this.passUpdateQueues.get(passId) === currentTask) {
@@ -233,25 +247,23 @@ export class PassesService {
     return currentTask;
   }
 
-  private async dispatchPassUpdate(passId: string): Promise<void> {
-    try {
-      const pass = await this.prisma.pass.findUnique({
-        where: { id: passId },
-        include: passRelations,
-      });
+  public async dispatchPassUpdate(passId: string): Promise<void> {
+    const pass = await this.prisma.pass.findUnique({
+      where: { id: passId },
+      include: passRelations,
+    });
 
-      if (!pass) return;
+    if (!pass) return;
 
-      const passData = await this.buildPassData(pass);
-      if (!passData) return;
+    const passData = await this.buildPassData(pass);
+    if (!passData) return;
 
-      this.logger.log(
-        `Dispatching wallet update for pass ${passId} (activeStamps: ${passData.activeStamps})`,
-      );
-      await Promise.allSettled([this.googleWalletService.updateLoyaltyObject(passData)]);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Failed to dispatch background wallet push for pass ${passId}: ${msg}`);
+    this.logger.log(
+      `Dispatching wallet update for pass ${passId} (activeStamps: ${passData.activeStamps})`,
+    );
+    const result = await this.googleWalletService.updateLoyaltyObject(passData);
+    if (result && !result.success && !result.notFound) {
+      throw new Error(result.error ?? 'Google Wallet update failed');
     }
   }
 
