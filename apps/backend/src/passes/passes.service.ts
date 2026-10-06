@@ -374,8 +374,9 @@ export class PassesService {
     const cardClass = await this.cardClassData(prisma, pass.programId, includeLocations);
     if (!cardClass) return null;
     const now = new Date();
-    const [activeStamps, activePoints] = await Promise.all([
-      prisma.stamp.count({
+    const [activeStampsAgg, activePointsAgg] = await Promise.all([
+      prisma.stamp.aggregate({
+        _sum: { amount: true },
         where: {
           passId: pass.id,
           consumedAt: null,
@@ -383,7 +384,8 @@ export class PassesService {
           OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
         },
       }),
-      prisma.stamp.count({
+      prisma.stamp.aggregate({
+        _sum: { amount: true },
         where: {
           passId: pass.id,
           consumedAt: null,
@@ -392,6 +394,8 @@ export class PassesService {
         },
       }),
     ]);
+    const activeStamps = activeStampsAgg._sum.amount ?? 0;
+    const activePoints = activePointsAgg._sum.amount ?? 0;
 
     let promotion: any = null;
     const activePromotions = prisma.promotion.findMany
@@ -406,7 +410,9 @@ export class PassesService {
       : [];
 
     if (activePromotions && activePromotions.length > 0) {
-      const reachedPromotions = activePromotions.filter((p) => activeStamps >= p.targetStamps);
+      const reachedPromotions = activePromotions.filter((p) => 
+        p.currency === 'POINTS' ? activePoints >= p.targetStamps : activeStamps >= p.targetStamps
+      );
       promotion =
         reachedPromotions.length > 0
           ? reachedPromotions[reachedPromotions.length - 1]

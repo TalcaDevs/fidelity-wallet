@@ -157,7 +157,7 @@ export function buildObjectState(data: PassData, baseUrl: string): Record<string
   // nativa. Priorizamos stamps si está disponible, si no points.
   const mainBalance = data.stampsEnabled ? data.activeStamps : data.activePoints;
   const mainLabel = data.stampsEnabled ? 'Sellos' : 'Puntos';
-  const mainTarget = data.stampsEnabled ? data.targetStamps : 0;
+  const mainTarget = data.targetStamps;
   
   const state: Record<string, unknown> = {
     loyaltyPoints: { label: mainLabel, balance: { int: mainBalance } },

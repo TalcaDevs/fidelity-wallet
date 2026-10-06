@@ -519,6 +519,7 @@ export class ScanService {
     }
     const points = pointsForAmount(dto.purchaseAmount, pesosPerPoint);
     if (points < 1) {
+      if (stampsEnabled) return 0;
       throw new BadRequestException(
         `El monto no alcanza para un punto (1 punto cada $${clp.format(pesosPerPoint)})`,
       );
@@ -652,9 +653,9 @@ export class ScanService {
     passId: string,
     now: Date,
   ): Promise<{ activeStamps: number; activePoints: number; nextExpiryAt: Date | null }> {
-    const [activeStamps, activePoints, nextExpiring] = await Promise.all([
-      db.stamp.count({ where: { ...activeStampsWhere(passId, now), currency: 'STAMPS' } }),
-      db.stamp.count({ where: { ...activeStampsWhere(passId, now), currency: 'POINTS' } }),
+    const [activeStampsAgg, activePointsAgg, nextExpiring] = await Promise.all([
+      db.stamp.aggregate({ _sum: { amount: true }, where: { ...activeStampsWhere(passId, now), currency: 'STAMPS' } }),
+      db.stamp.aggregate({ _sum: { amount: true }, where: { ...activeStampsWhere(passId, now), currency: 'POINTS' } }),
       db.stamp.findFirst({
         where: { passId, consumedAt: null, expiresAt: { gt: now } },
         orderBy: { expiresAt: 'asc' },
@@ -662,7 +663,11 @@ export class ScanService {
       }),
     ]);
     
-    return { activeStamps, activePoints, nextExpiryAt: nextExpiring?.expiresAt ?? null };
+    return { 
+      activeStamps: activeStampsAgg._sum.amount ?? 0, 
+      activePoints: activePointsAgg._sum.amount ?? 0, 
+      nextExpiryAt: nextExpiring?.expiresAt ?? null 
+    };
   }
 
   private async findLatestScans(db: Tx, passId: string): Promise<{ latestStamp: Scan | null; latestPoints: Scan | null }> {
@@ -816,34 +821,32 @@ export class ScanService {
 
       const stampData = [];
       if (options.stampCount > 0) {
-        stampData.push(
-          ...Array.from({ length: options.stampCount }, () => ({
-            passId: pass.id,
-            merchantId: merchant.id,
-            brandId: merchant.brandId,
-            programId: program.id,
-            sourceScanId: scan.id,
-            createdByUserId: callerUserId,
-            earnedAt: now,
-            expiresAt,
-            currency: 'STAMPS' as const,
-          }))
-        );
+        stampData.push({
+          passId: pass.id,
+          merchantId: merchant.id,
+          brandId: merchant.brandId,
+          programId: program.id,
+          sourceScanId: scan.id,
+          createdByUserId: callerUserId,
+          earnedAt: now,
+          expiresAt,
+          currency: 'STAMPS' as const,
+          amount: options.stampCount,
+        });
       }
       if (options.pointsEarned > 0) {
-        stampData.push(
-          ...Array.from({ length: options.pointsEarned }, () => ({
-            passId: pass.id,
-            merchantId: merchant.id,
-            brandId: merchant.brandId,
-            programId: program.id,
-            sourceScanId: scan.id,
-            createdByUserId: callerUserId,
-            earnedAt: now,
-            expiresAt,
-            currency: 'POINTS' as const,
-          }))
-        );
+        stampData.push({
+          passId: pass.id,
+          merchantId: merchant.id,
+          brandId: merchant.brandId,
+          programId: program.id,
+          sourceScanId: scan.id,
+          createdByUserId: callerUserId,
+          earnedAt: now,
+          expiresAt,
+          currency: 'POINTS' as const,
+          amount: options.pointsEarned,
+        });
       }
 
       if (stampData.length > 0) {
@@ -1013,10 +1016,15 @@ export class ScanService {
         orderBy: { earnedAt: 'asc' },
       });
 
-      if (activeStampsList.length < promotion.targetStamps) {
+      let totalActive = 0;
+      for (const stamp of activeStampsList) {
+        totalActive += stamp.amount;
+      }
+
+      if (totalActive < promotion.targetStamps) {
         const unit = promotion.currency === 'POINTS' ? 'Puntos' : 'Sellos';
         throw new BadRequestException(
-          `${unit} activos insuficientes para canjear "${promotion.name}". Tiene ${activeStampsList.length}, requiere ${promotion.targetStamps}`,
+          `${unit} activos insuficientes para canjear "${promotion.name}". Tiene ${totalActive}, requiere ${promotion.targetStamps}`,
         );
       }
 
@@ -1033,21 +1041,51 @@ export class ScanService {
         },
       });
 
-      const stampsToConsume = activeStampsList.slice(0, promotion.targetStamps);
-      const stampIds = stampsToConsume.map((s) => s.id);
+      let remainingToConsume = promotion.targetStamps;
+      const stampsToUpdate: string[] = [];
+      const newStampsToCreate: any[] = [];
+
+      for (const stamp of activeStampsList) {
+        if (remainingToConsume <= 0) break;
+
+        if (stamp.amount <= remainingToConsume) {
+          stampsToUpdate.push(stamp.id);
+          remainingToConsume -= stamp.amount;
+        } else {
+          stampsToUpdate.push(stamp.id);
+          const remainingAmount = stamp.amount - remainingToConsume;
+          newStampsToCreate.push({
+             passId: stamp.passId,
+             merchantId: stamp.merchantId,
+             brandId: stamp.brandId,
+             programId: stamp.programId,
+             sourceScanId: stamp.sourceScanId,
+             createdByUserId: stamp.createdByUserId,
+             earnedAt: stamp.earnedAt,
+             expiresAt: stamp.expiresAt,
+             currency: stamp.currency,
+             amount: remainingAmount,
+          });
+          remainingToConsume = 0;
+        }
+      }
 
       const updateResult = await tx.stamp.updateMany({
-        where: { id: { in: stampIds }, consumedAt: null },
+        where: { id: { in: stampsToUpdate }, consumedAt: null },
         data: {
           consumedAt: now,
           consumedByScanId: scan.id,
         },
       });
 
-      if (updateResult.count !== stampsToConsume.length) {
+      if (updateResult.count !== stampsToUpdate.length) {
         throw new ConflictException(
           'Conflicto de concurrencia: parte de los sellos ya fueron consumidos por otra operación.',
         );
+      }
+
+      if (newStampsToCreate.length > 0) {
+        await tx.stamp.createMany({ data: newStampsToCreate });
       }
 
       const { activeStamps, activePoints, nextExpiryAt } = await this.readBalance(tx, pass.id, now);

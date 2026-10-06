@@ -192,6 +192,8 @@ model Pass {
 model Stamp {
   id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   currency         Currency       @default(STAMPS)
+  /// Monto de la unidad (ej. cantidad de puntos o sellos en esta misma fila).
+  amount           Int            @default(1)
   passId           String         @db.Uuid
   pass             Pass           @relation(fields: [passId], references: [id], onDelete: Cascade)
   /// brandId y programId los fija el trigger ledger_derive_from_pass desde passId.

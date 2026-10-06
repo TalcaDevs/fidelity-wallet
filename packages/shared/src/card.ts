@@ -325,6 +325,8 @@ export interface CardReward {
   name: string;
   /** Sellos o puntos que cuesta. */
   target: number;
+  /** Moneda de la recompensa. */
+  currency?: 'STAMPS' | 'POINTS';
 }
 
 /** Lo que edita el dueño en el editor y se guarda de una vez. */
