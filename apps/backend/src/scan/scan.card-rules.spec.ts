@@ -111,7 +111,7 @@ describe('ScanService: reglas de la tarjeta', () => {
       file,
     );
 
-  const createdRows = () => vi.mocked(prisma.stamp.createMany).mock.calls[0]?.[0]?.data as unknown[];
+  const createdRows = () => vi.mocked(prisma.stamp.createMany).mock.calls[0]?.[0]?.data as any[];
 
   describe('puntos', () => {
     beforeEach(() => {
