@@ -136,6 +136,7 @@ describe('ScanService', () => {
 
     passesService = {
       notifyPassUpdate: vi.fn().mockResolvedValue(undefined),
+      enqueuePassUpdate: vi.fn().mockResolvedValue(undefined),
     } as unknown as PassesService;
 
     service = new ScanService(prisma, passesService, configWithCooldown('30'), new ManualLookupLimiter(), receiptStorageStub(), validationTokensStub());

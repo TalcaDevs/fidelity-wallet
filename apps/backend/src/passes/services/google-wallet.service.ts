@@ -79,10 +79,15 @@ export class GoogleWalletService {
     const { passId, activeStamps } = data;
     const accessToken = await this.liveAccessToken(`pass ${passId} points updated to ${activeStamps}`);
     if (!accessToken) {
-      if (this.isMockAllowed() || !this.hasCredentials()) {
+      if (this.isMockAllowed()) {
         return { success: true };
       }
-      return { success: false, error: 'Could not obtain OAuth2 token for Google Wallet' };
+      return {
+        success: false,
+        error: !this.hasCredentials()
+          ? 'Las credenciales de Google Wallet no están configuradas'
+          : 'Could not obtain OAuth2 token for Google Wallet',
+      };
     }
 
     try {

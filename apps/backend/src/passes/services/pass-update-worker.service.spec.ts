@@ -79,14 +79,31 @@ describe('PassUpdateWorkerService', () => {
     it('consolidates and resets existing PENDING task instead of duplicating', async () => {
       const existing = createMockTask({ attempts: 2 });
       vi.spyOn(prisma.passUpdateTask, 'findFirst').mockResolvedValue(existing);
+      vi.spyOn(prisma.passUpdateTask, 'updateMany').mockResolvedValue({ count: 1 });
+      vi.spyOn(prisma.passUpdateTask, 'findUnique').mockResolvedValue(existing);
 
       await service.enqueue(mockPassId);
 
       expect(prisma.passUpdateTask.create).not.toHaveBeenCalled();
-      expect(prisma.passUpdateTask.update).toHaveBeenCalledWith({
-        where: { id: existing.id },
+      expect(prisma.passUpdateTask.updateMany).toHaveBeenCalledWith({
+        where: { id: existing.id, status: PassUpdateStatus.PENDING },
         data: expect.objectContaining({
           attempts: 0,
+        }),
+      });
+    });
+
+    it('creates a new task if existing task was claimed between findFirst and updateMany', async () => {
+      const existing = createMockTask({ attempts: 2 });
+      vi.spyOn(prisma.passUpdateTask, 'findFirst').mockResolvedValue(existing);
+      vi.spyOn(prisma.passUpdateTask, 'updateMany').mockResolvedValue({ count: 0 });
+
+      await service.enqueue(mockPassId);
+
+      expect(prisma.passUpdateTask.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          passId: mockPassId,
+          status: PassUpdateStatus.PENDING,
         }),
       });
     });
@@ -128,7 +145,24 @@ describe('PassUpdateWorkerService', () => {
       });
     });
 
+    it('does not process if another task for the same pass is already in PROCESSING', async () => {
+      const activeTask = createMockTask({
+        id: 'other-task-id',
+        status: PassUpdateStatus.PROCESSING,
+        lockedAt: new Date(),
+      });
+      vi.spyOn(prisma.passUpdateTask, 'findFirst').mockResolvedValue(activeTask);
+      const dispatcher = vi.fn();
+      service.registerDispatcher(dispatcher);
+
+      const success = await service.processSingleTask(createMockTask());
+
+      expect(success).toBe(false);
+      expect(dispatcher).not.toHaveBeenCalled();
+    });
+
     it('does not process if task is already locked by another worker', async () => {
+      vi.spyOn(prisma.passUpdateTask, 'findFirst').mockResolvedValue(null);
       vi.spyOn(prisma.passUpdateTask, 'updateMany').mockResolvedValue({ count: 0 });
       const dispatcher = vi.fn();
       service.registerDispatcher(dispatcher);

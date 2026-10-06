@@ -361,6 +361,17 @@ describe('GoogleWalletService', () => {
       await service.updateLoyaltyObject(passData());
       expect(mockFetch).not.toHaveBeenCalled();
     });
+
+    it('returns success: false with error when credentials are missing and ALLOW_MOCK_PASSES is false', async () => {
+      vi.spyOn(configService, 'get').mockImplementation((key: string) => {
+        if (key === 'ALLOW_MOCK_PASSES') return 'false';
+        return undefined;
+      });
+
+      const res = await service.updateLoyaltyObject(passData());
+      expect(res.success).toBe(false);
+      expect(res.error).toBe('Las credenciales de Google Wallet no están configuradas');
+    });
   });
 
   describe('upsertLoyaltyClass', () => {

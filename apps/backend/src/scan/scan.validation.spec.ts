@@ -60,7 +60,10 @@ describe('ScanService: validación en caja', () => {
   const build = (values?: Record<string, string>) =>
     new ScanService(
       prisma,
-      { notifyPassUpdate: vi.fn().mockResolvedValue(undefined) } as unknown as PassesService,
+      {
+        notifyPassUpdate: vi.fn().mockResolvedValue(undefined),
+        enqueuePassUpdate: vi.fn().mockResolvedValue(undefined),
+      } as unknown as PassesService,
       config(values),
       limiter,
       receipts as unknown as ReceiptStorageService,

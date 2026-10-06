@@ -796,6 +796,7 @@ export class ScanService {
 
       const createdScan = { id: scan.id, method };
       await this.auditOwnerStamp(tx, { passId: pass.id, merchantId: merchant.id, callerUserId, scan: createdScan, options, overridesCooldown });
+      await this.passesService.enqueuePassUpdate(pass.id, tx);
       return this.stampResponse(tx, { ...responseContext, scan: createdScan });
     });
   }
@@ -962,6 +963,8 @@ export class ScanService {
       const remainingActiveStamps = activeStampsList.length - promotion.targetStamps;
       const { nextExpiryAt } = await this.readBalance(tx, pass.id, now);
       const availablePromotions = toPromotionOptions(activePromotions, remainingActiveStamps);
+
+      await this.passesService.enqueuePassUpdate(pass.id, tx);
 
       return {
         success: true,

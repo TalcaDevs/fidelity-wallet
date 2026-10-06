@@ -101,14 +101,24 @@ export class PassUpdateWorkerService
     });
 
     if (existingPending) {
-      return client.passUpdateTask.update({
-        where: { id: existingPending.id },
+      const updated = await client.passUpdateTask.updateMany({
+        where: {
+          id: existingPending.id,
+          status: PassUpdateStatus.PENDING,
+        },
         data: {
           nextRetryAt: now,
           attempts: 0,
           updatedAt: now,
         },
       });
+
+      if (updated.count > 0) {
+        const refreshed = await client.passUpdateTask.findUnique({
+          where: { id: existingPending.id },
+        });
+        if (refreshed) return refreshed;
+      }
     }
 
     return client.passUpdateTask.create({
@@ -145,11 +155,27 @@ export class PassUpdateWorkerService
     const now = new Date();
     const staleThreshold = new Date(now.getTime() - this.staleLockMs);
 
+    const activeForPass = await this.prisma.passUpdateTask.findFirst({
+      where: {
+        passId: task.passId,
+        status: PassUpdateStatus.PROCESSING,
+        id: { not: task.id },
+        lockedAt: { gt: staleThreshold },
+      },
+    });
+
+    if (activeForPass) {
+      return false;
+    }
+
     const lockResult = await this.prisma.passUpdateTask.updateMany({
       where: {
         id: task.id,
         OR: [
-          { status: PassUpdateStatus.PENDING },
+          {
+            status: PassUpdateStatus.PENDING,
+            nextRetryAt: { lte: now },
+          },
           {
             status: PassUpdateStatus.PROCESSING,
             lockedAt: { lte: staleThreshold },
@@ -182,14 +208,18 @@ export class PassUpdateWorkerService
       return true;
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      const nextAttempts = task.attempts + 1;
-      const isFailed = nextAttempts >= task.maxAttempts;
+      const currentTask = await this.prisma.passUpdateTask.findUnique({
+        where: { id: task.id },
+      });
+      const nextAttempts = (currentTask?.attempts ?? task.attempts) + 1;
+      const maxAttempts = currentTask?.maxAttempts ?? task.maxAttempts;
+      const isFailed = nextAttempts >= maxAttempts;
 
       const backoffMs = Math.min(1000 * Math.pow(2, nextAttempts), 300000);
       const nextRetryAt = new Date(Date.now() + backoffMs);
 
       this.logger.warn(
-        `[PassUpdateWorker] Intento ${nextAttempts}/${task.maxAttempts} falló para pase ${task.passId}: ${errorMsg}. Reintento en ${Math.round(backoffMs / 1000)}s`,
+        `[PassUpdateWorker] Intento ${nextAttempts}/${maxAttempts} falló para pase ${task.passId}: ${errorMsg}. Reintento en ${Math.round(backoffMs / 1000)}s`,
       );
 
       await this.prisma.passUpdateTask.update({
