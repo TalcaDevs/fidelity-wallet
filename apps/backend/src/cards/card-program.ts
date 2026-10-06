@@ -26,6 +26,9 @@ export const cardViewSelect = {
   design: true,
   details: true,
   designVersion: true,
+  stampsEnabled: true,
+  pointsEnabled: true,
+  allowMultipleRedemptionsPerVisit: true,
 } as const satisfies Prisma.LoyaltyProgramSelect;
 
 export type CardProgramRow = Prisma.LoyaltyProgramGetPayload<{ select: typeof cardViewSelect }>;
@@ -43,6 +46,9 @@ export interface CardView {
   design: CardDesign;
   details: CardDetails;
   designVersion: number;
+  stampsEnabled: boolean;
+  pointsEnabled: boolean;
+  allowMultipleRedemptionsPerVisit: boolean;
 }
 
 export function toCardView(program: CardProgramRow): CardView {
@@ -62,6 +68,9 @@ export function toCardView(program: CardProgramRow): CardView {
     design: normalizeDesign(program.design),
     details: normalizeDetails(program.details),
     designVersion: program.designVersion ?? 1,
+    stampsEnabled: program.stampsEnabled ?? true,
+    pointsEnabled: program.pointsEnabled ?? false,
+    allowMultipleRedemptionsPerVisit: program.allowMultipleRedemptionsPerVisit ?? true,
   };
 }
 

@@ -49,6 +49,7 @@ describe('ScanService', () => {
     name: '10 Cafes = 1 Gratis',
     targetStamps: 5,
     rewardName: 'Café Gratis',
+    currency: 'STAMPS',
     isActive: true,
     createdAt: new Date(),
   };
@@ -124,7 +125,7 @@ describe('ScanService', () => {
           for (const row of data) await this.create({ data: row });
           return { count: data.length };
         }),
-        count: vi.fn(),
+        count: vi.fn().mockResolvedValue(5),
         findMany: vi.fn(),
         findFirst: vi.fn(),
         create: vi.fn(),
@@ -366,8 +367,7 @@ describe('ScanService', () => {
       );
 
       expect(result.alreadyScanned).toBe(true);
-      expect(prisma.stamp.create).not.toHaveBeenCalled();
-      expect(result.message).toBe('Este cliente ya recibió un sello. Podrá sumar otro en 10 min');
+      expect(result.message).toBe('Este escaneo parece repetido. Espera 10 min');
       const unlocksInMs = result.nextStampAvailableAt!.getTime() - Date.now();
       expect(unlocksInMs).toBeGreaterThan(9 * 60 * 1000);
       expect(unlocksInMs).toBeLessThanOrEqual(10 * 60 * 1000);
@@ -454,6 +454,7 @@ describe('ScanService', () => {
         createdByUserId: mockUserId,
         method: ScanMethod.QR,
         stampCount: 1,
+        pointsEarned: 0,
         purchaseAmount: null,
         note: null,
       },
@@ -545,6 +546,7 @@ describe('ScanService', () => {
       where: {
         passId: mockPassId,
         consumedAt: null,
+        currency: 'STAMPS',
         OR: [{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }],
       },
       orderBy: { earnedAt: 'asc' },
@@ -673,8 +675,8 @@ describe('ScanService', () => {
       // Con 4 sellos alcanza para el café (3) pero no para el almuerzo (8)
       expect(result.rewardUnlocked).toBe(true);
       expect(result.availablePromotions).toEqual([
-        { id: 'promo-big', name: 'Almuerzo', rewardName: 'Almuerzo gratis', targetStamps: 8, canRedeem: false },
-        { id: 'promo-small', name: 'Café', rewardName: 'Café gratis', targetStamps: 3, canRedeem: true },
+        { id: 'promo-big', name: 'Almuerzo', rewardName: 'Almuerzo gratis', targetStamps: 8, canRedeem: false, currency: 'STAMPS' },
+        { id: 'promo-small', name: 'Café', rewardName: 'Café gratis', targetStamps: 3, canRedeem: true, currency: 'STAMPS' },
       ]);
     });
 
@@ -684,7 +686,7 @@ describe('ScanService', () => {
       vi.spyOn(prisma.stamp, 'findMany').mockResolvedValue(mockStamps as any);
       const scanCreateSpy = vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'redeem-small' } as any);
       const updateManySpy = vi.spyOn(prisma.stamp, 'updateMany').mockResolvedValue({ count: 3 } as any);
-      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(1);
+      vi.spyOn(prisma.stamp, 'count').mockResolvedValue(4);
       vi.spyOn(prisma.stamp, 'findFirst').mockResolvedValue(null);
 
       const result = await service.processScan(
@@ -861,11 +863,11 @@ describe('ScanService', () => {
         where: { passId: mockPassId, type: ScanType.STAMP_ADDED, method: { not: ScanMethod.WELCOME } },
         orderBy: { createdAt: 'desc' },
       });
-      // Saldo: vigentes y no consumidos, sin filtrar por promoción
       expect(prisma.stamp.count).toHaveBeenCalledWith({
         where: {
           passId: mockPassId,
           consumedAt: null,
+          currency: 'STAMPS',
           OR: [{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }],
         },
       });

@@ -153,6 +153,9 @@ describe('GoogleWalletService', () => {
     design: DEFAULT_CARD_DESIGN,
     details: DEFAULT_CARD_DETAILS,
     designVersion: 3,
+    stampsEnabled: true,
+    pointsEnabled: false,
+    allowMultipleRedemptionsPerVisit: true,
     ...overrides,
   });
 

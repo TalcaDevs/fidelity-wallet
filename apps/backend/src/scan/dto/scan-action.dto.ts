@@ -155,7 +155,7 @@ export class ScanActionDto {
   @Transform(optionalNumber)
   @IsOptional()
   @IsInt({ message: 'La cantidad de sellos debe ser un número entero' })
-  @Min(1, { message: 'La cantidad de sellos debe ser al menos 1' })
+  @Min(0, { message: 'La cantidad de sellos no puede ser negativa' })
   stampCount?: number;
 
   @ApiPropertyOptional({
@@ -202,8 +202,11 @@ export class PromotionOptionDto {
   @ApiProperty({ description: 'Premio que entrega', example: 'Café de especialidad' })
   rewardName: string;
 
-  @ApiProperty({ description: 'Sellos que consume al canjearla', example: 5 })
+  @ApiProperty({ description: 'Sellos o Puntos que consume al canjearla', example: 5 })
   targetStamps: number;
+
+  @ApiProperty({ description: 'Moneda requerida (STAMPS o POINTS)' })
+  currency: 'STAMPS' | 'POINTS';
 
   @ApiProperty({ description: 'Verdadero si el saldo actual del pase alcanza para canjearla' })
   canRedeem: boolean;
@@ -255,6 +258,12 @@ export class ScanResultDto {
   activeStamps: number;
 
   @ApiProperty({
+    description: 'Saldo del pase: puntos vigentes y no consumidos.',
+    example: 100,
+  })
+  activePoints: number;
+
+  @ApiProperty({
     description:
       'Meta de la promoción de referencia: en STAMP, la promoción activa más reciente (la que muestran la landing y el pase); en REDEEM, la canjeada',
     example: 10,
@@ -298,6 +307,9 @@ export class ScanResultDto {
   @ApiPropertyOptional({ description: 'Sellos sumados en esta acción (STAMP no bloqueado)' })
   stampsAdded?: number;
 
+  @ApiPropertyOptional({ description: 'Puntos sumados en esta acción (STAMP no bloqueado)' })
+  pointsAdded?: number;
+
   @ApiPropertyOptional({ description: 'Datos enmascarados del cliente' })
   customer?: MaskedCustomerDto;
 
@@ -326,6 +338,9 @@ export class ScanValidationDto {
 
   @ApiProperty({ description: 'Saldo del pase: sellos vigentes y no consumidos', example: 4 })
   activeStamps: number;
+
+  @ApiProperty({ description: 'Saldo del pase: puntos vigentes y no consumidos', example: 100 })
+  activePoints: number;
 
   @ApiProperty({ description: 'Meta de la promoción activa más reciente', example: 10 })
   targetStamps: number;

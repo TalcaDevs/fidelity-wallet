@@ -45,7 +45,7 @@ describe('ScanService: reglas de la tarjeta', () => {
     role = 'STAFF';
     latestStamp = null;
     passCreatedAt = new Date('2026-01-01T12:00:00Z');
-    program = { id: programId, brandId, type: 'POINTS', isActive: true, stampValidityDays: null, dailyStampLimit: true };
+    program = { id: programId, brandId, type: 'STAMPS', isActive: true, stampValidityDays: null, dailyStampLimit: true, stampsEnabled: true, pointsEnabled: false, allowMultipleRedemptionsPerVisit: true };
     prisma = {
       merchant: {
         findUnique: vi.fn().mockResolvedValue({
@@ -112,6 +112,12 @@ describe('ScanService: reglas de la tarjeta', () => {
   const createdRows = () => vi.mocked(prisma.stamp.createMany).mock.calls[0]?.[0]?.data as unknown[];
 
   describe('puntos', () => {
+    beforeEach(() => {
+      program.type = 'POINTS';
+      program.stampsEnabled = false;
+      program.pointsEnabled = true;
+    });
+
     it('tells the cashier the amount and the receipt are required', async () => {
       const validation = await service.validate({ passToken: 'qr-token', merchantId }, userId);
       expect(validation).toMatchObject({
@@ -135,10 +141,10 @@ describe('ScanService: reglas de la tarjeta', () => {
     it('gives one point per 1.000 pesos and records the amount', async () => {
       const result = await stamp({ purchaseAmount: 12_500 }, await receipt());
 
-      expect(result.stampsAdded).toBe(12);
+      expect(result.pointsAdded).toBe(12);
       expect(createdRows()).toHaveLength(12);
       expect(prisma.scan.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({ stampCount: 12, purchaseAmount: 12_500 }),
+        data: expect.objectContaining({ pointsEarned: 12, purchaseAmount: 12_500 }),
       });
       expect(result.message).toMatch(/12 puntos agregados/);
     });
@@ -152,7 +158,7 @@ describe('ScanService: reglas de la tarjeta', () => {
     it('lets the OWNER add points without the receipt', async () => {
       role = 'OWNER';
       const result = await stamp({ purchaseAmount: 3_000 });
-      expect(result.stampsAdded).toBe(3);
+      expect(result.pointsAdded).toBe(3);
     });
 
     it('only blocks a repeated purchase for a couple of minutes', async () => {
@@ -192,7 +198,7 @@ describe('ScanService: reglas de la tarjeta', () => {
 
       const result = await stamp();
       expect(result.alreadyScanned).toBe(true);
-      expect(result.message).toMatch(/sello de hoy/);
+      expect(result.message).toMatch(/límite diario de sellos/);
     });
 
     it('allows the next stamp after Chilean midnight', async () => {
