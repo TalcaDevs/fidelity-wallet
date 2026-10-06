@@ -861,7 +861,7 @@ describe('ScanService', () => {
       );
 
       expect(prisma.scan.findFirst).toHaveBeenCalledWith({
-        where: { passId: mockPassId, type: ScanType.STAMP_ADDED, method: { not: ScanMethod.WELCOME } },
+        where: { passId: mockPassId, type: ScanType.STAMP_ADDED, method: { not: ScanMethod.WELCOME }, stampCount: { gt: 0 } },
         orderBy: { createdAt: 'desc' },
       });
       expect(prisma.stamp.count).toHaveBeenCalledWith({

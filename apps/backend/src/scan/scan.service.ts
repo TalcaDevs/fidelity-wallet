@@ -130,7 +130,7 @@ interface StampResponseContext {
   options: StampOptions;
   scan: Pick<Scan, 'id' | 'method'>;
   now: Date;
-  blockedUntil?: Date;
+  block?: { until: Date; scan: Scan; cause: 'STAMP' | 'POINTS' };
 }
 
 type Tx = Db;
@@ -223,8 +223,8 @@ export class ScanService {
     const method: ScanMethod = dto.passToken ? ScanMethod.QR : ScanMethod.MANUAL;
 
     const { activeStamps, activePoints, nextExpiryAt } = await this.readBalance(this.prisma, pass.id, now);
-    const latestStamp = await this.findLatestStamp(this.prisma, pass.id);
-    const nextStampAvailableAt = this.cooldownUntil(card, latestStamp, now);
+    const { latestStamp, latestPoints } = await this.findLatestScans(this.prisma, pass.id);
+    const nextStampAvailableAt = this.cooldownUntil(card, latestStamp, latestPoints, now);
     const availablePromotions = toPromotionOptions(activePromotions, activeStamps, activePoints);
     const isOwner = membership.role === MerchantRole.OWNER;
 
@@ -248,7 +248,7 @@ export class ScanService {
       rewardUnlocked: availablePromotions.some((p) => p.canRedeem),
       availablePromotions,
       nextExpiryAt,
-      nextStampAvailableAt,
+      nextStampAvailableAt: nextStampAvailableAt?.until ?? null,
       canStamp: isOwner || nextStampAvailableAt === null,
       maxStampsPerLoad: isOwner && card.type === 'STAMPS' ? this.ownerMaxStamps : 1,
       reasonRequired: isOwner && nextStampAvailableAt !== null,
@@ -661,59 +661,64 @@ export class ScanService {
     return { activeStamps, activePoints, nextExpiryAt: nextExpiring?.expiresAt ?? null };
   }
 
-  private findLatestStamp(db: Tx, passId: string): Promise<Scan | null> {
+  private async findLatestScans(db: Tx, passId: string): Promise<{ latestStamp: Scan | null; latestPoints: Scan | null }> {
     // El saldo de bienvenida no es una visita: no bloquea el primer sello en caja.
-    return db.scan.findFirst({
-      where: { passId, type: ScanType.STAMP_ADDED, method: { not: ScanMethod.WELCOME } },
-      orderBy: { createdAt: 'desc' },
-    });
+    const [latestStamp, latestPoints] = await Promise.all([
+      db.scan.findFirst({
+        where: { passId, type: ScanType.STAMP_ADDED, method: { not: ScanMethod.WELCOME }, stampCount: { gt: 0 } },
+        orderBy: { createdAt: 'desc' },
+      }),
+      db.scan.findFirst({
+        where: { passId, type: ScanType.STAMP_ADDED, method: { not: ScanMethod.WELCOME }, pointsEarned: { gt: 0 } },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+    return { latestStamp, latestPoints };
   }
 
   /**
-   * null si el pase puede sumar ya; si no, desde cuándo podrá. Sellos con límite diario: uno por
-   * día calendario de Chile. Sin límite: STAMP_COOLDOWN_MINUTES. Puntos: solo el doble envío.
+   * null si el pase puede sumar ya; si no, desde cuándo podrá y el scan que causó el bloqueo.
+   * Sellos con límite diario: uno por día calendario de Chile. Sin límite: STAMP_COOLDOWN_MINUTES. Puntos: solo el doble envío.
    */
-  private cooldownUntil(card: CardView, latestStamp: Scan | null, now: Date): Date | null {
-    if (!latestStamp) return null;
-    const untils: Date[] = [];
+  private cooldownUntil(card: CardView, latestStamp: Scan | null, latestPoints: Scan | null, now: Date): { until: Date; scan: Scan; cause: 'STAMP' | 'POINTS' } | null {
+    const blocks: { until: Date; scan: Scan; cause: 'STAMP' | 'POINTS' }[] = [];
     
-    if (card.stampsEnabled) {
+    if (card.stampsEnabled && latestStamp) {
       if (card.dailyStampLimit) {
         const midnight = chileDay(latestStamp.createdAt) === chileDay(now) ? nextChileMidnight(now) : null;
-        if (midnight) untils.push(midnight);
+        if (midnight) blocks.push({ until: midnight, scan: latestStamp, cause: 'STAMP' });
       } else if (this.stampCooldownMs > 0) {
-        untils.push(new Date(latestStamp.createdAt.getTime() + this.stampCooldownMs));
+        blocks.push({ until: new Date(latestStamp.createdAt.getTime() + this.stampCooldownMs), scan: latestStamp, cause: 'STAMP' });
       }
     }
 
-    if (card.pointsEnabled && POINTS_DUPLICATE_WINDOW_MS > 0) {
-      untils.push(new Date(latestStamp.createdAt.getTime() + POINTS_DUPLICATE_WINDOW_MS));
+    if (card.pointsEnabled && latestPoints && POINTS_DUPLICATE_WINDOW_MS > 0) {
+      blocks.push({ until: new Date(latestPoints.createdAt.getTime() + POINTS_DUPLICATE_WINDOW_MS), scan: latestPoints, cause: 'POINTS' });
     }
 
-    const futureUntils = untils.filter((u) => u.getTime() > now.getTime());
-    if (futureUntils.length === 0) return null;
+    const futureBlocks = blocks.filter((b) => b.until.getTime() > now.getTime());
+    if (futureBlocks.length === 0) return null;
     
-    return futureUntils.reduce((max, u) => (u.getTime() > max.getTime() ? u : max), futureUntils[0]);
+    return futureBlocks.reduce((max, b) => (b.until.getTime() > max.until.getTime() ? b : max), futureBlocks[0]);
   }
 
-  private blockedMessage(card: CardView, isOwner: boolean, until: Date, now: Date): string {
-    const minutesLeft = Math.max(1, Math.ceil((until.getTime() - now.getTime()) / 60000));
+  private blockedMessage(card: CardView, isOwner: boolean, block: { until: Date; cause: 'STAMP' | 'POINTS' }, now: Date): string {
+    const minutesLeft = Math.max(1, Math.ceil((block.until.getTime() - now.getTime()) / 60000));
     
-    if (card.stampsEnabled && card.dailyStampLimit && minutesLeft > 2) {
+    if (block.cause === 'STAMP') {
+      if (card.dailyStampLimit && minutesLeft > 180) {
+        return isOwner
+          ? 'Este cliente ya alcanzó el límite diario de sellos. Para sumar más indica el motivo'
+          : 'Este cliente ya alcanzó el límite diario de sellos. Podrá sumar más mañana';
+      }
       return isOwner
-        ? 'Este cliente ya alcanzó el límite diario de sellos. Para sumar más indica el motivo'
-        : 'Este cliente ya alcanzó el límite diario de sellos. Podrá sumar más mañana';
-    }
-    
-    if (card.pointsEnabled && !card.stampsEnabled) {
-      return isOwner
-        ? `Esta compra parece repetida: se sumaron puntos hace un momento. Para sumar de nuevo antes de ${minutesLeft} min indica el motivo`
-        : `Esta compra parece repetida: se sumaron puntos hace un momento. Espera ${minutesLeft} min`;
+        ? `Este escaneo parece repetido. Para sumar de nuevo antes de ${minutesLeft} min indica el motivo`
+        : `Este escaneo parece repetido. Espera ${minutesLeft} min`;
     }
     
     return isOwner
-      ? `Este escaneo parece repetido. Para sumar de nuevo antes de ${minutesLeft} min indica el motivo`
-      : `Este escaneo parece repetido. Espera ${minutesLeft} min`;
+      ? `Esta compra parece repetida: se sumaron puntos hace un momento. Para sumar de nuevo antes de ${minutesLeft} min indica el motivo`
+      : `Esta compra parece repetida: se sumaron puntos hace un momento. Espera ${minutesLeft} min`;
   }
 
   private async executeStampAction(
@@ -774,13 +779,13 @@ export class ScanService {
       // Bloqueo por pase: un sello cada stampCooldownMs. Se evalúa dentro del lock de fila,
       // así que dos cajeros escaneando a la vez no pueden colar un segundo sello. Es por marca:
       // sellar en un local también bloquea sellar en otro. El OWNER lo puede saltar dando motivo.
-      const latestScan = await this.findLatestStamp(tx, pass.id);
-      const nextStampAvailableAt = this.cooldownUntil(card, latestScan, now);
-      const overridesCooldown = nextStampAvailableAt !== null && options.isOwner && !!options.reason;
+      const { latestStamp, latestPoints } = await this.findLatestScans(tx, pass.id);
+      const block = this.cooldownUntil(card, latestStamp, latestPoints, now);
+      const overridesCooldown = block !== null && options.isOwner && !!options.reason;
       const responseContext = { passId: pass.id, card, promotions: activePromotions, customer: maskedCustomer, options, now };
 
-      if (latestScan && nextStampAvailableAt && !overridesCooldown) {
-        return this.stampResponse(tx, { ...responseContext, scan: latestScan, blockedUntil: nextStampAvailableAt });
+      if (block && !overridesCooldown) {
+        return this.stampResponse(tx, { ...responseContext, scan: block.scan, block });
       }
 
       // brandId y programId los vuelve a fijar el trigger ledger_derive_from_pass.
@@ -879,7 +884,7 @@ export class ScanService {
 
   private async stampResponse(
     tx: Tx,
-    { passId, card, promotions, customer, options, scan, now, blockedUntil }: StampResponseContext,
+    { passId, card, promotions, customer, options, scan, now, block }: StampResponseContext,
   ): Promise<ScanResultDto> {
     const featured = promotions[0];
     const { activeStamps, activePoints, nextExpiryAt } = await this.readBalance(tx, passId, now);
@@ -900,12 +905,12 @@ export class ScanService {
       scanId: scan.id,
       customer,
     };
-    if (blockedUntil) {
+    if (block) {
       return {
         ...result,
         alreadyScanned: true,
-        nextStampAvailableAt: blockedUntil,
-        message: this.blockedMessage(card, options.isOwner, blockedUntil, now),
+        nextStampAvailableAt: block.until,
+        message: this.blockedMessage(card, options.isOwner, block, now),
       };
     }
     
