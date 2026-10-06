@@ -51,6 +51,7 @@ describe('PassesService', () => {
     programId: mockProgramId,
     brand: { id: mockMerchantId, name: 'Cafeteria Don Tito' },
     customer: { id: mockCustomerId, rut: '11111111-1', phone: '+56912345678' },
+    program: { stampsEnabled: true, pointsEnabled: false },
     ...overrides,
   });
 
@@ -443,6 +444,8 @@ describe('PassesService', () => {
       vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(createMockPromotion() as any);
       vi.spyOn(prisma.stamp, 'count')
         .mockResolvedValueOnce(5)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
         .mockResolvedValueOnce(0);
 
       vi.spyOn(googleWalletService, 'updateLoyaltyObject').mockImplementation(async (data) => {

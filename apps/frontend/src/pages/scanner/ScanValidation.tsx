@@ -223,7 +223,7 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
             </div>
           )}
 
-          {hasPoints && validation.canAddPoints && (
+          {(hasPoints ? validation.canAddPoints : validation.canStamp) && (
             <div>
               <label htmlFor={`${ids}-amount`} className="block text-sm font-bold text-slate-300 mb-2 px-1">
                 Monto de la compra{' '}
@@ -243,7 +243,7 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
                   className="w-full min-w-0 bg-transparent pr-4 py-3 text-lg font-bold text-white outline-none placeholder:text-slate-500"
                 />
               </div>
-              {points > 0 && !amountProblem && (
+              {hasPoints && points > 0 && !amountProblem && (
                 <p className="text-sm font-bold text-emerald-300 mt-2 px-1">
                   Suma {clp.format(points)} {balanceUnit('POINTS', points)} (1 punto cada ${clp.format(validation.pesosPerPoint)})
                 </p>
@@ -289,7 +289,7 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
             />
           </div>
 
-          {hasPoints && validation.canAddPoints && (
+          {(hasPoints ? validation.canAddPoints : validation.canStamp) && (
             <div>
               <span className="block text-sm font-bold text-slate-300 mb-2 px-1">
                 Foto de la boleta{' '}
@@ -343,7 +343,7 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
         <button
           type="button"
           onClick={handleAdd}
-          disabled={(!validation.canStamp && !validation.canAddPoints) || preparingReceipt}
+          disabled={!((hasStamps && validation.canStamp) || (hasPoints && validation.canAddPoints)) || preparingReceipt}
           className="w-full py-4 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:hover:bg-blue-600 rounded-2xl font-black text-xl shadow-lg shadow-blue-600/30 transition-all active:scale-[0.98]"
         >
           {hasPoints && hasStamps

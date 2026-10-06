@@ -38,10 +38,9 @@ function balanceLabel(card: CardView): string {
   return card.type === 'POINTS' ? 'Puntos' : 'Sellos';
 }
 
-export function statusText(card: CardView, activeStamps: number, target: number): string {
-  if (card.type === 'POINTS') return 'Sigue acumulando para tu próximo premio.';
-  if (activeStamps >= target) return '¡Premio desbloqueado!';
-  const remaining = target - activeStamps;
+export function statusText(card: CardView, activeBalance: number, target: number): string {
+  if (activeBalance >= target) return '¡Premio desbloqueado!';
+  const remaining = target - activeBalance;
   return `${remaining === 1 ? 'Falta' : 'Faltan'} ${remaining} ${balanceUnit(card.type, remaining)}`;
 }
 
@@ -130,7 +129,8 @@ function textModules(data: PassData) {
         modules.push({ id, header: 'Premio', body: data.rewardName });
         break;
       case 'PROGRESS':
-        modules.push({ id, header: 'Estado', body: statusText(card, data.activeStamps, data.targetStamps) });
+        const mainBalance = data.stampsEnabled ? data.activeStamps : data.activePoints;
+        modules.push({ id, header: 'Estado', body: statusText(card, mainBalance, data.targetStamps) });
         break;
       case 'STAMPS_EXPIRY':
         modules.push({

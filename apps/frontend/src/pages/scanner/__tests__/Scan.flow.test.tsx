@@ -51,6 +51,12 @@ const validation = {
   maxStampsPerLoad: 1,
   reasonRequired: false,
   cardType: 'STAMPS',
+  stampsEnabled: true,
+  pointsEnabled: false,
+  pointsCount: 0,
+  nextPointsAvailableAt: null,
+  canAddPoints: true,
+  pointsReasonRequired: false,
   pesosPerPoint: 1000,
   amountRequired: false,
   receiptRequired: false,
@@ -100,17 +106,17 @@ describe('Scan flow', () => {
       merchantId: 'm-1',
       action: 'STAMP',
       target: { validationToken: 'token-1' },
-      extras: { purchaseAmount: 8000, note: undefined, receipt: undefined },
+      extras: { purchaseAmount: 8000, note: undefined, receipt: undefined, stampCount: 1 },
     });
     expect(screen.getByRole('button', { name: 'Canjear premio' })).toBeInTheDocument();
   });
 
-  it('goes back to the camera with "Escanear otro sello" without stamping', async () => {
+  it('goes back to the camera with "Escanear otro cliente" without stamping', async () => {
     validateScan.mockResolvedValue(validation);
     renderScanner();
 
     fireEvent.click(screen.getByRole('button', { name: 'Simular QR' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Escanear otro sello' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Escanear otro cliente' }));
 
     expect(screen.getByRole('button', { name: 'Simular QR' })).toBeInTheDocument();
     expect(processScan).not.toHaveBeenCalled();
@@ -148,6 +154,8 @@ describe('Scan flow', () => {
       ...validation,
       method: 'MANUAL',
       cardType: 'POINTS',
+      stampsEnabled: false,
+      pointsEnabled: true,
       stampsCount: 90,
       targetStamps: 100,
       amountRequired: true,
@@ -197,7 +205,7 @@ describe('Scan flow', () => {
       merchantId: 'm-1',
       action: 'STAMP',
       target: { validationToken: 'token-1' },
-      extras: { purchaseAmount: 12500, note: undefined, receipt },
+      extras: { purchaseAmount: 12500, note: undefined, receipt, stampCount: 0 },
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Canjear premio' }));

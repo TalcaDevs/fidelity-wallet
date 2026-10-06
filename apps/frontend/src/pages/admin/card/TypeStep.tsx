@@ -106,9 +106,9 @@ export function TypeStep({ editor }: { editor: CardEditor }) {
               type="button"
               role="switch"
               aria-checked={selected}
-              disabled={!!reason && selected}
+              disabled={!!reason}
               onClick={() => {
-                if (!!reason && !selected) return; // if it's disabled and not selected, can't select it
+                if (!!reason) return;
 
                 const newStampsEnabled = isStamps ? !selected : config.stampsEnabled;
                 const newPointsEnabled = !isStamps ? !selected : config.pointsEnabled;

@@ -22,6 +22,8 @@ const program = (overrides: Record<string, unknown> = {}) => ({
   id: programId,
   brandId,
   type: 'STAMPS',
+  stampsEnabled: true,
+  pointsEnabled: false,
   name: 'Tarjeta de sellos',
   isActive: true,
   stampValidityDays: null,
@@ -41,6 +43,8 @@ const program = (overrides: Record<string, unknown> = {}) => ({
 const body = (overrides: Partial<SaveCardDto> = {}): SaveCardDto =>
   ({
     type: 'STAMPS',
+    stampsEnabled: true,
+    pointsEnabled: false,
     name: 'Tarjeta Café',
     rewards: [{ id: rewardA, name: 'Café gratis', target: 8 }, { name: 'Torta', target: 12 }],
     welcomeBalance: 1,
@@ -186,7 +190,7 @@ describe('CardService', () => {
     it('does not switch between stamps and points while customers have balance', async () => {
       const { service, prisma } = setup({ pointsEnabled: true, activeBalance: true });
       await expect(
-        service.save(brandId, userId, body({ type: 'POINTS', rewards: [{ name: 'Postre', target: 500 }] })),
+        service.save(brandId, userId, body({ type: 'POINTS', stampsEnabled: false, pointsEnabled: true, rewards: [{ name: 'Postre', target: 500 }] })),
       ).rejects.toBeInstanceOf(ConflictException);
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });

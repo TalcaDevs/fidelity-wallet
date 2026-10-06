@@ -13,6 +13,8 @@ import { CardRewardDto, CardValidityDto, SaveCardDto } from './card.dto.js';
 
 const body = () => ({
   type: 'STAMPS',
+  stampsEnabled: true,
+  pointsEnabled: false,
   name: 'Tarjeta Café',
   rewards: [{ name: 'Café gratis', target: 10 }],
   welcomeBalance: 0,
