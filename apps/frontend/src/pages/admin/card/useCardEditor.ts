@@ -13,6 +13,8 @@ import { getCard, saveCard } from '../../../services/cardService';
 export function configOf(dto: CardConfigDto): CardConfig {
   return {
     type: dto.type,
+    stampsEnabled: dto.stampsEnabled,
+    pointsEnabled: dto.pointsEnabled,
     name: dto.name,
     rewards: dto.rewards,
     welcomeBalance: dto.welcomeBalance,

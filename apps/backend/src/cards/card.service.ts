@@ -75,7 +75,10 @@ export class CardService {
     if (foreign.length > 0) problems.push('Una de las imágenes no es válida: vuelve a subirla');
     if (problems.length > 0) throw new BadRequestException(problems);
 
-    if (config.type !== program.type && (await this.hasActiveBalance(program.id))) {
+    const disablesStamps = program.stampsEnabled && !config.stampsEnabled;
+    const disablesPoints = program.pointsEnabled && !config.pointsEnabled;
+
+    if ((disablesStamps || disablesPoints) && (await this.hasActiveBalance(program.id))) {
       throw new ConflictException(TYPE_LOCKED);
     }
 
@@ -89,7 +92,9 @@ export class CardService {
       await tx.loyaltyProgram.update({
         where: { id: program.id },
         data: {
-          type: config.type,
+          type: config.type === 'DUAL' ? 'STAMPS' : config.type,
+          stampsEnabled: config.stampsEnabled,
+          pointsEnabled: config.pointsEnabled,
           name: config.name,
           welcomeBalance: config.welcomeBalance,
           dailyStampLimit: config.dailyStampLimit,
@@ -147,6 +152,8 @@ export class CardService {
     const { validity } = dto;
     return {
       type: dto.type,
+      stampsEnabled: dto.stampsEnabled,
+      pointsEnabled: dto.pointsEnabled,
       name: dto.name.trim(),
       rewards: dto.rewards.map((r) => ({ ...(r.id ? { id: r.id } : {}), name: r.name.trim(), target: r.target })),
       welcomeBalance: dto.welcomeBalance,
@@ -220,6 +227,8 @@ export class CardService {
       customers,
       locations,
       type: card.type,
+      stampsEnabled: program.stampsEnabled,
+      pointsEnabled: program.pointsEnabled,
       name: card.name,
       rewards: rewards.map((r) => ({ id: r.id, name: r.rewardName, target: r.targetStamps })),
       welcomeBalance: card.welcomeBalance,

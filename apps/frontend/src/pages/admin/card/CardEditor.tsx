@@ -11,7 +11,7 @@ import { useCardEditor } from './useCardEditor';
 const STEPS = ['Tipo', 'Información', 'Diseño', 'Detalles'] as const;
 const STEP_INDEX = { TYPE: 0, INFO: 1, DESIGN: 2, DETAILS: 3 } as const;
 
-const TYPE_LABEL = { STAMPS: 'Sellos / Visitas', POINTS: 'Puntos por compra' } as const;
+const TYPE_LABEL = { STAMPS: 'Sellos / Visitas', POINTS: 'Puntos por compra', DUAL: 'Sellos y Puntos' } as const;
 
 function Stepper({ current, onSelect }: { current: number; onSelect: (step: number) => void }) {
   return (

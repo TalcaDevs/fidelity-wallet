@@ -23,6 +23,8 @@ const card = (overrides: Partial<CardConfigDto> = {}): CardConfigDto => ({
   customers: 12,
   locations: 1,
   type: 'STAMPS',
+  stampsEnabled: true,
+  pointsEnabled: false,
   name: 'Tarjeta Café',
   rewards: [{ id: 'r-1', name: 'Café gratis', target: 10 }],
   welcomeBalance: 0,

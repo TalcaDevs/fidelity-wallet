@@ -374,13 +374,24 @@ export class PassesService {
     const cardClass = await this.cardClassData(prisma, pass.programId, includeLocations);
     if (!cardClass) return null;
     const now = new Date();
-    const activeStamps = await prisma.stamp.count({
-      where: {
-        passId: pass.id,
-        consumedAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      },
-    });
+    const [activeStamps, activePoints] = await Promise.all([
+      prisma.stamp.count({
+        where: {
+          passId: pass.id,
+          consumedAt: null,
+          currency: 'STAMPS',
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+      }),
+      prisma.stamp.count({
+        where: {
+          passId: pass.id,
+          consumedAt: null,
+          currency: 'POINTS',
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+      }),
+    ]);
 
     let promotion: any = null;
     const activePromotions = prisma.promotion.findMany
@@ -430,7 +441,10 @@ export class PassesService {
       programId: pass.programId,
       merchantName: pass.brand.name,
       customerLabel: passCustomerLabel(pass.customer),
+      stampsEnabled: cardClass.card.stampsEnabled,
+      pointsEnabled: cardClass.card.pointsEnabled,
       activeStamps,
+      activePoints,
       targetStamps: promotion.targetStamps,
       rewardName: promotion.rewardName,
       nextExpiryAt: nextExpiring?.expiresAt ?? null,

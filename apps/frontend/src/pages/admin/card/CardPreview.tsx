@@ -35,8 +35,10 @@ function sample(config: CardConfig) {
   const isPoints = config.type === 'POINTS';
   const reward = rewards[0] ?? { name: 'Tu premio', target: isPoints ? 100 : 10 };
   const target = Math.max(1, reward.target);
-  const balance = isPoints ? Math.floor(target * 0.4) : Math.min(3, target);
-  const remaining = target - balance;
+  // En DUAL se muestran ambos.
+  const stampsBalance = Math.min(3, target);
+  const pointsBalance = Math.floor(target * 0.4);
+  const remaining = Math.max(0, target - (config.stampsEnabled ? stampsBalance : pointsBalance));
   const unit = balanceUnit(config.type, remaining);
   const cardExpiry =
     config.validity.type === 'FIXED_DATE' && config.validity.expiresAt
@@ -50,7 +52,7 @@ function sample(config: CardConfig) {
     PROGRESS: remaining <= 0 ? '¡Premio desbloqueado!' : `${remaining === 1 ? 'Falta' : 'Faltan'} ${clp.format(remaining)} ${unit}`,
     STAMPS_EXPIRY: config.stampValidityDays
       ? formatDate(new Date(Date.now() + config.stampValidityDays * 86_400_000))
-      : `Tus ${balanceUnit(config.type)} no vencen`,
+      : (config.stampsEnabled && config.pointsEnabled ? 'Tus sellos y puntos no vencen' : `Tus ${balanceUnit(config.type)} no vencen`),
     CARD_EXPIRY: cardExpiry ? formatDate(cardExpiry) : null,
     MEMBER_SINCE: formatDate(SAMPLE_JOINED),
   };
@@ -60,9 +62,8 @@ function sample(config: CardConfig) {
 
   return {
     target,
-    balance,
-    balanceLabel: isPoints ? 'Puntos' : 'Sellos',
-    balanceValue: isPoints ? clp.format(balance) : `${balance} de ${target}`,
+    stampsBalance,
+    pointsBalance,
     fields,
     front: fields.filter((f) => config.details.frontFields.includes(f.key)),
   };
@@ -121,7 +122,11 @@ function AndroidPass({ config, brandName, face }: { config: CardConfig; brandNam
   const text = autoTextColor(design.backgroundColor);
   const data = sample(config);
   const qr = useQr('fidelity-wallet-preview');
-  const items = [{ key: 'balance', label: data.balanceLabel, value: data.balanceValue }, ...data.front];
+  const balances = [];
+  if (config.stampsEnabled) balances.push({ key: 'stamps', label: 'Sellos', value: `${data.stampsBalance} de ${data.target}` });
+  if (config.pointsEnabled) balances.push({ key: 'points', label: 'Puntos', value: clp.format(data.pointsBalance) });
+  
+  const items = [...balances, ...data.front];
 
   if (face === 'DETAILS') {
     return (
@@ -132,7 +137,8 @@ function AndroidPass({ config, brandName, face }: { config: CardConfig; brandNam
         </div>
         <dl className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
           {details.showCustomerName && <DetailRow label="Titular" value={SAMPLE_NAME} />}
-          <DetailRow label={data.balanceLabel} value={data.balanceValue} />
+          {config.stampsEnabled && <DetailRow label="Sellos" value={`${data.stampsBalance} de ${data.target}`} />}
+          {config.pointsEnabled && <DetailRow label="Puntos" value={clp.format(data.pointsBalance)} />}
           {data.fields.map((f) => (
             <DetailRow key={f.key} label={f.label} value={f.value} />
           ))}
@@ -173,8 +179,8 @@ function AndroidPass({ config, brandName, face }: { config: CardConfig; brandNam
           </div>
         ))}
       </div>
-      {config.type === 'STAMPS' ? (
-        <StampStrip design={design} target={data.target} filled={data.balance} />
+      {config.stampsEnabled ? (
+        <StampStrip design={design} target={data.target} filled={data.stampsBalance} />
       ) : (
         design.heroImageUrl && <img src={design.heroImageUrl} alt="" className="w-full aspect-[1032/336] object-cover" />
       )}
@@ -241,7 +247,7 @@ function ApplePass({ config, face }: { config: CardConfig; face: Face }) {
         ))}
         <div>
           <p className="text-[11px] font-bold uppercase text-slate-500">Vigencia</p>
-          <p>{config.stampValidityDays ? `Tus ${balanceUnit(config.type)} vencen ${config.stampValidityDays} días después de ganarlos.` : `Tus ${balanceUnit(config.type)} no vencen.`}</p>
+          <p>{config.stampValidityDays ? `Tus ${(config.stampsEnabled && config.pointsEnabled) ? 'sellos y puntos' : balanceUnit(config.type)} vencen ${config.stampValidityDays} días después de ganarlos.` : `Tus ${(config.stampsEnabled && config.pointsEnabled) ? 'sellos y puntos' : balanceUnit(config.type)} no vencen.`}</p>
         </div>
       </div>
     );
@@ -262,17 +268,23 @@ function ApplePass({ config, face }: { config: CardConfig; face: Face }) {
             </>
           )}
         </div>
-        <div className="text-right shrink-0">
-          <p className="text-[10px] font-bold uppercase" style={label}>
-            {data.balanceLabel}
-          </p>
-          <p className="text-sm font-semibold" style={value}>
-            {config.type === 'POINTS' ? data.balanceValue : `${data.balance} / ${data.target}`}
-          </p>
+        <div className="flex items-center gap-4 text-right shrink-0">
+          {config.stampsEnabled && (
+            <div>
+              <p className="text-[10px] font-bold uppercase" style={label}>Sellos</p>
+              <p className="text-sm font-semibold" style={value}>{data.stampsBalance} / {data.target}</p>
+            </div>
+          )}
+          {config.pointsEnabled && (
+            <div>
+              <p className="text-[10px] font-bold uppercase" style={label}>Puntos</p>
+              <p className="text-sm font-semibold" style={value}>{clp.format(data.pointsBalance)}</p>
+            </div>
+          )}
         </div>
       </div>
-      {config.type === 'STAMPS' ? (
-        <StampStrip design={design} target={data.target} filled={data.balance} />
+      {config.stampsEnabled ? (
+        <StampStrip design={design} target={data.target} filled={data.stampsBalance} />
       ) : (
         design.heroImageUrl && <img src={design.heroImageUrl} alt="" className="w-full aspect-[1032/336] object-cover" />
       )}

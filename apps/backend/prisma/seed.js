@@ -159,12 +159,31 @@ async function check(promise) {
 }
 
 async function createUser(email, metadata) {
-  const { data, error } = await supabase.auth.admin.createUser({
+  let { data, error } = await supabase.auth.admin.createUser({
     email,
     password: PASSWORD,
     email_confirm: true,
     user_metadata: metadata,
   });
+
+  if (error && error.message.includes('already been registered')) {
+    const listRes = await supabase.auth.admin.listUsers();
+    if (listRes.data && listRes.data.users) {
+      const existing = listRes.data.users.find(u => u.email === email);
+      if (existing) {
+        await supabase.auth.admin.deleteUser(existing.id);
+        const retry = await supabase.auth.admin.createUser({
+          email,
+          password: PASSWORD,
+          email_confirm: true,
+          user_metadata: metadata,
+        });
+        data = retry.data;
+        error = retry.error;
+      }
+    }
+  }
+
   if (error) throw new Error(`Error creating ${email}: ${error.message}`);
   return data.user;
 }

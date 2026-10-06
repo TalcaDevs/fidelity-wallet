@@ -1,8 +1,8 @@
 // Contrato de la tarjeta de la marca (editor /admin/card, pase de Google Wallet, landing /join).
 // Una tarjeta por marca: sellos por visita o puntos por dinero gastado.
 
-export type CardType = 'STAMPS' | 'POINTS';
-export const CARD_TYPES: readonly CardType[] = ['STAMPS', 'POINTS'];
+export type CardType = 'STAMPS' | 'POINTS' | 'DUAL';
+export const CARD_TYPES: readonly CardType[] = ['STAMPS', 'POINTS', 'DUAL'];
 
 export const DEFAULT_PESOS_PER_POINT = 1000;
 export const PESOS_PER_POINT_MIN = 1;
@@ -330,6 +330,8 @@ export interface CardReward {
 /** Lo que edita el dueño en el editor y se guarda de una vez. */
 export interface CardConfig {
   type: CardType;
+  stampsEnabled: boolean;
+  pointsEnabled: boolean;
   name: string;
   rewards: CardReward[];
   welcomeBalance: number;

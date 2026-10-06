@@ -54,11 +54,28 @@ function convertRewards(rewards: CardReward[], to: CardType): CardReward[] {
   }));
 }
 
-function disabledReason(type: CardType, saved: CardConfigDto): string | null {
-  if (type === 'POINTS' && !saved.points.enabled) return 'Los puntos no están habilitados para tu marca.';
-  if (saved.typeLocked && type !== saved.type) {
-    return 'Tus clientes ya tienen saldo con el tipo actual: cambiarlo se los borraría.';
+function determineNewType(stamps: boolean, points: boolean): CardType {
+  if (stamps && points) return 'DUAL';
+  if (points) return 'POINTS';
+  return 'STAMPS';
+}
+
+function disabledReason(key: 'STAMPS' | 'POINTS', stampsEnabled: boolean, pointsEnabled: boolean, saved: CardConfigDto): string | null {
+  if (key === 'POINTS' && !saved.points.enabled) return 'Los puntos no están habilitados para tu marca.';
+  
+  // Si intenta deshabilitar
+  const isCurrentlyEnabled = key === 'STAMPS' ? stampsEnabled : pointsEnabled;
+  if (isCurrentlyEnabled) {
+    // No puede deshabilitar si es la única activa
+    if ((key === 'STAMPS' && !pointsEnabled) || (key === 'POINTS' && !stampsEnabled)) {
+      return 'Debe haber al menos un modo activo.';
+    }
+    // Si la tarjeta ya fue guardada con este modo y hay saldo activo, no se puede quitar
+    if (saved.typeLocked && (saved.type === 'DUAL' || saved.type === key)) {
+      return 'Tus clientes ya tienen saldo en esta modalidad: quitarla se los borraría.';
+    }
   }
+
   return null;
 }
 
@@ -70,45 +87,68 @@ export function TypeStep({ editor }: { editor: CardEditor }) {
   return (
     <div>
       <h2 className="text-xs font-extrabold uppercase tracking-widest text-slate-500 dark:text-slate-400">
-        ¿Qué tipo de tarjeta quieres?
+        ¿Qué beneficios quieres ofrecer?
       </h2>
       <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-5">
-        Tu marca tiene una tarjeta, que vale en todos tus locales.
+        Puedes activar uno o ambos sistemas a la vez para tu tarjeta de fidelidad.
       </p>
 
-      <div role="radiogroup" aria-label="Tipo de tarjeta" className="space-y-3">
+      <div role="group" aria-label="Beneficios de la tarjeta" className="space-y-3">
         {OPTIONS.map((option) => {
-          const type = option.type!;
-          const selected = config.type === type;
-          const reason = disabledReason(type, saved);
-          const example = type === 'POINTS' ? `1 punto cada $${clp.format(pesosPerPoint)}` : option.example;
+          const isStamps = option.type === 'STAMPS';
+          const selected = isStamps ? config.stampsEnabled : config.pointsEnabled;
+          const reason = disabledReason(option.type as 'STAMPS' | 'POINTS', config.stampsEnabled, config.pointsEnabled, saved);
+          const example = option.type === 'POINTS' ? `1 punto cada $${clp.format(pesosPerPoint)}` : option.example;
+          
           return (
             <button
-              key={type}
+              key={option.type}
               type="button"
-              role="radio"
+              role="switch"
               aria-checked={selected}
-              disabled={!!reason && !selected}
+              disabled={!!reason && selected}
               onClick={() => {
-                if (selected) return;
+                if (!!reason && !selected) return; // if it's disabled and not selected, can't select it
+
+                const newStampsEnabled = isStamps ? !selected : config.stampsEnabled;
+                const newPointsEnabled = !isStamps ? !selected : config.pointsEnabled;
+                
+                // Evitamos que queden ambos desactivados
+                if (!newStampsEnabled && !newPointsEnabled) return;
+
+                const newType = determineNewType(newStampsEnabled, newPointsEnabled);
+                
+                // Solo convertimos recompensas si pasamos de 1 moneda a otra pura
+                // Si agregamos DUAL no modificamos las recompensas, asumimos que convivirán
+                let newRewards = config.rewards;
+                if (!newStampsEnabled || !newPointsEnabled) {
+                  // Si estamos volviendo a un modo puro, revisamos si difiere del modo de las recompensas actuales
+                  if (newType !== saved.type && saved.type !== 'DUAL') {
+                     newRewards = convertRewards(config.rewards, newType);
+                  }
+                }
+
                 update({
-                  type,
-                  rewards: type === saved.type ? saved.rewards : convertRewards(config.rewards, type),
-                  welcomeBalance: type === saved.type ? saved.welcomeBalance : 0,
+                  type: newType,
+                  stampsEnabled: newStampsEnabled,
+                  pointsEnabled: newPointsEnabled,
+                  rewards: newRewards,
+                  // Reseteamos welcomeBalance si cambiamos de modo puro a modo puro distinto
+                  welcomeBalance: (saved.type !== 'DUAL' && newType !== saved.type) ? 0 : saved.welcomeBalance,
                 });
               }}
               className={`w-full text-left flex items-start gap-4 rounded-2xl border-2 p-5 transition-colors disabled:cursor-not-allowed ${
                 selected
                   ? 'border-brand-blue bg-brand-blue/5'
                   : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 disabled:opacity-60'
-              }`}
+              } ${!!reason && !selected ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
               <span
                 className={`w-12 h-12 shrink-0 rounded-xl flex items-center justify-center ${
                   selected ? 'bg-brand-blue text-white' : 'bg-slate-100 dark:bg-slate-700 text-brand-blue'
                 }`}
               >
-                <svg aria-hidden="true" className="w-6 h-6" fill={type === 'STAMPS' ? 'currentColor' : 'none'} stroke={type === 'STAMPS' ? 'none' : 'currentColor'} viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="w-6 h-6" fill={option.type === 'STAMPS' ? 'currentColor' : 'none'} stroke={option.type === 'STAMPS' ? 'none' : 'currentColor'} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={option.icon} />
                 </svg>
               </span>
@@ -118,12 +158,12 @@ export function TypeStep({ editor }: { editor: CardEditor }) {
                 <span className="inline-block mt-2 text-xs font-bold rounded-lg px-2 py-1 bg-slate-100 dark:bg-slate-700/70 text-slate-600 dark:text-slate-300">
                   {example}
                 </span>
-                {reason && !selected && <span className="block text-xs font-bold text-amber-700 dark:text-amber-300 mt-2">{reason}</span>}
+                {reason && <span className={`block text-xs font-bold mt-2 ${selected ? 'text-amber-700 dark:text-amber-300' : 'text-slate-500'}`}>{reason}</span>}
               </span>
               <span
                 aria-hidden="true"
                 className={`w-6 h-6 shrink-0 rounded-full border-2 flex items-center justify-center ${
-                  selected ? 'border-brand-blue bg-brand-blue text-white' : 'border-slate-300 dark:border-slate-600'
+                  selected ? 'border-brand-blue bg-brand-blue text-white' : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
                 }`}
               >
                 {selected && (

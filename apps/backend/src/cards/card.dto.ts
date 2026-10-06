@@ -79,6 +79,14 @@ export class SaveCardDto {
   @IsIn(CARD_TYPES as string[], { message: 'El tipo de tarjeta no es válido' })
   type: CardType;
 
+  @ApiProperty()
+  @IsBoolean()
+  stampsEnabled: boolean;
+
+  @ApiProperty()
+  @IsBoolean()
+  pointsEnabled: boolean;
+
   @ApiProperty({ example: 'Tarjeta Café Central' })
   @IsString({ message: 'El nombre de la tarjeta debe ser un texto' })
   name: string;
