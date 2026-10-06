@@ -1,0 +1,633 @@
+html:has(.fw-home) {
+  scroll-behavior: smooth;
+}
+.fw-home {
+  position: relative;
+  isolation: isolate;
+}
+.fw-home > main,
+.fw-home > footer {
+  position: relative;
+  z-index: 1;
+}
+.fw-atmosphere {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.fw-atmosphere-follow {
+  position: absolute;
+  inset: -15%;
+  will-change: transform;
+}
+.fw-atmosphere-halo {
+  position: absolute;
+  width: 65vw;
+  height: 65vw;
+  min-width: 420px;
+  min-height: 420px;
+  border-radius: 50%;
+  opacity: 0.28;
+}
+.fw-atmosphere-blue {
+  right: -5%;
+  top: -15%;
+  background: radial-gradient(ellipse, #087bd723, transparent 67%);
+  animation: fw-atmosphere-drift 29s ease-in-out infinite alternate;
+}
+.fw-atmosphere-gold {
+  left: -22%;
+  bottom: -35%;
+  background: radial-gradient(ellipse, #d69e0923, transparent 67%);
+  animation: fw-atmosphere-drift 37s ease-in-out -9s infinite alternate-reverse;
+}
+.dark .fw-atmosphere-halo {
+  opacity: 0.55;
+}
+.fw-atmosphere-ring {
+  position: absolute;
+  width: 105vw;
+  height: 105vw;
+  border: 1px solid #087bd70a;
+  border-radius: 48%;
+  top: 8%;
+  right: -74%;
+  box-shadow:
+    0 0 0 70px #087bd703,
+    0 0 0 140px #d69e0903;
+  animation: fw-atmosphere-turn 80s linear infinite;
+}
+.fw-reading-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  height: 100%;
+  transform-origin: top;
+  background: linear-gradient(#087bd7, #d69e09);
+  opacity: 0.45;
+}
+.fw-motion-control {
+  position: fixed;
+  bottom: 18px;
+  left: 18px;
+  z-index: 28;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid var(--fw-border);
+  color: var(--fw-muted);
+  background: color-mix(in srgb, var(--fw-bg) 92%, transparent);
+  border-radius: 50%;
+  box-shadow: 0 3px 16px #05142112;
+  backdrop-filter: blur(12px);
+}
+.fw-motion-control > .fw-icon {
+  width: 14px;
+  height: 14px;
+}
+.fw-motion-control > span {
+  position: absolute;
+  left: 47px;
+  white-space: nowrap;
+  padding: 5px 10px;
+  color: var(--fw-text);
+  background: var(--fw-bg);
+  border: 1px solid var(--fw-border);
+  border-radius: 6px;
+  font-size: 10px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+.fw-motion-control:is(:hover, :focus-visible) > span {
+  opacity: 1;
+}
+.fw-hero-journey {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+  color: var(--fw-muted);
+  font-size: 9px;
+}
+.fw-hero-journey > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.fw-hero-journey .fw-icon {
+  width: 13px;
+  height: 13px;
+  color: var(--fw-blue);
+}
+.fw-hero-journey > i {
+  font-style: normal;
+  color: #d69e09;
+  font-size: 12px;
+}
+.fw-hero-copy > :nth-child(5) {
+  transition-delay: 0.3s;
+}
+.fw-hero-copy > :nth-child(6) {
+  transition-delay: 0.36s;
+}
+.fw-hero-ctas {
+  margin-top: 25px;
+}
+.fw-nav-links {
+  gap: 19px;
+}
+.fw-nav-links a {
+  font-size: 11px;
+}
+.fw-card-orbit-outer {
+  animation: fw-hero-ring 43s linear infinite;
+}
+.fw-card-orbit-inner {
+  animation: fw-hero-ring-inner 35s linear infinite reverse;
+  border-style: dashed;
+  border-color: #087bd719;
+}
+.fw-card-orbit::before {
+  content: "";
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  top: 20%;
+  left: 10%;
+  background: #087bd7;
+  border-radius: 50%;
+  box-shadow: 0 0 0 5px #087bd70b;
+  opacity: 0.35;
+}
+.fw-card-orbit-inner::before {
+  background: #d69e09;
+  top: 60%;
+  left: 0;
+  width: 4px;
+  height: 4px;
+}
+.fw-orbit-star {
+  animation: fw-star-turn 34s linear infinite;
+  transform-origin: center;
+}
+.fw-card-glow {
+  animation: fw-glow-breathe 11s ease-in-out infinite alternate;
+}
+.fw-experience {
+  position: relative;
+  isolation: isolate;
+}
+.fw-experience::before {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 8% 0 20%;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse at 15% 25%, #087bd70a, transparent 50%),
+    radial-gradient(ellipse at 80% 70%, #d69e0910, transparent 50%);
+  animation: fw-experience-flow 24s ease-in-out infinite alternate;
+}
+.fw-bento-brand .fw-mini-wallet {
+  top: 50%;
+  margin-top: -125px;
+  animation: fw-card-hover 8s ease-in-out infinite;
+}
+.fw-wallet-front {
+  transition:
+    transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1),
+    background-color 0.3s;
+}
+.fw-wallet-back {
+  transition: transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.fw-bento-brand:is(:hover, :focus-within) .fw-wallet-front {
+  transform: rotate(4deg) translateY(-7px);
+}
+.fw-bento-brand:is(:hover, :focus-within) .fw-wallet-back {
+  transform: rotate(20deg) translateX(7px);
+}
+.fw-feature-icon .fw-icon {
+  transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.fw-bento:is(:hover, :focus-within) .fw-feature-icon .fw-icon {
+  transform: rotate(-14deg) scale(1.14);
+}
+.fw-bento-rewards .fw-gift-disc {
+  animation: fw-gift-float 7s ease-in-out infinite;
+}
+.fw-bento-rewards .fw-reward-spark {
+  animation: fw-spark-turn 12s ease-in-out infinite;
+}
+.fw-bento-rewards .fw-reward-ticket {
+  animation: fw-card-hover 7s ease-in-out -3s infinite;
+}
+.fw-bento-rewards:hover .fw-gift-disc .fw-icon {
+  transform: rotate(10deg) scale(1.15);
+  transition: transform 0.4s;
+}
+.fw-team-node {
+  animation: fw-node-float 8s ease-in-out infinite;
+}
+.fw-team-a {
+  animation-delay: -2s;
+}
+.fw-team-b {
+  animation-delay: -5s;
+}
+.fw-team-c {
+  animation-delay: -3s;
+}
+.fw-team-line::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  left: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--fw-blue);
+  box-shadow: 0 0 7px #087bd750;
+  animation: fw-connection-travel 3.8s ease-in-out infinite;
+}
+.fw-line-b::after {
+  animation-delay: -1.2s;
+}
+.fw-line-c::after {
+  animation-delay: -2.4s;
+  background: #d69e09;
+}
+.fw-bento-team:is(:hover, :focus-within) .fw-team-center {
+  box-shadow:
+    0 0 0 7px #087bd712,
+    0 10px 28px #087bd71f;
+}
+.fw-home [data-motion-scene]:not(.fw-scene-visible) *,
+.fw-home [data-motion-scene]:not(.fw-scene-visible) *::before,
+.fw-home [data-motion-scene]:not(.fw-scene-visible) *::after,
+.fw-home [data-motion-scene]:not(.fw-scene-visible)::before {
+  animation-play-state: paused;
+}
+.fw-home[data-motion-paused="true"] *,
+.fw-home[data-motion-paused="true"] *::before,
+.fw-home[data-motion-paused="true"] *::after {
+  animation-play-state: paused !important;
+}
+.fw-home[data-motion-paused="true"]
+  .fw-bento:is(:hover, :focus-within)
+  :is(.fw-wallet-front, .fw-wallet-back, .fw-feature-icon .fw-icon) {
+  transform: none;
+}
+@keyframes fw-atmosphere-drift {
+  from {
+    transform: translate3d(0, -4%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(12%, 17%, 0) scale(1.1);
+  }
+}
+@keyframes fw-atmosphere-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes fw-hero-ring {
+  from {
+    transform: translate(-50%, -50%) rotateX(17deg) rotateZ(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotateX(17deg) rotateZ(360deg);
+  }
+}
+@keyframes fw-hero-ring-inner {
+  from {
+    transform: translate(-50%, -50%) rotateY(28deg) rotateZ(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotateY(28deg) rotateZ(360deg);
+  }
+}
+@keyframes fw-star-turn {
+  from {
+    transform: rotate(15deg);
+  }
+  to {
+    transform: rotate(375deg);
+  }
+}
+@keyframes fw-glow-breathe {
+  from {
+    transform: scale(0.94);
+    opacity: 0.65;
+  }
+  to {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+}
+@keyframes fw-experience-flow {
+  from {
+    transform: translateY(-45px);
+  }
+  to {
+    transform: translateY(100px);
+  }
+}
+@keyframes fw-card-hover {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -7px;
+  }
+}
+@keyframes fw-gift-float {
+  0%,
+  100% {
+    transform: rotate(-15deg) rotateY(-20deg) translateY(0);
+  }
+  50% {
+    transform: rotate(-7deg) rotateY(15deg) translateY(-9px);
+  }
+}
+@keyframes fw-spark-turn {
+  0%,
+  100% {
+    transform: rotate(0) scale(0.95);
+  }
+  50% {
+    transform: rotate(80deg) scale(1.1);
+  }
+}
+@keyframes fw-node-float {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -5px;
+  }
+}
+@keyframes fw-connection-travel {
+  0% {
+    left: 0;
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.6;
+  }
+  85% {
+    opacity: 0.6;
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+@media (max-width: 1100px) {
+  .fw-nav-links {
+    gap: 12px;
+  }
+  .fw-nav-links a {
+    font-size: 10px;
+  }
+  .fw-hero-journey {
+    gap: 7px;
+    font-size: 8px;
+  }
+}
+@media (max-width: 900px) {
+  .fw-nav-links.is-open a {
+    font-size: 13px;
+  }
+}
+@media (max-width: 700px) {
+  .fw-hero-journey {
+    justify-content: center;
+    gap: 7px;
+    margin-top: 17px;
+  }
+  .fw-hero-journey .fw-icon {
+    width: 12px;
+    height: 12px;
+  }
+  .fw-motion-control {
+    left: 11px;
+    bottom: 11px;
+    width: 34px;
+    height: 34px;
+  }
+  .fw-atmosphere-halo {
+    opacity: 0.15;
+  }
+}
+@media (max-width: 480px) {
+  .fw-bento-brand .fw-mini-wallet {
+    top: auto;
+    margin-top: 0;
+  }
+  .fw-hero-journey {
+    column-gap: 7px;
+    row-gap: 8px;
+    font-size: 8px;
+  }
+}
+@media (max-width: 350px) {
+  .fw-hero-journey {
+    max-width: 250px;
+    margin-inline: auto;
+  }
+  .fw-hero-journey > i {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html:has(.fw-home) {
+    scroll-behavior: auto;
+  }
+  .fw-home *,
+  .fw-home *::before,
+  .fw-home *::after {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
+  .fw-motion-control {
+    display: none;
+  }
+  .fw-bento:is(:hover, :focus-within)
+    :is(.fw-wallet-front, .fw-wallet-back, .fw-feature-icon .fw-icon) {
+    transform: none;
+  }
+}
+
+.fw-locations.fw-section {
+  padding-bottom: 58px;
+}
+.fw-business-example {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.fw-business-example::before {
+  content: "";
+  position: absolute;
+  inset: -50% -15%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 20% 60%, #d69e0910, transparent 42%),
+    radial-gradient(ellipse at 75% 40%, #087bd710, transparent 45%);
+  animation: fw-business-light 14s ease-in-out infinite alternate;
+}
+.fw-business-emblem {
+  position: relative;
+  animation: fw-business-float 7s ease-in-out infinite;
+}
+.fw-business-orbit {
+  position: absolute;
+  inset: -12px;
+  border: 1px dashed #d69e0938;
+  border-radius: 50%;
+  animation: fw-business-orbit 22s linear infinite;
+  pointer-events: none;
+}
+.fw-business-orbit::before,
+.fw-business-orbit::after {
+  content: "";
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  top: 50%;
+  left: -4px;
+  background: #d69e09;
+  box-shadow: 0 0 0 5px #d69e0912;
+}
+.fw-business-orbit::after {
+  left: auto;
+  right: -4px;
+  width: 5px;
+  height: 5px;
+  background: var(--fw-blue);
+}
+.fw-business-emblem > .fw-icon {
+  animation:
+    fw-business-icon-in 0.65s cubic-bezier(0.2, 0.8, 0.2, 1) both,
+    fw-business-icon-sway 5s 0.65s ease-in-out infinite;
+}
+.fw-business-copy > :is(h3, p, .fw-example-reward) {
+  animation: fw-business-copy-in 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.fw-business-copy > p {
+  animation-delay: 0.07s;
+}
+.fw-business-copy > .fw-example-reward {
+  animation-delay: 0.14s;
+}
+.fw-business-switch button {
+  transition:
+    transform 0.25s,
+    background 0.25s,
+    border-color 0.25s,
+    box-shadow 0.25s;
+}
+.fw-business-switch button:is(:hover, :focus-visible) {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 18px #087bd714;
+}
+.fw-business-switch button .fw-icon {
+  transition: transform 0.35s;
+}
+.fw-business-switch button:is(:hover, :focus-visible) .fw-icon {
+  transform: rotate(-12deg) scale(1.12);
+}
+.fw-business-arrow .fw-icon {
+  transition: transform 0.3s;
+}
+.fw-business-arrow:is(:hover, :focus-visible) .fw-icon {
+  transform: translate(3px, -3px);
+}
+@keyframes fw-business-light {
+  from {
+    transform: translate(-4%, -3%) rotate(-8deg);
+  }
+  to {
+    transform: translate(8%, 5%) rotate(8deg);
+  }
+}
+@keyframes fw-business-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-9deg);
+  }
+  50% {
+    transform: translateY(-7px) rotate(-3deg);
+  }
+}
+@keyframes fw-business-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes fw-business-icon-in {
+  from {
+    opacity: 0.35;
+    transform: scale(0.65) rotate(-22deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+  }
+}
+@keyframes fw-business-icon-sway {
+  0%,
+  100% {
+    transform: rotate(0) translateY(0);
+  }
+  50% {
+    transform: rotate(9deg) translateY(-4px);
+  }
+}
+@keyframes fw-business-copy-in {
+  from {
+    opacity: 0.35;
+    translate: 0 12px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+.fw-home[data-motion-paused="true"]
+  .fw-business-copy
+  > :is(h3, p, .fw-example-reward),
+.fw-home[data-motion-paused="true"] .fw-business-emblem > .fw-icon {
+  animation: none;
+}
+@media (max-width: 820px) {
+  .fw-locations.fw-section {
+    padding-bottom: 42px;
+  }
+}
+@media (max-width: 700px) {
+  .fw-business-orbit {
+    inset: -8px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fw-business-switch button:is(:hover, :focus-visible),
+  .fw-business-switch button:is(:hover, :focus-visible) .fw-icon,
+  .fw-business-arrow:is(:hover, :focus-visible) .fw-icon {
+    transform: none;
+  }
+}

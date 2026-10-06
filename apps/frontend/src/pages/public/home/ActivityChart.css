@@ -1,0 +1,129 @@
+.fw-report-demo {
+  margin-top: 25px;
+  padding: 19px;
+  border: 1px solid var(--fw-border);
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--fw-bg) 74%, transparent);
+  box-shadow: 0 14px 40px #06152208;
+}
+.fw-report-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.fw-report-header > span:last-child {
+  font-size: 6px;
+  letter-spacing: 0.1em;
+  color: var(--fw-muted);
+  border: 1px solid var(--fw-border);
+  border-radius: 5px;
+  padding: 3px 6px;
+  white-space: nowrap;
+}
+.fw-report-metrics {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 19px;
+  align-items: flex-start;
+}
+.fw-report-metrics strong {
+  display: block;
+  font-size: 31px;
+  line-height: 1.1;
+  font-weight: 750;
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
+}
+.fw-report-metrics > div > span {
+  color: var(--fw-muted);
+  font-size: 8px;
+}
+.fw-report-switch {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--fw-border);
+  border-radius: 7px;
+}
+.fw-report-switch button {
+  font-size: 8px;
+  padding: 5px 8px;
+  background: none;
+  color: var(--fw-muted);
+  border: none;
+  border-radius: 5px;
+}
+.fw-report-switch button[aria-pressed="true"] {
+  color: var(--fw-blue);
+  background: #087bd717;
+}
+.fw-report-chart {
+  width: 100%;
+  height: 128px;
+  color: var(--fw-blue);
+  margin-top: 15px;
+  overflow: visible;
+}
+.fw-report-grid {
+  stroke: var(--fw-border);
+  stroke-width: 0.7px;
+  stroke-dasharray: 3 4;
+}
+.fw-report-days {
+  display: flex;
+  justify-content: space-between;
+  padding-inline: 4px;
+  color: var(--fw-muted);
+  font-size: 8px;
+}
+.fw-report-bottom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 15px;
+  border-top: 1px solid var(--fw-border);
+  padding-top: 11px;
+  font-size: 8px;
+  color: var(--fw-muted);
+}
+.fw-report-dot {
+  width: 5px;
+  height: 5px;
+  background: #d69e09;
+  border-radius: 100%;
+}
+@media (min-width: 701px) and (max-width: 1050px) {
+  .fw-report-demo {
+    padding: 12px;
+  }
+  .fw-report-header {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .fw-report-metrics {
+    flex-wrap: wrap;
+    gap: 9px;
+  }
+  .fw-report-chart {
+    height: 110px;
+  }
+}
+@media (max-width: 390px) {
+  .fw-report-demo {
+    padding: 13px;
+  }
+  .fw-report-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .fw-report-metrics {
+    gap: 7px;
+  }
+  .fw-report-switch button {
+    padding: 5px 6px;
+  }
+}

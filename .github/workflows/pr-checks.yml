@@ -55,7 +55,7 @@ jobs:
 
       - name: ⚙️ Pruebas Unitarias
         # Ejecuta los tests de la Plataforma (ej. validación matemática al añadir Sello/Punto)
-        run: pnpm -r run test
+        run: pnpm test
 
       - name: 🏗️ Dry Build
         # Intenta compilar Next.js y el backend de Node para asegurar que nada rompe en producción
