@@ -48,6 +48,14 @@
 
 \* `billing` es un mockup y solo existe con `VITE_FEATURE_BILLING=true`. `/admin/promotions` redirige a `/admin/card`.
 
+**Identidad visual del panel del dueño:** `/admin/*` usa Manrope y tokens semánticos `panel-*`, delimitados por `Layout`, con la paleta del home adaptada para lectura en ambos temas. La preferencia de tema sigue compartida con la web. Las secciones entran desde la izquierda con un desfase breve entre tarjetas, y los títulos principales revelan sus letras conservando un texto accesible completo. Las animaciones respetan automáticamente la preferencia de movimiento reducido del dispositivo, sin un control adicional en el panel. El acceso al escáner está en la barra superior. Los cambios de paso del editor conservan el borrador y respetan esa preferencia. Plan y evidencia: [refresh del admin](docs/plans/admin-refresh.md).
+
+**Acceso y recuperación:** `/admin/login` y `/admin/reset` comparten `AuthFrame`, Manrope y `WALLET_THEME` con el panel. Los textos y la tarjeta de la izquierda entran desde la izquierda de forma escalonada. El fondo tiene partículas discretas en azul/dorado/naranja que se mueven solas y se apartan del cursor; son estáticas con movimiento reducido y pausan su bucle al ocultar la pestaña. La preferencia del dispositivo puede cambiar sin perder el formulario. El login incluye etiquetas asociadas, autocompletado y mostrar/ocultar contraseña. Se retiró «Recordarme», que no modificaba la persistencia de Supabase; la sesión conserva su configuración existente. La recuperación mantiene su URL y mensaje neutro, sin confirmar si existe el correo.
+
+**Escáner:** `/scan` comparte Manrope, `WALLET_THEME` y tema persistido con la web y el panel. Incluye instrucciones iniciales, encabezado adaptable, respaldo manual y entradas breves que respetan el movimiento reducido. Validación, compra, premios y resultados usan las mismas superficies; el video conserva su fondo oscuro. Los formularios y resultados permiten scroll en pantallas bajas. Cambiar el tema conserva los datos de la compra; no se altera la activación de cámara, la validación previa ni la confirmación de sello/canje.
+
+**Pantallas públicas e internas:** `/terminos`, `/join/:slug` y sus estados de carga, error y confirmación comparten `PublicFrame`, paleta, tipografía y selector de tema. Términos tiene un índice con enlaces a sus 12 secciones, fijo en escritorio; conserva el texto legal, la fecha y el aviso de borrador existentes. El alta conserva la identidad del comercio, validaciones y aceptación de términos. Los estados globales de carga y acceso también usan la base de Wallet. `/internal/*` adopta los mismos tokens en navegación, tablas, formularios e historial, con entradas breves que respetan la preferencia del dispositivo; sus permisos, consultas y auditoría siguen iguales.
+
 ---
 
 ## 3. Modelo de datos

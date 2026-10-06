@@ -29,8 +29,8 @@ interface AddStampsModalProps {
 
 const clp = new Intl.NumberFormat('es-CL');
 const INPUT =
-  'w-full px-4 py-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-4 focus:ring-brand-blue/20 focus:border-brand-blue text-slate-900 dark:text-slate-100 font-medium';
-const LABEL = 'block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2';
+  'w-full px-4 py-3 bg-panel-surface rounded-xl border border-panel-border focus:outline-none focus:ring-4 focus:ring-panel-accent/20 focus:border-panel-accent text-panel-text font-medium';
+const LABEL = 'block text-sm font-bold text-panel-text mb-2';
 
 /**
  * El dueño suma sellos sin pasar por la caja. El cliente no está presente, así que el motivo es
@@ -113,7 +113,7 @@ export function AddStampsModal({
   };
 
   return (
-    <Modal
+    <Modal trapFocus
       title={`Sumar ${unit}`}
       description={`A ${customerName}. Queda en su historial como sumado desde el panel.`}
       onClose={() => !busy && onClose()}
@@ -133,7 +133,7 @@ export function AddStampsModal({
                 }}
                 className={`${INPUT} w-36 text-xl font-black tabular-nums`}
               />
-              <span className="text-sm text-slate-500 dark:text-slate-400">Máximo {clp.format(maxStampsPerLoad)} por vez</span>
+              <span className="text-sm text-panel-muted">Máximo {clp.format(maxStampsPerLoad)} por vez</span>
             </div>
           ) : (
           <div role="group" aria-labelledby={`${ids}-count`} className="flex items-center gap-3">
@@ -142,11 +142,11 @@ export function AddStampsModal({
               aria-label="Un sello menos"
               disabled={stampCount <= 1}
               onClick={() => setStampCount((n) => Math.max(1, n - 1))}
-              className="w-11 h-11 rounded-xl bg-slate-100 dark:bg-slate-800 text-xl font-black disabled:opacity-40"
+              className="w-11 h-11 rounded-xl bg-panel-soft text-xl font-black disabled:opacity-40"
             >
               −
             </button>
-            <output aria-live="polite" className="w-10 text-center text-3xl font-black text-slate-900 dark:text-white tabular-nums">
+            <output aria-live="polite" className="w-10 text-center text-3xl font-black text-panel-text tabular-nums">
               {stampCount}
             </output>
             <button
@@ -154,11 +154,11 @@ export function AddStampsModal({
               aria-label="Un sello más"
               disabled={stampCount >= maxStampsPerLoad}
               onClick={() => setStampCount((n) => Math.min(maxStampsPerLoad, n + 1))}
-              className="w-11 h-11 rounded-xl bg-slate-100 dark:bg-slate-800 text-xl font-black disabled:opacity-40"
+              className="w-11 h-11 rounded-xl bg-panel-soft text-xl font-black disabled:opacity-40"
             >
               +
             </button>
-            <span className="text-sm text-slate-500 dark:text-slate-400">Máximo {maxStampsPerLoad} por vez</span>
+            <span className="text-sm text-panel-muted">Máximo {maxStampsPerLoad} por vez</span>
           </div>
           )}
         </div>
@@ -197,7 +197,7 @@ export function AddStampsModal({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label htmlFor={`${ids}-amount`} className={LABEL}>
-              Monto <span className="font-medium text-slate-400">(opcional)</span>
+              Monto <span className="font-medium text-panel-muted">(opcional)</span>
             </label>
             <input
               id={`${ids}-amount`}
@@ -214,14 +214,14 @@ export function AddStampsModal({
           </div>
           <div>
             <label htmlFor={`${ids}-receipt`} className={LABEL}>
-              Foto de la boleta <span className="font-medium text-slate-400">(opcional)</span>
+              Foto de la boleta <span className="font-medium text-panel-muted">(opcional)</span>
             </label>
             <input
               id={`${ids}-receipt`}
               type="file"
               accept={RECEIPT_MIME_TYPES.join(',')}
               onChange={(e) => void handleReceipt(e.target.files?.[0])}
-              className="block w-full text-sm text-slate-600 dark:text-slate-300 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-slate-100 dark:file:bg-slate-800 file:font-bold"
+              className="block w-full text-sm text-panel-muted file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-panel-soft dark:file:bg-panel-muted/20 file:font-bold"
             />
             {receiptProblem && <p role="alert" className="mt-2 text-sm font-bold text-red-600">{receiptProblem}</p>}
           </div>
@@ -229,7 +229,7 @@ export function AddStampsModal({
 
         <div>
           <label htmlFor={`${ids}-note`} className={LABEL}>
-            Nota <span className="font-medium text-slate-400">(opcional)</span>
+            Nota <span className="font-medium text-panel-muted">(opcional)</span>
           </label>
           <textarea
             id={`${ids}-note`}
@@ -248,14 +248,14 @@ export function AddStampsModal({
             type="button"
             onClick={onClose}
             disabled={busy}
-            className="px-5 py-3 rounded-xl font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700"
+            className="px-5 py-3 rounded-xl font-bold text-panel-text bg-panel-soft hover:bg-panel-soft"
           >
             Cancelar
           </button>
           <button
             type="submit"
             disabled={busy || preparingReceipt}
-            className="px-5 py-3 rounded-xl font-bold text-white bg-brand-blue hover:bg-blue-600 shadow-lg shadow-brand-blue/20 disabled:opacity-50"
+            className="px-5 py-3 rounded-xl font-bold text-white bg-panel-primary hover:bg-panel-primary/90 shadow-lg shadow-brand-blue/20 disabled:opacity-50"
           >
             {busy ? 'Sumando…' : `Sumar ${clp.format(stampCount)} ${balanceUnit(cardType, stampCount)}`}
           </button>

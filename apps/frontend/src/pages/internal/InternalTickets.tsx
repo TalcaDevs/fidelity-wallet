@@ -30,9 +30,9 @@ import { CARD, Empty, INPUT, PRIMARY, PageHeader, Pager, SECONDARY } from './ui'
 
 const PRIORITY_LABELS: Record<TicketPriority, string> = { LOW: 'Baja', NORMAL: 'Normal', HIGH: 'Alta', URGENT: 'Urgente' };
 const PRIORITY_CLASSES: Record<TicketPriority, string> = {
-  LOW: 'text-slate-500',
-  NORMAL: 'text-slate-700 dark:text-slate-300',
-  HIGH: 'text-orange-600',
+  LOW: 'text-panel-muted',
+  NORMAL: 'text-panel-text',
+  HIGH: 'text-panel-orange',
   URGENT: 'text-red-600',
 };
 
@@ -43,14 +43,14 @@ function TicketRow({ ticket, selected, onSelect }: { ticket: InternalTicketDto; 
     <button
       type="button"
       onClick={onSelect}
-      className={`w-full text-left p-4 border-b border-slate-100 dark:border-slate-700/60 transition-colors ${selected ? 'bg-violet-50 dark:bg-violet-500/10' : 'hover:bg-slate-50 dark:hover:bg-slate-900/40'}`}
+      className={`w-full text-left p-4 border-b border-panel-border transition-colors ${selected ? 'bg-panel-accent/5' : 'hover:bg-panel-soft'}`}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="font-bold text-sm">#{ticket.number} · {ticket.brandName}</span>
         <TicketStatusBadge status={ticket.status} labels={TICKET_STATUS_LABELS} />
       </div>
-      <p className="text-sm text-slate-600 dark:text-slate-300 mt-1 line-clamp-2">{ticket.excerpt}</p>
-      <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
+      <p className="text-sm text-panel-muted mt-1 line-clamp-2">{ticket.excerpt}</p>
+      <div className="flex items-center gap-3 mt-2 text-xs text-panel-muted">
         <span>{TICKET_CATEGORY_LABELS[ticket.category]}</span>
         <span className={`font-bold ${PRIORITY_CLASSES[ticket.priority]}`}>{PRIORITY_LABELS[ticket.priority]}</span>
         <span className="ml-auto whitespace-nowrap">{formatDateTime(ticket.lastMessageAt)}</span>
@@ -112,8 +112,8 @@ function TicketPanel({ ticketId, onChanged }: { ticketId: string; onChanged: (t:
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-xl font-extrabold">#{ticket.number} · {TICKET_CATEGORY_LABELS[ticket.category]}</h2>
-          <p className="text-sm text-slate-500 mt-1">
-            <Link to={`/internal/brands/${ticket.brandId}`} className="font-bold text-violet-600 hover:underline">{ticket.brandName}</Link>
+          <p className="text-sm text-panel-muted mt-1">
+            <Link to={`/internal/brands/${ticket.brandId}`} className="font-bold text-panel-accent hover:underline">{ticket.brandName}</Link>
             {ticket.locationName && ` · ${ticket.locationName}`} · {ticket.createdBy.email ?? 'Dueño'}
             {ticket.contactPhone && ` · ${ticket.contactPhone}`}
           </p>
@@ -147,11 +147,11 @@ function TicketPanel({ ticketId, onChanged }: { ticketId: string; onChanged: (t:
         ))}
       </div>
 
-      <div className="rounded-xl bg-slate-50 dark:bg-slate-900/60 p-4">
-        <p className="text-xs font-bold text-slate-500 mb-1">{formatDateTime(ticket.createdAt)}</p>
+      <div className="rounded-xl bg-panel-soft p-4">
+        <p className="text-xs font-bold text-panel-muted mb-1">{formatDateTime(ticket.createdAt)}</p>
         <p className="whitespace-pre-wrap text-sm">{ticket.description}</p>
         {ticket.attachments.map((a) => (
-          <a key={a.id} href={a.url} target="_blank" rel="noopener noreferrer" className="inline-block mt-2 mr-3 text-xs font-bold text-violet-600 underline">{a.fileName}</a>
+          <a key={a.id} href={a.url} target="_blank" rel="noopener noreferrer" className="inline-block mt-2 mr-3 text-xs font-bold text-panel-accent underline">{a.fileName}</a>
         ))}
       </div>
 
@@ -159,22 +159,22 @@ function TicketPanel({ ticketId, onChanged }: { ticketId: string; onChanged: (t:
         {ticket.messages.map((m) => (
           <li
             key={m.id}
-            className={`rounded-xl p-4 text-sm ${m.isInternal ? 'bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30' : m.authorType === 'PLATFORM' ? 'bg-violet-50 dark:bg-violet-500/10 ml-6' : 'bg-slate-50 dark:bg-slate-900/60 mr-6'}`}
+            className={`rounded-xl p-4 text-sm ${m.isInternal ? 'bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30' : m.authorType === 'PLATFORM' ? 'bg-panel-accent/5 ml-6' : 'bg-panel-soft mr-6'}`}
           >
-            <p className="text-xs font-bold text-slate-500 mb-1">
+            <p className="text-xs font-bold text-panel-muted mb-1">
               {m.authorName} · {formatDateTime(m.createdAt)}
               {m.isInternal && <span className="ml-2 text-amber-700 dark:text-amber-400">Nota interna</span>}
             </p>
             <p className="whitespace-pre-wrap">{m.body}</p>
             {m.attachments.map((a) => (
-              <a key={a.id} href={a.url} target="_blank" rel="noopener noreferrer" className="inline-block mt-2 mr-3 text-xs font-bold text-violet-600 underline">{a.fileName}</a>
+              <a key={a.id} href={a.url} target="_blank" rel="noopener noreferrer" className="inline-block mt-2 mr-3 text-xs font-bold text-panel-accent underline">{a.fileName}</a>
             ))}
           </li>
         ))}
       </ol>
 
       {closed ? (
-        <p className="text-sm text-slate-500">El ticket está cerrado.</p>
+        <p className="text-sm text-panel-muted">El ticket está cerrado.</p>
       ) : (
         <form onSubmit={handleReply} className="space-y-3">
           <textarea
@@ -278,7 +278,7 @@ export function InternalTickets() {
       <div className="grid gap-6 xl:grid-cols-[minmax(320px,420px)_1fr]">
         <section className={`${CARD} overflow-hidden self-start`}>
           {loading && !data ? (
-            <div className="p-6 animate-pulse space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-16 rounded-xl bg-slate-100 dark:bg-slate-900" />)}</div>
+            <div className="p-6 animate-pulse space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-16 rounded-xl bg-panel-soft" />)}</div>
           ) : data && data.items.length > 0 ? (
             <>
               {data.items.map((t) => <TicketRow key={t.id} ticket={t} selected={t.id === selected} onSelect={() => select(t.id)} />)}

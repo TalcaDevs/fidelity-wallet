@@ -35,9 +35,9 @@ function RevealDialog({ customer, onClose }: { customer: InternalCustomerDto; on
     >
       {revealed ? (
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-          <dt className="text-slate-500">RUT</dt>
+          <dt className="text-panel-muted">RUT</dt>
           <dd className="font-mono font-bold">{revealed.rut ?? '—'}</dd>
-          <dt className="text-slate-500">Teléfono</dt>
+          <dt className="text-panel-muted">Teléfono</dt>
           <dd className="font-mono font-bold">{revealed.phone ?? '—'}</dd>
         </dl>
       ) : (
@@ -101,7 +101,7 @@ export function InternalCustomers() {
       ) : (
         <div className={`${CARD} overflow-x-auto`}>
           <table className="w-full text-left text-sm min-w-[720px]">
-            <thead className="text-slate-500 border-b border-slate-200 dark:border-slate-700">
+            <thead className="text-panel-muted border-b border-panel-border">
               <tr>
                 <th className="p-4 font-bold">RUT</th>
                 <th className="p-4 font-bold">Teléfono</th>
@@ -110,9 +110,9 @@ export function InternalCustomers() {
                 {isSuperadmin && <th className="p-4" />}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+            <tbody className="divide-y divide-panel-border">
               {loading && !data ? (
-                <tr><td colSpan={5} className="p-6"><div className="h-16 animate-pulse bg-slate-100 dark:bg-slate-900 rounded-xl" /></td></tr>
+                <tr><td colSpan={5} className="p-6"><div className="h-16 animate-pulse bg-panel-soft rounded-xl" /></td></tr>
               ) : data && data.items.length > 0 ? (
                 data.items.map((c) => (
                   <tr key={c.id}>
@@ -121,14 +121,14 @@ export function InternalCustomers() {
                     <td className="p-4">
                       {c.cards.map((card) => (
                         <p key={card.brandId}>
-                          <Link to={`/internal/brands/${card.brandId}`} className="font-bold text-violet-600 hover:underline">{card.brandName}</Link>
-                          <span className="text-slate-500"> · {card.activeStamps} sellos</span>
+                          <Link to={`/internal/brands/${card.brandId}`} className="font-bold text-panel-accent hover:underline">{card.brandName}</Link>
+                          <span className="text-panel-muted"> · {card.activeStamps} sellos</span>
                           {isSuperadmin && (
                             <>
                               {' · '}
                               <Link
                                 to={`/internal/customers/${c.id}/history?brandId=${card.brandId}`}
-                                className="font-bold text-violet-600 hover:underline"
+                                className="font-bold text-panel-accent hover:underline"
                               >
                                 Historial
                               </Link>
@@ -137,7 +137,7 @@ export function InternalCustomers() {
                         </p>
                       ))}
                     </td>
-                    <td className="p-4 whitespace-nowrap text-slate-500">{formatDate(c.createdAt)}</td>
+                    <td className="p-4 whitespace-nowrap text-panel-muted">{formatDate(c.createdAt)}</td>
                     {isSuperadmin && (
                       <td className="p-4 text-right">
                         <button type="button" className={SECONDARY} onClick={() => setRevealing(c)}>Ver datos</button>

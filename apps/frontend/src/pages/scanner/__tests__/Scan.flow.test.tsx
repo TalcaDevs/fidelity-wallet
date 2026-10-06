@@ -75,6 +75,22 @@ describe('Scan flow', () => {
     vi.restoreAllMocks();
   });
 
+  it('preserves purchase details and does not submit or restart scanning when changing theme', async () => {
+    validateScan.mockResolvedValue(validation);
+    renderScanner();
+    fireEvent.click(screen.getByRole('button', { name: 'Simular QR' }));
+    const amount = await screen.findByLabelText(/monto de la compra/i);
+    fireEvent.change(amount, { target: { value: '8000' } });
+    fireEvent.change(screen.getByLabelText(/nota/i), { target: { value: 'Mesa 4' } });
+    fireEvent.click(screen.getByRole('button', { name: /activar modo/i }));
+    expect(amount).toHaveValue('8.000');
+    expect(screen.getByLabelText(/nota/i)).toHaveValue('Mesa 4');
+    expect(screen.getByRole('button', { name: 'Agregar sello' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Simular QR' })).not.toBeInTheDocument();
+    expect(validateScan).toHaveBeenCalledOnce();
+    expect(processScan).not.toHaveBeenCalled();
+  });
+
   it('validates on scan and only stamps after "Agregar sello"', async () => {
     validateScan.mockResolvedValue(validation);
     processScan.mockResolvedValue({

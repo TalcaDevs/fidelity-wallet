@@ -14,11 +14,11 @@ export function RetentionTab({
   return (
     <div className="space-y-8" data-testid="tab-retention">
       {/* Frequency & Weekly grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div data-panel-stagger className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
         {/* Visit Frequency */}
-        <div className="bg-white dark:bg-slate-800 p-8 rounded-[2rem] border border-slate-200/60 dark:border-slate-700/60 shadow-sm">
-          <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Frecuencia de Visitas</h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
+        <div data-panel-reveal className="bg-panel-surface p-8 rounded-2xl border border-panel-border shadow-sm">
+          <h3 className="text-xl font-bold text-panel-text mb-2">Frecuencia de Visitas</h3>
+          <p className="text-xs text-panel-muted mb-6">
             Segmentación de clientes según visitas en el período
           </p>
 
@@ -26,15 +26,15 @@ export function RetentionTab({
             {retention.visitFrequencyDistribution.map((item) => (
               <div key={item.range}>
                 <div className="flex justify-between text-sm font-semibold mb-1">
-                  <span className="text-slate-700 dark:text-slate-300">{item.range}</span>
-                  <span className="text-slate-900 dark:text-white font-bold">
+                  <span className="text-panel-text">{item.range}</span>
+                  <span className="text-panel-text font-bold">
                     {item.customerCount} clientes ({item.percentage}%)
                   </span>
                 </div>
-                <div className="w-full h-3 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                <div className="w-full h-3 bg-panel-soft rounded-full overflow-hidden">
                   <div
                     style={{ width: `${item.percentage}%` }}
-                    className="h-full bg-brand-blue rounded-full transition-all duration-500"
+                    className="h-full bg-panel-primary rounded-full transition-all duration-500"
                   />
                 </div>
               </div>
@@ -43,19 +43,19 @@ export function RetentionTab({
         </div>
 
         {/* Monthly Cohorts */}
-        <div className="bg-white dark:bg-slate-800 p-8 rounded-[2rem] border border-slate-200/60 dark:border-slate-700/60 shadow-sm">
-          <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Cohortes de Retención Mensual</h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
+        <div data-panel-reveal className="bg-panel-surface p-8 rounded-2xl border border-panel-border shadow-sm">
+          <h3 className="text-xl font-bold text-panel-text mb-2">Cohortes de Retención Mensual</h3>
+          <p className="text-xs text-panel-muted mb-6">
             % de clientes nuevos que siguen activos en meses posteriores
           </p>
 
           {retention.cohorts.length === 0 ? (
-            <p className="text-sm text-slate-400">Insuficiente historial para análisis de cohortes.</p>
+            <p className="text-sm text-panel-muted">Insuficiente historial para análisis de cohortes.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="border-b border-slate-200 dark:border-slate-700 text-slate-400">
+                  <tr className="border-b border-panel-border text-panel-muted">
                     <th className="pb-3 font-semibold">Cohorte</th>
                     <th className="pb-3 font-semibold text-center">Nuevos</th>
                     <th className="pb-3 font-semibold text-center">Mes 1</th>
@@ -63,11 +63,11 @@ export function RetentionTab({
                     <th className="pb-3 font-semibold text-center">Mes 3</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                <tbody className="divide-y divide-panel-border">
                   {retention.cohorts.map((cohort) => (
                     <tr key={cohort.cohortMonth}>
-                      <td className="py-3 font-bold text-slate-800 dark:text-slate-200">{cohort.cohortMonth}</td>
-                      <td className="py-3 text-center text-slate-600 dark:text-slate-400">
+                      <td className="py-3 font-bold text-panel-text">{cohort.cohortMonth}</td>
+                      <td className="py-3 text-center text-panel-muted">
                         {cohort.totalNewCustomers}
                       </td>
                       <td className="py-3 text-center font-semibold text-emerald-600 dark:text-emerald-400">
@@ -89,23 +89,23 @@ export function RetentionTab({
       </div>
 
       {/* Dormant Customers */}
-      <div className="bg-white dark:bg-slate-800 p-8 rounded-[2rem] border border-slate-200/60 dark:border-slate-700/60 shadow-sm">
+      <div data-panel-reveal className="bg-panel-surface p-8 rounded-2xl border border-panel-border shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
-            <h3 className="text-xl font-bold text-slate-900 dark:text-white">Clientes Dormidos</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            <h3 className="text-xl font-bold text-panel-text">Clientes Dormidos</h3>
+            <p className="text-xs text-panel-muted">
               {retention.dormantCustomers.count} clientes no han visitado el local hace más de {dormantDays} días.
             </p>
           </div>
 
           {/* Threshold filter */}
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400">Umbral de inactividad:</span>
+            <span className="text-xs text-panel-muted">Umbral de inactividad:</span>
             <select
               value={dormantDays}
               onChange={(e) => onDormantDaysChange(Number(e.target.value))}
               aria-label="Seleccionar umbral de inactividad en días"
-              className="text-xs font-bold bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 border-none rounded-xl px-3 py-1.5 focus:ring-2 focus:ring-brand-blue cursor-pointer"
+              className="text-xs font-bold bg-panel-soft text-panel-text border-none rounded-xl px-3 py-1.5 focus:ring-2 focus:ring-panel-accent cursor-pointer"
             >
               <option value={15}>15 días</option>
               <option value={30}>30 días</option>
@@ -116,24 +116,24 @@ export function RetentionTab({
         </div>
 
         {retention.dormantCustomers.customers.length === 0 ? (
-          <p className="text-sm text-slate-400 py-6 text-center">¡Excelente! No hay clientes dormidos con este umbral.</p>
+          <p className="text-sm text-panel-muted py-6 text-center">¡Excelente! No hay clientes dormidos con este umbral.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-700 text-slate-400">
+                <tr className="border-b border-panel-border text-panel-muted">
                   <th className="pb-3 font-semibold">Identificador</th>
                   <th className="pb-3 font-semibold">Última Visita</th>
                   <th className="pb-3 font-semibold text-right">Días Inactivo</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              <tbody className="divide-y divide-panel-border">
                 {retention.dormantCustomers.customers.map((c) => (
                   <tr key={c.customerId}>
-                    <td className="py-3 font-mono font-medium text-slate-700 dark:text-slate-300">
+                    <td className="py-3 font-mono font-medium text-panel-text">
                       {c.maskedIdentifier}
                     </td>
-                    <td className="py-3 text-slate-500 dark:text-slate-400">
+                    <td className="py-3 text-panel-muted">
                       {c.lastVisitAt ? new Date(c.lastVisitAt).toLocaleDateString('es-CL') : 'N/A'}
                     </td>
                     <td className="py-3 text-right font-bold text-rose-500">{c.daysInactive} días</td>

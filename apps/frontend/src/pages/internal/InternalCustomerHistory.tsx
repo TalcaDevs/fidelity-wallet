@@ -32,7 +32,7 @@ export function InternalCustomerHistory() {
         <>
           {error && <ErrorAlert message={error} />}
           {loading && !data ? (
-            <div className="h-64 rounded-2xl bg-slate-100 dark:bg-slate-900 animate-pulse" aria-busy="true" />
+            <div className="h-64 rounded-2xl bg-panel-soft animate-pulse" aria-busy="true" />
           ) : (
             data && <PurchaseHistory data={data} onPage={setPage} />
           )}

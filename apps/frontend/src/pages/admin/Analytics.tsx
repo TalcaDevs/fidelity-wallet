@@ -1,3 +1,4 @@
+import { PanelTitle } from '../../components/admin/PanelTitle';
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   fetchOverviewReport,
@@ -171,34 +172,32 @@ export function Analytics({ merchantId }: AnalyticsProps) {
 
   if (!merchantId) {
     return (
-      <div className="p-8 text-center text-slate-500">
+      <div className="p-8 text-center text-panel-muted">
         No se ha seleccionado ningún comercio asociado.
       </div>
     );
   }
 
   return (
-    <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8 animate-fade-in">
+    <div className="min-w-0 space-y-8">
       {/* Header & Date Preset Filters */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-            Analítica y Reportes
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text"><PanelTitle text="Analítica y Reportes" /></h1>
+          <p className="text-sm text-panel-muted mt-1">
             Métricas de fidelización, retención de clientes y desempeño operativo
           </p>
         </div>
 
         {/* Date presets */}
-        <div className="flex items-center gap-1.5 p-1.5 bg-slate-100 dark:bg-slate-800 rounded-2xl self-start sm:self-auto border border-slate-200/60 dark:border-slate-700/60">
+        <div className="flex items-center gap-1.5 p-1.5 bg-panel-soft rounded-2xl self-start sm:self-auto border border-panel-border">
           <button
             type="button"
             onClick={() => setPeriodPreset('7d')}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
               periodPreset === '7d'
-                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                ? 'bg-panel-surface text-panel-text shadow-sm'
+                : 'text-panel-muted hover:text-panel-text '
             }`}
           >
             Últimos 7 días
@@ -208,8 +207,8 @@ export function Analytics({ merchantId }: AnalyticsProps) {
             onClick={() => setPeriodPreset('30d')}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
               periodPreset === '30d'
-                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                ? 'bg-panel-surface text-panel-text shadow-sm'
+                : 'text-panel-muted hover:text-panel-text '
             }`}
           >
             Últimos 30 días
@@ -219,8 +218,8 @@ export function Analytics({ merchantId }: AnalyticsProps) {
             onClick={() => setPeriodPreset('this_month')}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
               periodPreset === 'this_month'
-                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                ? 'bg-panel-surface text-panel-text shadow-sm'
+                : 'text-panel-muted hover:text-panel-text '
             }`}
           >
             Este mes
@@ -229,14 +228,14 @@ export function Analytics({ merchantId }: AnalyticsProps) {
       </div>
 
       {/* Tabs Navigation */}
-      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto">
+      <div className="flex items-center gap-2 border-b border-panel-border pb-2 overflow-x-auto">
         <button
           type="button"
           onClick={() => setActiveTab('overview')}
           className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
             activeTab === 'overview'
-              ? 'bg-brand-blue text-white shadow-sm'
-              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              ? 'bg-panel-primary text-white shadow-sm'
+              : 'text-panel-muted hover:bg-panel-soft '
           }`}
         >
           Resumen General
@@ -246,8 +245,8 @@ export function Analytics({ merchantId }: AnalyticsProps) {
           onClick={() => setActiveTab('retention')}
           className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
             activeTab === 'retention'
-              ? 'bg-brand-blue text-white shadow-sm'
-              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              ? 'bg-panel-primary text-white shadow-sm'
+              : 'text-panel-muted hover:bg-panel-soft '
           }`}
         >
           Retención y Clientes Dormidos
@@ -257,8 +256,8 @@ export function Analytics({ merchantId }: AnalyticsProps) {
           onClick={() => setActiveTab('promotions')}
           className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
             activeTab === 'promotions'
-              ? 'bg-brand-blue text-white shadow-sm'
-              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              ? 'bg-panel-primary text-white shadow-sm'
+              : 'text-panel-muted hover:bg-panel-soft '
           }`}
         >
           Rendimiento de Promociones
@@ -268,8 +267,8 @@ export function Analytics({ merchantId }: AnalyticsProps) {
           onClick={() => setActiveTab('staff')}
           className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
             activeTab === 'staff'
-              ? 'bg-brand-blue text-white shadow-sm'
-              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              ? 'bg-panel-primary text-white shadow-sm'
+              : 'text-panel-muted hover:bg-panel-soft '
           }`}
         >
           Actividad de Equipo

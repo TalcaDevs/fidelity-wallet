@@ -57,7 +57,7 @@ export function DesignStep({ brandId, editor }: { brandId: string; editor: CardE
               >
                 <span
                   className={`w-full aspect-[4/5] rounded-2xl flex items-center justify-center border border-black/10 ${
-                    selected ? 'ring-4 ring-brand-blue/50' : ''
+                    selected ? 'ring-4 ring-panel-accent/50' : ''
                   }`}
                   style={{ backgroundColor: theme.design.backgroundColor }}
                 >
@@ -65,7 +65,7 @@ export function DesignStep({ brandId, editor }: { brandId: string; editor: CardE
                     <path d={STAMP_ICON_PATHS[design.stampIcon]} />
                   </svg>
                 </span>
-                <span className="text-xs font-bold text-slate-600 dark:text-slate-300">{theme.name}</span>
+                <span className="text-xs font-bold text-panel-muted">{theme.name}</span>
               </button>
             );
           })}
@@ -151,7 +151,7 @@ export function DesignStep({ brandId, editor }: { brandId: string; editor: CardE
         <Section title="Sellos" description="Cómo se dibuja cada sello en la tira del pase.">
           <div className="space-y-5">
             <div>
-              <p className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-2">Ícono</p>
+              <p className="text-sm font-bold text-panel-text mb-2">Ícono</p>
               <div role="radiogroup" aria-label="Ícono del sello" className="flex flex-wrap gap-2">
                 {STAMP_ICONS.map((icon) => {
                   const selected = design.stampIcon === icon;
@@ -166,8 +166,8 @@ export function DesignStep({ brandId, editor }: { brandId: string; editor: CardE
                       onClick={() => updateDesign({ stampIcon: icon })}
                       className={`w-12 h-12 rounded-xl border-2 flex items-center justify-center ${
                         selected
-                          ? 'border-brand-blue bg-brand-blue/10 text-brand-blue'
-                          : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
+                          ? 'border-panel-accent bg-panel-accent/10 text-panel-accent'
+                          : 'border-panel-border text-panel-text '
                       }`}
                     >
                       <svg aria-hidden="true" viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
@@ -197,8 +197,8 @@ export function DesignStep({ brandId, editor }: { brandId: string; editor: CardE
               onChange={(stampEmptyColor) => updateDesign({ stampEmptyColor })}
             />
             <div>
-              <p className="text-sm font-bold text-slate-800 dark:text-slate-200">Imágenes del sello</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Opcional. Si las subes, reemplazan al ícono. Mejor con fondo transparente.</p>
+              <p className="text-sm font-bold text-panel-text">Imágenes del sello</p>
+              <p className="text-xs text-panel-muted mb-3">Opcional. Si las subes, reemplazan al ícono. Mejor con fondo transparente.</p>
               <div className="flex flex-wrap gap-6">
                 <ImagePicker
                   label="Sello vacío"

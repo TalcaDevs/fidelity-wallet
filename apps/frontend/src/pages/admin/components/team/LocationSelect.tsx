@@ -17,7 +17,7 @@ export function LocationSelect({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       required
-      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-brand-blue/50 focus:border-brand-blue"
+      className="w-full bg-panel-soft border border-panel-border rounded-xl px-4 py-3 text-panel-text font-medium focus:outline-none focus:ring-2 focus:ring-panel-accent/50 focus:border-panel-accent"
     >
       <option value="" disabled>Selecciona un local</option>
       {locations.map((location) => (

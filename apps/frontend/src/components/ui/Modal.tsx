@@ -1,4 +1,5 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
+import { useDialogFocus } from '../../hooks/useDialogFocus';
 
 const SIZES = { md: 'max-w-md', lg: 'max-w-2xl', xl: 'max-w-4xl' } as const;
 
@@ -9,13 +10,17 @@ export function Modal({
   onClose,
   children,
   size = 'md',
+  trapFocus = false,
 }: {
   title: string;
   description?: string;
   onClose: () => void;
   children: ReactNode;
   size?: keyof typeof SIZES;
+  trapFocus?: boolean;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(trapFocus, dialogRef);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -27,6 +32,8 @@ export function Modal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"

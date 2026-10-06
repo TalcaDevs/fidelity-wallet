@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { useDialogFocus } from '../../hooks/useDialogFocus';
 
 export function ConfirmDialog({
   title,
@@ -7,6 +8,7 @@ export function ConfirmDialog({
   cancelLabel = 'Cancelar',
   tone = 'danger',
   isBusy = false,
+  trapFocus = false,
   onConfirm,
   onCancel,
 }: {
@@ -16,9 +18,12 @@ export function ConfirmDialog({
   cancelLabel?: string;
   tone?: 'danger' | 'neutral';
   isBusy?: boolean;
+  trapFocus?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(trapFocus, dialogRef);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onCancel();
@@ -34,6 +39,8 @@ export function ConfirmDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60 backdrop-blur-sm p-4">
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"

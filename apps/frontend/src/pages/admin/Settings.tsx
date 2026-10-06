@@ -1,3 +1,4 @@
+import { PanelTitle } from '../../components/admin/PanelTitle';
 import { useCallback, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
@@ -11,10 +12,10 @@ import { getBrandSettings, updateBrandSettings, type BrandSettings } from '../..
 const clp = new Intl.NumberFormat('es-CL');
 
 const CARD =
-  'bg-white dark:bg-slate-800 rounded-[2rem] border border-slate-200/60 dark:border-slate-700/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.1)] p-8 max-w-2xl';
+  'bg-panel-surface rounded-2xl border border-panel-border shadow-panel p-5 sm:p-8 max-w-2xl';
 const FIELD =
-  'w-full px-5 py-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-4 focus:ring-brand-blue/20 focus:border-brand-blue transition-all text-slate-800 dark:text-slate-100 font-medium text-lg';
-const LABEL = 'block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 uppercase tracking-wider';
+  'w-full px-5 py-4 bg-panel-soft rounded-2xl border border-panel-border focus:outline-none focus:ring-4 focus:ring-panel-accent/20 focus:border-panel-accent transition-all text-panel-text font-medium text-lg';
+const LABEL = 'block text-sm font-bold text-panel-text mb-3 uppercase tracking-wider';
 
 /** Lo que es de toda la marca. Lo propio de cada local (nombre, dirección, link y QR) vive en Sucursales. */
 export function Settings({ session, brandId }: { session: Session | null; brandId: string | null }) {
@@ -23,40 +24,40 @@ export function Settings({ session, brandId }: { session: Session | null; brandI
 
   return (
     <>
-      <header className="mb-12">
-        <h1 className="text-4xl font-extrabold tracking-tight mb-2">Configuración</h1>
-        <p className="text-slate-500 dark:text-slate-400 text-lg">Los datos de tu marca, que comparten todos tus locales.</p>
+      <header className="mb-8">
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text"><PanelTitle text="Configuración" /></h1>
+        <p className="text-panel-muted text-sm sm:text-base">Los datos de tu marca, que comparten todos tus locales.</p>
       </header>
 
       {loadError && <ErrorAlert message={loadError} />}
 
-      <div className={CARD}>
+      <div data-panel-reveal className={CARD}>
         {loading || !data || !brandId ? (
           <div className="space-y-4">
-            <div className="h-6 w-40 rounded-xl bg-slate-100 dark:bg-slate-700 animate-pulse" />
-            <div className="h-14 w-full rounded-2xl bg-slate-100 dark:bg-slate-700 animate-pulse" />
+            <div className="h-6 w-40 rounded-xl bg-panel-soft animate-pulse" />
+            <div className="h-14 w-full rounded-2xl bg-panel-soft animate-pulse" />
           </div>
         ) : (
           <BrandSettingsForm brandId={brandId} initial={data} email={session?.user?.email} />
         )}
       </div>
 
-      <section className={`mt-8 ${CARD}`}>
-        <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Tu tarjeta</h2>
-        <p className="text-slate-500 dark:text-slate-400 mb-5">
+      <section data-panel-reveal className={`mt-8 ${CARD}`}>
+        <h2 className="text-lg font-bold text-panel-text mb-2">Tu tarjeta</h2>
+        <p className="text-panel-muted mb-5">
           Las recompensas, la vigencia de los sellos o puntos, el diseño y lo que pide el registro se editan en Tarjeta.
         </p>
-        <Link to={ROUTES.card} className="inline-block px-5 py-3 rounded-xl bg-slate-100 dark:bg-slate-700/60 font-bold text-slate-700 dark:text-slate-200 hover:bg-brand-blue/10 hover:text-brand-blue">
+        <Link to={ROUTES.card} className="inline-block px-5 py-3 rounded-xl bg-panel-soft font-bold text-panel-text hover:bg-panel-accent/10 hover:text-panel-accent">
           Ir a Tarjeta
         </Link>
       </section>
 
-      <section className={`mt-8 ${CARD}`}>
-        <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Links de registro y QR</h2>
-        <p className="text-slate-500 dark:text-slate-400 mb-5">
+      <section data-panel-reveal className={`mt-8 ${CARD}`}>
+        <h2 className="text-lg font-bold text-panel-text mb-2">Links de registro y QR</h2>
+        <p className="text-panel-muted mb-5">
           Cada local tiene su propio link de registro y su QR para imprimir. Los encuentras en Sucursales.
         </p>
-        <Link to={ROUTES.locations} className="inline-block px-5 py-3 rounded-xl bg-slate-100 dark:bg-slate-700/60 font-bold text-slate-700 dark:text-slate-200 hover:bg-brand-blue/10 hover:text-brand-blue">
+        <Link to={ROUTES.locations} className="inline-block px-5 py-3 rounded-xl bg-panel-soft font-bold text-panel-text hover:bg-panel-accent/10 hover:text-panel-accent">
           Ir a Sucursales
         </Link>
       </section>
@@ -105,13 +106,13 @@ function BrandSettingsForm({ brandId, initial, email }: { brandId: string; initi
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className={`${FIELD} placeholder-slate-400`}
+            className={`${FIELD} placeholder:text-panel-muted/70`}
             placeholder="ej. Café Central"
             required
             minLength={2}
             maxLength={80}
           />
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-3 font-medium">
+          <p className="text-sm text-panel-muted mt-3 font-medium">
             Aparece en la tarjeta que tus clientes guardan en su billetera: la misma tarjeta vale en todos tus locales.
           </p>
         </div>
@@ -123,22 +124,22 @@ function BrandSettingsForm({ brandId, initial, email }: { brandId: string; initi
               type="checkbox"
               checked={pointsEnabled}
               onChange={(e) => setPointsEnabled(e.target.checked)}
-              className="mt-1 w-5 h-5 accent-brand-blue"
+              className="mt-1 w-5 h-5 accent-panel-accent"
             />
-            <span className="text-slate-700 dark:text-slate-200 font-medium">
+            <span className="text-panel-text font-medium">
               Habilitar tarjetas de puntos
-              <span className="block text-sm text-slate-500 dark:text-slate-400">
+              <span className="block text-sm text-panel-muted">
                 Con puntos, cada compra suma según su monto. Los sellos, en cambio, suman por visita. El tipo de tarjeta se elige en{' '}
-                <Link to={ROUTES.card} className="font-bold text-brand-blue underline underline-offset-2">Tarjeta</Link>.
+                <Link to={ROUTES.card} className="font-bold text-panel-accent underline underline-offset-2">Tarjeta</Link>.
               </span>
             </span>
           </label>
           <div className="mt-4">
-            <label htmlFor="pesos-per-point" className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+            <label htmlFor="pesos-per-point" className="block text-sm font-bold text-panel-text mb-2">
               Pesos de compra por cada punto
             </label>
             <div className="flex items-center gap-3">
-              <span className="text-lg font-bold text-slate-500">$</span>
+              <span className="text-lg font-bold text-panel-muted">$</span>
               <input
                 id="pesos-per-point"
                 inputMode="numeric"
@@ -147,9 +148,9 @@ function BrandSettingsForm({ brandId, initial, email }: { brandId: string; initi
                 className={`${FIELD} max-w-48`}
                 aria-invalid={!pesosValid}
               />
-              <span className="text-slate-500 dark:text-slate-400 font-medium">= 1 punto</span>
+              <span className="text-panel-muted font-medium">= 1 punto</span>
             </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+            <p className="text-sm text-panel-muted mt-2">
               {pesosValid
                 ? `Una compra de $${clp.format(pesos * 10)} suma 10 puntos.`
                 : 'Ingresa un monto en pesos, sin puntos ni comas.'}
@@ -159,7 +160,7 @@ function BrandSettingsForm({ brandId, initial, email }: { brandId: string; initi
 
         <div>
           <span className={LABEL}>Correo de la cuenta</span>
-          <p className="px-5 py-4 bg-slate-100 dark:bg-slate-900/50 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 font-medium">
+          <p className="px-5 py-4 bg-panel-soft rounded-2xl border border-panel-border text-panel-muted font-medium">
             {email}
           </p>
         </div>
@@ -167,7 +168,7 @@ function BrandSettingsForm({ brandId, initial, email }: { brandId: string; initi
         <button
           type="submit"
           disabled={isSaving || !name.trim()}
-          className="px-6 py-3 bg-brand-blue hover:bg-blue-600 text-white shadow-lg shadow-brand-blue/20 rounded-xl font-bold transition-all disabled:opacity-50"
+          className="px-6 py-3 bg-panel-primary hover:bg-panel-primary/90 text-white shadow-lg shadow-brand-blue/20 rounded-xl font-bold transition-all disabled:opacity-50"
         >
           {isSaving ? 'Guardando...' : 'Guardar cambios'}
         </button>

@@ -1,28 +1,29 @@
 import type { ReactNode } from 'react';
+import { PANEL_SURFACE } from '../admin/panelStyles';
 
 type StatCardColor = 'blue' | 'yellow' | 'orange';
 
 const COLOR_STYLES: Record<StatCardColor, { glow: string; iconBg: string; iconText: string }> = {
   blue: {
-    glow: 'bg-brand-blue/10 dark:bg-brand-blue/20',
-    iconBg: 'bg-brand-blue/10 dark:bg-brand-blue/20',
-    iconText: 'text-brand-blue dark:text-blue-400',
+    glow: 'bg-panel-accent/10',
+    iconBg: 'bg-panel-accent/10',
+    iconText: 'text-panel-accent',
   },
   yellow: {
-    glow: 'bg-brand-yellow/10 dark:bg-brand-yellow/20',
-    iconBg: 'bg-brand-yellow/10 dark:bg-brand-yellow/20',
-    iconText: 'text-brand-yellow',
+    glow: 'bg-panel-gold/10',
+    iconBg: 'bg-panel-gold/10',
+    iconText: 'text-panel-gold',
   },
   orange: {
-    glow: 'bg-brand-orange/10 dark:bg-brand-orange/20',
-    iconBg: 'bg-brand-orange/10 dark:bg-brand-orange/20',
-    iconText: 'text-brand-orange',
+    glow: 'bg-panel-orange/10',
+    iconBg: 'bg-panel-orange/10',
+    iconText: 'text-panel-orange',
   },
 };
 
 const FOOTNOTE_STYLES: Record<'positive' | 'neutral', string> = {
   positive: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10',
-  neutral: 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700',
+  neutral: 'text-panel-muted bg-panel-soft',
 };
 
 export function StatCard({
@@ -45,20 +46,20 @@ export function StatCard({
   const styles = COLOR_STYLES[color];
 
   return (
-    <div className="relative overflow-hidden bg-white dark:bg-slate-800 p-8 rounded-[2rem] border border-slate-200/60 dark:border-slate-700/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.1)] hover:shadow-[0_20px_40px_rgb(0,0,0,0.08)] hover:-translate-y-1 transition-all duration-300 group">
-      <div className={`absolute -right-6 -top-6 w-40 h-40 ${styles.glow} rounded-full blur-3xl group-hover:scale-125 transition-transform duration-700`} />
-      <div className="flex items-center gap-4 mb-8 relative z-10">
-        <div className={`w-16 h-16 rounded-2xl ${styles.iconBg} flex items-center justify-center ${styles.iconText} shadow-inner`}>
+    <div className={`${PANEL_SURFACE} relative overflow-hidden p-5 sm:p-6 group`}>
+      <div className={`absolute -right-10 -top-10 w-32 h-32 ${styles.glow} rounded-full blur-3xl `} />
+      <div className="flex items-center gap-3 mb-5 relative z-10">
+        <div className={`w-11 h-11 shrink-0 rounded-xl [&>svg]:h-6 [&>svg]:w-6 ${styles.iconBg} flex items-center justify-center ${styles.iconText}`}>
           {icon}
         </div>
-        <h3 className="text-xl font-bold text-slate-700 dark:text-slate-200">{title}</h3>
+        <h3 className="text-sm font-semibold text-panel-muted">{title}</h3>
       </div>
       {loading ? (
         <div className="h-[60px] flex items-center relative z-10">
-          <div data-testid="stat-skeleton" className="h-10 w-24 rounded-xl bg-slate-100 dark:bg-slate-700 animate-pulse" />
+          <div data-testid="stat-skeleton" className="h-10 w-24 rounded-xl bg-panel-soft animate-pulse" />
         </div>
       ) : (
-        <p className="text-6xl font-black mb-3 relative z-10 tracking-tight text-slate-900 dark:text-white">{value}</p>
+        <p className="text-4xl sm:text-5xl font-extrabold mb-4 relative z-10 tracking-tight tabular-nums text-panel-text">{value.toLocaleString('es-CL')}</p>
       )}
       <p className={`text-sm font-semibold relative z-10 inline-flex items-center px-3 py-1 rounded-full ${FOOTNOTE_STYLES[footnoteTone]}`}>
         {footnoteTone === 'positive' && (

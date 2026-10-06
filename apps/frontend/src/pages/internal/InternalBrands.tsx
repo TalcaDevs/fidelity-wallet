@@ -49,7 +49,7 @@ export function InternalBrands() {
 
       <div className={`${CARD} overflow-x-auto`}>
         <table className="w-full text-left text-sm min-w-[860px]">
-          <thead className="text-slate-500 border-b border-slate-200 dark:border-slate-700">
+          <thead className="text-panel-muted border-b border-panel-border">
             <tr>
               <th className="p-4 font-bold">Marca</th>
               <th className="p-4 font-bold">Plan</th>
@@ -60,27 +60,27 @@ export function InternalBrands() {
               <th className="p-4 font-bold whitespace-nowrap">Último escaneo</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+          <tbody className="divide-y divide-panel-border">
             {loading && !data ? (
-              <tr><td colSpan={7} className="p-6"><div className="h-24 animate-pulse bg-slate-100 dark:bg-slate-900 rounded-xl" /></td></tr>
+              <tr><td colSpan={7} className="p-6"><div className="h-24 animate-pulse bg-panel-soft rounded-xl" /></td></tr>
             ) : data && data.items.length > 0 ? (
               data.items.map((b) => {
                 const trialOver = b.planId === 'TRIAL' && new Date(b.trialEndsAt).getTime() < now;
                 return (
-                  <tr key={b.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/40">
+                  <tr key={b.id} className="hover:bg-panel-soft">
                     <td className="p-4">
-                      <Link to={`/internal/brands/${b.id}`} className="font-bold text-violet-600 hover:underline">{b.name}</Link>
-                      <p className="text-xs text-slate-500">{b.ownerEmail ?? 'Sin dueño'} · alta {formatDate(b.createdAt)}</p>
+                      <Link to={`/internal/brands/${b.id}`} className="font-bold text-panel-accent hover:underline">{b.name}</Link>
+                      <p className="text-xs text-panel-muted">{b.ownerEmail ?? 'Sin dueño'} · alta {formatDate(b.createdAt)}</p>
                     </td>
                     <td className="p-4">
                       <PlanBadge planId={b.planId} />
-                      {trialOver && <p className="text-xs font-bold text-orange-600 mt-1">Prueba vencida</p>}
+                      {trialOver && <p className="text-xs font-bold text-panel-orange mt-1">Prueba vencida</p>}
                     </td>
                     <td className="p-4"><BrandStatusBadge status={b.status} /></td>
                     <td className="p-4 text-right">{b.locations}</td>
                     <td className="p-4 text-right">{b.customers}</td>
-                    <td className={`p-4 text-right font-bold ${b.openTickets > 0 ? 'text-orange-600' : 'text-slate-400'}`}>{b.openTickets}</td>
-                    <td className="p-4 whitespace-nowrap text-slate-500">{b.lastScanAt ? formatDate(b.lastScanAt) : 'Nunca'}</td>
+                    <td className={`p-4 text-right font-bold ${b.openTickets > 0 ? 'text-panel-orange' : 'text-panel-muted'}`}>{b.openTickets}</td>
+                    <td className="p-4 whitespace-nowrap text-panel-muted">{b.lastScanAt ? formatDate(b.lastScanAt) : 'Nunca'}</td>
                   </tr>
                 );
               })

@@ -26,6 +26,7 @@ import { useMembership } from './hooks/useMembership';
 import { usePlatformAdmin } from './hooks/usePlatformAdmin';
 import { isBillingEnabled } from './config/features';
 import './index.css';
+import { WalletLoading } from './components/ui/WalletLoading';
 
 // El panel interno no viaja en el bundle del panel, del escáner ni de /join.
 const InternalApp = lazy(() => import('./pages/internal/InternalApp'));
@@ -43,7 +44,7 @@ export default function App() {
   const platformAdmin = usePlatformAdmin(session);
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center bg-slate-50"><p>Cargando...</p></div>;
+    return <WalletLoading />;
   }
 
   return (
@@ -102,7 +103,7 @@ export default function App() {
             element={
               <RequirePlatformAdmin session={session} platformAdmin={platformAdmin}>
                 {(adminSession, role) => (
-                  <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-slate-500">Cargando panel interno…</div>}>
+                  <Suspense fallback={<WalletLoading label="Cargando panel interno…" />}>
                     <InternalApp session={adminSession} role={role} />
                   </Suspense>
                 )}
