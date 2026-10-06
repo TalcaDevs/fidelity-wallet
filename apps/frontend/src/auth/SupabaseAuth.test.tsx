@@ -4,7 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SupabaseAuth } from './SupabaseAuth';
 import { UpdatePassword } from './UpdatePassword';
 
-const auth = vi.hoisted(() => ({ signInWithPassword: vi.fn(), resetPasswordForEmail: vi.fn(), updateUser: vi.fn() }));
+const auth = vi.hoisted(() => ({
+  signInWithPassword: vi.fn(),
+  signInWithOAuth: vi.fn(),
+  resetPasswordForEmail: vi.fn(),
+  updateUser: vi.fn(),
+}));
 vi.mock('../lib/supabase', () => ({ supabase: { auth } }));
 vi.mock('./AuthFrame', () => ({ AuthFrame: ({ title, children }: { title: string; children: ReactNode }) => <><h1>{title}</h1>{children}</> }));
 
@@ -75,4 +80,45 @@ describe('Authentication forms', () => {
     await waitFor(() => expect(done).toHaveBeenCalledOnce());
     expect(auth.updateUser).toHaveBeenCalledWith({ password: 'example-password' });
   });
+
+  it('initiates Google OAuth sign in and disables controls while connecting', async () => {
+    let resolveOAuth!: (val: { error: null }) => void;
+    auth.signInWithOAuth.mockImplementation(() => new Promise((resolve) => { resolveOAuth = resolve; }));
+    render(<SupabaseAuth />);
+    const googleButton = screen.getByRole('button', { name: /Continuar con Google/ });
+    expect(googleButton).toBeInTheDocument();
+    fireEvent.click(googleButton);
+    expect(screen.getByRole('button', { name: 'Conectando con Google…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Entrar a mi cuenta/ })).toBeDisabled();
+    expect(auth.signInWithOAuth).toHaveBeenCalledWith({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/admin`,
+      },
+    });
+    resolveOAuth({ error: null });
+    await waitFor(() => expect(screen.getByRole('button', { name: /Continuar con Google/ })).toBeEnabled());
+  });
+
+  it('displays error if Google OAuth rejects', async () => {
+    auth.signInWithOAuth.mockRejectedValue(new Error('Popup blocked'));
+    render(<SupabaseAuth />);
+    fireEvent.click(screen.getByRole('button', { name: /Continuar con Google/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos conectar con Google');
+    expect(screen.getByRole('button', { name: /Continuar con Google/ })).toBeEnabled();
+  });
+
+  it('displays error message returned by Google OAuth provider', async () => {
+    auth.signInWithOAuth.mockResolvedValue({ error: { message: 'OAuth provider error' } });
+    render(<SupabaseAuth />);
+    fireEvent.click(screen.getByRole('button', { name: /Continuar con Google/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('OAuth provider error');
+  });
+
+  it('hides Google button in password reset mode', () => {
+    render(<SupabaseAuth />);
+    fireEvent.click(screen.getByRole('button', { name: '¿Olvidaste tu contraseña?' }));
+    expect(screen.queryByRole('button', { name: /Continuar con Google/ })).not.toBeInTheDocument();
+  });
 });
+
