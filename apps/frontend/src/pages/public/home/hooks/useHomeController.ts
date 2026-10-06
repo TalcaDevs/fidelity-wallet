@@ -1,5 +1,5 @@
+import { useHomeMotionPreference } from "./useHomeMotionPreference";
 import { useEffect, useRef, useState } from "react";
-import { useReducedMotion } from "motion/react";
 import { useTheme } from "../../../../hooks/useTheme";
 import { useHomeIntro } from "./useHomeIntro";
 import { useHomeMenu } from "./useHomeMenu";
@@ -11,7 +11,7 @@ export function useHomeController() {
   const intro = useHomeIntro();
   const menu = useHomeMenu();
   const [motionPaused, setMotionPaused] = useState(false);
-  const reducedMotion = useReducedMotion();
+  const { reducedMotion, enableMotion } = useHomeMotionPreference();
   const pageVisible = usePageVisibility();
   const homeRef = useRef<HTMLDivElement>(null);
   const motionStopped = motionPaused || !!reducedMotion || !pageVisible;
@@ -23,5 +23,15 @@ export function useHomeController() {
     root.classList.add(...added);
     return () => root.classList.remove(...added);
   }, []);
-  return { ...theme, ...intro, ...menu, motionPaused, setMotionPaused, reducedMotion, motionStopped, homeRef };
+  return {
+    ...theme,
+    ...intro,
+    ...menu,
+    motionPaused,
+    setMotionPaused,
+    reducedMotion,
+    enableMotion,
+    motionStopped,
+    homeRef,
+  };
 }

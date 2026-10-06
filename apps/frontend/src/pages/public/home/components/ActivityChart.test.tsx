@@ -17,18 +17,27 @@ vi.mock("motion/react", async (importOriginal) => {
   return { ...actual, useReducedMotion: () => preference.reducedMotion };
 });
 
-let observerCallback: IntersectionObserverCallback;
-let observer: IntersectionObserver;
+const observers = new Map<
+  Element,
+  { callback: IntersectionObserverCallback; observer: IntersectionObserver }
+>();
 let hidden = false;
 const disconnect = vi.fn();
 
-function setOnscreen(isIntersecting: boolean) {
-  act(() =>
-    observerCallback(
-      [{ isIntersecting } as IntersectionObserverEntry],
-      observer,
-    ),
-  );
+function setOnscreen(visible: boolean) {
+  act(() => {
+    for (const [target, { callback, observer }] of observers)
+      callback(
+        [
+          {
+            target,
+            isIntersecting: visible,
+            intersectionRatio: visible ? 1 : 0,
+          } as IntersectionObserverEntry,
+        ],
+        observer,
+      );
+  });
 }
 
 function setPageVisible(visible: boolean) {
@@ -47,16 +56,24 @@ beforeEach(() => {
   preference.reducedMotion = false;
   hidden = false;
   disconnect.mockClear();
+  observers.clear();
   vi.spyOn(document, "hidden", "get").mockImplementation(() => hidden);
   vi.stubGlobal(
     "IntersectionObserver",
     class {
-      constructor(callback: IntersectionObserverCallback) {
-        observerCallback = callback;
-        observer = this as unknown as IntersectionObserver;
+      constructor(private callback: IntersectionObserverCallback) {}
+      observe(target: Element) {
+        observers.set(target, {
+          callback: this.callback,
+          observer: this as unknown as IntersectionObserver,
+        });
       }
-      observe() {}
-      disconnect = disconnect;
+      disconnect() {
+        disconnect();
+        for (const [target, value] of observers)
+          if (value.observer === (this as unknown as IntersectionObserver))
+            observers.delete(target);
+      }
     },
   );
 });
@@ -69,6 +86,21 @@ afterEach(() => {
 });
 
 describe("ActivityChart", () => {
+  it("tracks independent observers when two charts mount together", () => {
+    const { unmount } = render(
+      <>
+        <ActivityChart />
+        <ActivityChart />
+      </>,
+    );
+    expect(observers.size).toBe(2);
+    setOnscreen(true);
+    advance(3400);
+    expect(screen.getAllByText("364")).toHaveLength(2);
+    unmount();
+    expect(observers.size).toBe(0);
+    expect(disconnect).toHaveBeenCalledTimes(2);
+  });
   it("switches between clearly labeled example metrics and resets each metric to its starting data", async () => {
     const user = userEvent.setup();
     render(<ActivityChart />);

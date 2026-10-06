@@ -255,18 +255,6 @@
   }
 }
 
-@keyframes fw-card-reward-badge {
-  0% {
-    transform: rotate(-7deg) scale(0.82);
-  }
-  45% {
-    transform: rotate(8deg) scale(1.11);
-  }
-  100% {
-    transform: rotate(5deg) scale(1);
-  }
-}
-
 @keyframes fw-map-travel {
   to {
     stroke-dashoffset: -168;

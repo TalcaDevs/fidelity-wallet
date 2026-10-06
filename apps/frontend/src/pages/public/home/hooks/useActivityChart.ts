@@ -1,7 +1,11 @@
+import { useHomeMotionPreference } from "./useHomeMotionPreference";
 import { useEffect, useRef, useState } from "react";
-import { useReducedMotion } from "motion/react";
 import { usePageVisibility } from "./usePageVisibility";
-import { SERIES, CHART_UPDATE_INTERVAL_MS, CHART_VISIBILITY_THRESHOLD } from "../constants/activityChart.constants.ts";
+import {
+  SERIES,
+  CHART_UPDATE_INTERVAL_MS,
+  CHART_VISIBILITY_THRESHOLD,
+} from "../constants/activityChart.constants.ts";
 import type { Metric } from "../types/activityChart.types.ts";
 
 export function useActivityChart(motionPaused: boolean) {
@@ -10,7 +14,7 @@ export function useActivityChart(motionPaused: boolean) {
   const [visible, setVisible] = useState(false);
   const pageVisible = usePageVisibility();
   const ref = useRef<HTMLDivElement>(null);
-  const reducedMotion = useReducedMotion();
+  const { reducedMotion } = useHomeMotionPreference();
   const stopped = motionPaused || !!reducedMotion;
   const data = SERIES[metric];
   const values = frame % 2 === 0 ? data.points : data.next;

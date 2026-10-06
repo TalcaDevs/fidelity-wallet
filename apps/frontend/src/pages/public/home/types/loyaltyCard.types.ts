@@ -7,4 +7,7 @@ export type LoyaltyCardStageProps = {
 
 export type LoyaltyCardState = ReturnType<typeof useLoyaltyCard>;
 
-export interface StampBurst { stamp: number; id: number; }
+export interface StampBurst {
+  stamp: number;
+  id: number;
+}

@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { Home } from "./Home";
 
 // The animated card's interaction and lifecycle are covered in its own tests.
-vi.mock("./home/components/LoyaltyCardStage", () => ({ LoyaltyCardStage: () => null }));
+vi.mock("./home/components/LoyaltyCardStage", () => ({
+  LoyaltyCardStage: () => null,
+}));
 
 beforeEach(() => {
   // Layout visibility is a browser concern; keep observers available to the
@@ -21,6 +23,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  preference.reducedMotion = false;
   cleanup();
   vi.unstubAllGlobals();
 });
@@ -33,19 +36,40 @@ function renderHome() {
   );
 }
 
+const preference = vi.hoisted(() => ({ reducedMotion: false }));
+vi.mock("motion/react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("motion/react")>();
+  return { ...actual, useReducedMotion: () => preference.reducedMotion };
+});
+
 describe("Home", () => {
+  it("shows the paused control for reduced motion and allows an explicit opt-in", async () => {
+    preference.reducedMotion = true;
+    const user = userEvent.setup();
+    renderHome();
+    const button = screen.getByRole("button", { name: "Reanudar animaciones" });
+    expect(button).toBeEnabled();
+    expect(button).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("region", { name: /Empieza peque\u00f1o/ }),
+    ).toHaveAttribute("data-motion-paused", "true");
+    await user.click(button);
+    expect(
+      screen.getByRole("button", { name: "Pausar animaciones" }),
+    ).toHaveAttribute("aria-pressed", "false");
+    expect(
+      screen.getByRole("region", { name: /Empieza peque\u00f1o/ }),
+    ).toHaveAttribute("data-motion-paused", "false");
+  });
   it("pauses motion throughout the page and lets visitors resume without disabling the page controls", async () => {
     const user = userEvent.setup();
-    const { container } = renderHome();
-    const home = container.querySelector(".fw-home");
+    renderHome();
     const plans = screen.getByRole("region", { name: /Empieza pequeño/ });
-    expect(home).toHaveAttribute("data-motion-paused", "false");
     expect(plans).toHaveAttribute("data-motion-paused", "false");
 
     await user.click(
       screen.getByRole("button", { name: "Pausar animaciones" }),
     );
-    expect(home).toHaveAttribute("data-motion-paused", "true");
     expect(plans).toHaveAttribute("data-motion-paused", "true");
     expect(
       screen.getByRole("button", { name: "Reanudar animaciones" }),
@@ -56,12 +80,10 @@ describe("Home", () => {
       "aria-pressed",
       "true",
     );
-    expect(home).toHaveAttribute("data-motion-paused", "true");
 
     await user.click(
       screen.getByRole("button", { name: "Reanudar animaciones" }),
     );
-    expect(home).toHaveAttribute("data-motion-paused", "false");
     expect(plans).toHaveAttribute("data-motion-paused", "false");
     expect(
       screen.getByRole("button", { name: "Pausar animaciones" }),

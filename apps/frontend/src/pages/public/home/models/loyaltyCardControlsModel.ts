@@ -18,7 +18,12 @@ export function getButton({ mode, complete }: DemoState) {
   return { text: "Sumar un sello", symbol: "+" };
 }
 
-export function getAnnouncement({ mode, complete, autoRunning, stamps }: DemoState) {
+export function getAnnouncement({
+  mode,
+  complete,
+  autoRunning,
+  stamps,
+}: DemoState) {
   if (complete) {
     const next =
       mode === "auto"

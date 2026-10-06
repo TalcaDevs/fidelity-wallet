@@ -7,7 +7,7 @@
     "dev": "pnpm run supabase:start && pnpm -r --parallel run dev",
     "build": "pnpm -r run build",
     "start": "pnpm -r run start",
-    "test": "pnpm -r --workspace-concurrency=1 run test",
+    "test": "pnpm -r run test",
     "typecheck": "pnpm -r run typecheck",
     "lint": "pnpm -r run lint"
   },

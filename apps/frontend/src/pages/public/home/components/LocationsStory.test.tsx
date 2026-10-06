@@ -1,14 +1,43 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LocationsStory } from "./LocationsStory";
+
+const preference = vi.hoisted(() => ({ reducedMotion: false, inView: true }));
+beforeEach(() => {
+  preference.reducedMotion = false;
+  preference.inView = true;
+});
 
 vi.mock("motion/react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("motion/react")>();
-  return { ...actual, useInView: () => true, useReducedMotion: () => true };
+  return {
+    ...actual,
+    useInView: () => preference.inView,
+    useReducedMotion: () => preference.reducedMotion,
+  };
 });
 
 describe("LocationsStory", () => {
+  it("runs onscreen motion and pauses it for OS preference, offscreen state and explicit pause", () => {
+    const { rerender } = render(<LocationsStory />);
+    const map = screen.getByRole("group", {
+      name: "Mapa interactivo de sucursales",
+    });
+    expect(map).toHaveAttribute("data-motion", "running");
+    preference.reducedMotion = true;
+    rerender(<LocationsStory />);
+    expect(map).toHaveAttribute("data-motion", "paused");
+    preference.reducedMotion = false;
+    preference.inView = false;
+    rerender(<LocationsStory />);
+    expect(map).toHaveAttribute("data-motion", "paused");
+    preference.inView = true;
+    rerender(<LocationsStory motionPaused />);
+    expect(map).toHaveAttribute("data-motion", "paused");
+    rerender(<LocationsStory />);
+    expect(map).toHaveAttribute("data-motion", "running");
+  });
   it("lets visitors select an illustrative branch from both the map and the selector", async () => {
     const user = userEvent.setup();
     render(<LocationsStory />);
@@ -49,15 +78,14 @@ describe("LocationsStory", () => {
 
   it("keeps the contact path and branch interactions available when motion is paused", async () => {
     const user = userEvent.setup();
-    const { container } = render(<LocationsStory motionPaused />);
+    render(<LocationsStory motionPaused />);
     expect(
       screen.getByRole("link", { name: "Conectemos tus sucursales" }),
     ).toHaveAttribute("href", "#contacto");
     expect(screen.getByText("Mapa de ejemplo")).toBeInTheDocument();
-    expect(container.querySelector(".fw-locations-sticky")).toHaveAttribute(
-      "data-motion",
-      "paused",
-    );
+    expect(
+      screen.getByRole("group", { name: "Mapa interactivo de sucursales" }),
+    ).toHaveAttribute("data-motion", "paused");
     await user.click(
       screen.getByRole("button", { name: "Ver sucursal Ribera en el mapa" }),
     );

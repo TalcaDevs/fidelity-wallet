@@ -25,7 +25,8 @@ export function ActivityPlot({ values, label, stopped }: PlotProps) {
       className={`
         fw-report-chart [&_.fw-report-grid]:[stroke:var(--fw-border)]
         [&_.fw-report-grid]:[stroke-width:0.7px] [&_.fw-report-grid]:[stroke-dasharray:3_4] mt-[15px]
-        h-[128px] w-full overflow-visible text-[color:var(--fw-blue)] min-[701px]:max-[1050.001px]:h-[110px]
+        h-[128px] w-full overflow-visible text-[color:var(--fw-blue)]
+        min-[701px]:max-[1050.001px]:h-[110px]
       `}
       aria-label={`${label} de ejemplo de lunes a domingo`}
     />

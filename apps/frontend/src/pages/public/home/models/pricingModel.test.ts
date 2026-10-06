@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { PAID_PLANS } from "../constants/pricing.constants.ts";
-import { capacityOptions, getPlanBenefits, recommendPlan } from "./pricingModel";
+import {
+  capacityOptions,
+  getPlanBenefits,
+  recommendPlan,
+} from "./pricingModel";
 
 describe("pricing recommendations", () => {
   it("chooses the lowest priced plan that accommodates both limits regardless of catalog order", () => {

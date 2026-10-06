@@ -35,23 +35,27 @@ vi.mock("motion/react", async (importOriginal) => {
   };
 });
 
-let intersectionCallback: IntersectionObserverCallback;
-let observer: IntersectionObserver;
+const observers = new Map<
+  Element,
+  { callback: IntersectionObserverCallback; observer: IntersectionObserver }
+>();
 let hidden = false;
 const disconnect = vi.fn();
 
 function setOnscreen(visible: boolean) {
-  act(() =>
-    intersectionCallback(
-      [
-        {
-          isIntersecting: visible,
-          intersectionRatio: visible ? 1 : 0,
-        } as IntersectionObserverEntry,
-      ],
-      observer,
-    ),
-  );
+  act(() => {
+    for (const [target, { callback, observer }] of observers)
+      callback(
+        [
+          {
+            target,
+            isIntersecting: visible,
+            intersectionRatio: visible ? 1 : 0,
+          } as IntersectionObserverEntry,
+        ],
+        observer,
+      );
+  });
 }
 
 function setDocumentVisible(visible: boolean) {
@@ -86,17 +90,25 @@ beforeEach(() => {
   animation.pending.length = 0;
   animation.stop.mockClear();
   disconnect.mockClear();
+  observers.clear();
   hidden = false;
   vi.spyOn(document, "hidden", "get").mockImplementation(() => hidden);
   vi.stubGlobal(
     "IntersectionObserver",
     class {
-      constructor(callback: IntersectionObserverCallback) {
-        intersectionCallback = callback;
-        observer = this as unknown as IntersectionObserver;
+      constructor(private callback: IntersectionObserverCallback) {}
+      observe(target: Element) {
+        observers.set(target, {
+          callback: this.callback,
+          observer: this as unknown as IntersectionObserver,
+        });
       }
-      observe() {}
-      disconnect = disconnect;
+      disconnect() {
+        disconnect();
+        for (const [target, value] of observers)
+          if (value.observer === (this as unknown as IntersectionObserver))
+            observers.delete(target);
+      }
     },
   );
 });
@@ -109,6 +121,23 @@ afterEach(() => {
 });
 
 describe("LoyaltyCardStage", () => {
+  it("caps batched rapid clicks at the reward and keeps the final burst synchronized", async () => {
+    render(<LoyaltyCardStage onReady={vi.fn()} replayKey={0} />);
+    setOnscreen(true);
+    await finishEntrance();
+    fireEvent.click(screen.getByRole("button", { name: "Probar yo" }));
+    const button = screen.getByRole("button", { name: "Sumar un sello" });
+    act(() => {
+      for (let index = 0; index < 20; index++) button.click();
+    });
+    expectStamps(10);
+    expect(screen.getByRole("status")).toHaveTextContent("10 de 10 sellos");
+    expect(
+      screen.getByRole("button", { name: "Volver a probar" }),
+    ).toBeEnabled();
+    await advance(2000);
+    expectStamps(10);
+  });
   it("waits for the entrance, then tells the story one stamp at a time and stops at the reward", async () => {
     const onReady = vi.fn();
     render(<LoyaltyCardStage onReady={onReady} replayKey={0} />);

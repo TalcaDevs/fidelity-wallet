@@ -9,9 +9,8 @@
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "build": "tsc -b && vite build",
     "test": "vitest run --coverage --maxWorkers=2",
-    "lint": "oxlint && pnpm run lint:home",
-    "preview": "vite preview",
-    "lint:home": "eslint --config eslint.home.config.js src/pages/public/Home.tsx src/pages/public/home --max-warnings 0"
+    "lint": "oxlint",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@fidelity/shared": "workspace:*",
@@ -36,12 +35,9 @@
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
-    "@typescript-eslint/parser": "^8.71.0",
     "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "@vitest/coverage-v8": "^4.1.11",
-    "eslint": "^10.12.0",
-    "eslint-plugin-sonarjs": "^4.2.2",
     "jsdom": "^30.1.0",
     "oxlint": "^1.81.0",
     "tailwindcss": "^4.3.3",

@@ -1,5 +1,5 @@
 import type { StampProps } from "./loyaltyCardVisuals.types.ts";
-import type { RefObject, SVGProps } from "react";
+import type { RefObject, SVGProps, ReactNode } from "react";
 import type { HomeIconName } from "./homeIcon.types.ts";
 import type { DemoState } from "./loyaltyCardControls.types.ts";
 import type { Plan } from "@fidelity/shared";
@@ -60,3 +60,5 @@ export type PlanCardProps = {
 export type PricingSectionProps = {
   motionPaused?: boolean;
 };
+
+export type HomeMotionProviderProps = { children: ReactNode };

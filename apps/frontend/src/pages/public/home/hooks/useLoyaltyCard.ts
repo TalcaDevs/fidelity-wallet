@@ -1,29 +1,37 @@
+import { useHomeMotionPreference } from "./useHomeMotionPreference";
+import {
+  createStampSequence,
+  stampSequenceReducer,
+} from "../models/stampSequence";
+import { useCardTilt } from "./useCardTilt";
 import { usePageVisibility } from "./usePageVisibility";
 import { getEntranceKeyframes } from "../models/loyaltyCardMotion";
-import { ENTRANCE_FALLBACK_MS, ENTRANCE_OPTIONS } from "../constants/loyaltyCardMotion.constants.ts";
-import type { LoyaltyCardStageProps, StampBurst } from "../types/loyaltyCard.types.ts";
-import { STAMP_INTERVAL_MS, STARTING_STAMPS, REWARD_STAMPS, STAMP_BURST_MS, REWARD_BURST_MS, CARD_VISIBILITY_THRESHOLD, CARD_TILT_SPRING } from "../constants/loyaltyCard.constants.ts";
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type PointerEvent,
-} from "react";
+  ENTRANCE_FALLBACK_MS,
+  ENTRANCE_OPTIONS,
+} from "../constants/loyaltyCardMotion.constants.ts";
+import type { LoyaltyCardStageProps } from "../types/loyaltyCard.types.ts";
 import {
-  useAnimate,
-  useMotionValue,
-  useReducedMotion,
-  useSpring,
-} from "motion/react";
+  STAMP_INTERVAL_MS,
+  REWARD_STAMPS,
+  STAMP_BURST_MS,
+  REWARD_BURST_MS,
+  CARD_VISIBILITY_THRESHOLD,
+} from "../constants/loyaltyCard.constants.ts";
+import { useCallback, useEffect, useRef, useState, useReducer } from "react";
+import { useAnimate } from "motion/react";
 
 export function useLoyaltyCard({
   onReady,
   replayKey,
   motionPaused = false,
 }: LoyaltyCardStageProps) {
-  const reduceMotion = useReducedMotion();
-  const [stamps, setStamps] = useState(STARTING_STAMPS);
+  const { reducedMotion: reduceMotion } = useHomeMotionPreference();
+  const [{ stamps, burst }, dispatch] = useReducer(
+    stampSequenceReducer,
+    undefined,
+    createStampSequence,
+  );
   const [mode, setMode] = useState<"auto" | "manual">(
     reduceMotion ? "manual" : "auto",
   );
@@ -32,9 +40,6 @@ export function useLoyaltyCard({
     typeof IntersectionObserver === "undefined",
   );
   const documentVisible = usePageVisibility();
-  const [burst, setBurst] = useState<StampBurst | null>(
-    null,
-  );
   const [scope, animate] = useAnimate<HTMLDivElement>();
   const stageRef = useRef<HTMLDivElement>(null);
   const onReadyRef = useRef(onReady);
@@ -44,13 +49,9 @@ export function useLoyaltyCard({
     paused: motionPaused,
   });
   const remainingTickRef = useRef(STAMP_INTERVAL_MS);
-  const burstSequenceRef = useRef(0);
-  const tiltX = useMotionValue(0);
-  const tiltY = useMotionValue(0);
-  const rotateX = useSpring(tiltX, CARD_TILT_SPRING);
-  const rotateY = useSpring(tiltY, CARD_TILT_SPRING);
   const motionAllowed =
     !reduceMotion && !motionPaused && inView && documentVisible;
+  const tilt = useCardTilt(ready, motionAllowed);
   const complete = stamps === REWARD_STAMPS;
   const autoRunning = mode === "auto" && ready && !complete && motionAllowed;
 
@@ -86,12 +87,8 @@ export function useLoyaltyCard({
   useEffect(() => {
     if (motionAllowed) return;
     // oxlint-disable-next-line react/set-state-in-effect -- Discard interrupted particles before playback resumes.
-    setBurst(null);
-    tiltX.jump(0);
-    tiltY.jump(0);
-    rotateX.jump(0);
-    rotateY.jump(0);
-  }, [motionAllowed, tiltX, tiltY, rotateX, rotateY]);
+    dispatch({ type: "clearBurst" });
+  }, [motionAllowed]);
 
   useEffect(() => {
     const card = scope.current;
@@ -102,9 +99,8 @@ export function useLoyaltyCard({
     let completed = false;
     let entrance: ReturnType<typeof animate> | undefined;
     let fallbackTimer: number | undefined;
-    setStamps(STARTING_STAMPS);
+    dispatch({ type: "reset" });
     setMode(motionPolicyRef.current.reduced ? "manual" : "auto");
-    setBurst(null);
     remainingTickRef.current = STAMP_INTERVAL_MS;
     setReady(false);
     card.removeAttribute("data-animation-fallback");
@@ -138,11 +134,17 @@ export function useLoyaltyCard({
     }
 
     // Also unlock the demonstration if the browser cannot complete an animation.
-    fallbackTimer = window.setTimeout(() => complete(true), ENTRANCE_FALLBACK_MS);
+    fallbackTimer = window.setTimeout(
+      () => complete(true),
+      ENTRANCE_FALLBACK_MS,
+    );
     try {
       entrance = animate(
         card,
-        getEntranceKeyframes({ viewportWidth: document.documentElement.clientWidth, stageWidth: stage.getBoundingClientRect().width }),
+        getEntranceKeyframes({
+          viewportWidth: document.documentElement.clientWidth,
+          stageWidth: stage.getBoundingClientRect().width,
+        }),
         ENTRANCE_OPTIONS,
       );
       void Promise.resolve(entrance).then(
@@ -157,12 +159,8 @@ export function useLoyaltyCard({
   }, [animate, replayKey, scope]);
 
   const addStamp = useCallback(() => {
-    if (stamps >= REWARD_STAMPS) return;
-    const nextStamp = stamps + 1;
-    setStamps(nextStamp);
-    if (motionAllowed)
-      setBurst({ stamp: nextStamp, id: ++burstSequenceRef.current });
-  }, [motionAllowed, stamps]);
+    dispatch({ type: "add", motionAllowed });
+  }, [motionAllowed]);
 
   useEffect(() => {
     if (!autoRunning) return;
@@ -182,12 +180,12 @@ export function useLoyaltyCard({
           remaining - (performance.now() - startedAt),
         );
     };
-  }, [addStamp, autoRunning, replayKey]);
+  }, [addStamp, autoRunning, replayKey, stamps]);
 
   useEffect(() => {
     if (!burst || !motionAllowed) return;
     const timer = window.setTimeout(
-      () => setBurst(null),
+      () => dispatch({ type: "clearBurst" }),
       burst.stamp === REWARD_STAMPS ? REWARD_BURST_MS : STAMP_BURST_MS,
     );
     return () => window.clearTimeout(timer);
@@ -196,26 +194,7 @@ export function useLoyaltyCard({
   function startManualDemo() {
     remainingTickRef.current = STAMP_INTERVAL_MS;
     setMode("manual");
-    setStamps(STARTING_STAMPS);
-    setBurst(null);
-  }
-
-  function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
-    if (
-      !ready ||
-      !motionAllowed ||
-      event.pointerType !== "mouse" ||
-      !window.matchMedia("(pointer: fine)").matches
-    )
-      return;
-    const bounds = event.currentTarget.getBoundingClientRect();
-    tiltX.set(-((event.clientY - bounds.top) / bounds.height - 0.5) * 12);
-    tiltY.set(((event.clientX - bounds.left) / bounds.width - 0.5) * 14);
-  }
-
-  function resetTilt() {
-    tiltX.set(0);
-    tiltY.set(0);
+    dispatch({ type: "reset" });
   }
 
   return {
@@ -228,10 +207,7 @@ export function useLoyaltyCard({
     motionAllowed,
     scope,
     stageRef,
-    rotateX,
-    rotateY,
-    handlePointerMove,
-    resetTilt,
+    ...tilt,
     startManualDemo,
     addStamp,
   };
