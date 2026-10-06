@@ -571,10 +571,29 @@ export interface CardConfigIssue {
   message: string;
 }
 
-function typeProblems(type: CardType, pointsEnabled: boolean): string[] {
-  return type === 'POINTS' && !pointsEnabled
-    ? ['Los puntos no están habilitados para tu marca. Actívalos en Configuración.']
-    : [];
+function typeProblems(config: Record<string, unknown>, pointsEnabled: boolean): string[] {
+  const problems: string[] = [];
+  const type = config.type as CardType;
+  const stamps = config.stampsEnabled === true;
+  const points = config.pointsEnabled === true;
+
+  if (!stamps && !points) {
+    problems.push('Debes habilitar al menos una modalidad (sellos o puntos)');
+  }
+
+  if (type === 'POINTS' && (stamps || !points)) {
+    problems.push('La modalidad principal no coincide con las banderas habilitadas');
+  } else if (type === 'STAMPS' && (!stamps || points)) {
+    problems.push('La modalidad principal no coincide con las banderas habilitadas');
+  } else if (type === 'DUAL' && (!stamps || !points)) {
+    problems.push('La modalidad DUAL requiere que ambas banderas estén habilitadas');
+  }
+
+  if (points && !pointsEnabled) {
+    problems.push('Los puntos no están habilitados para tu marca. Actívalos en Configuración.');
+  }
+
+  return problems;
 }
 
 function basicInfoProblems(config: Record<string, unknown>): string[] {
@@ -594,10 +613,11 @@ function rewardProblems(raw: unknown, type: CardType): string[] {
   if (rewards.length > CARD_REWARDS_MAX) {
     problems.push(`Puedes tener hasta ${CARD_REWARDS_MAX} recompensas`);
   }
-  const targetMax = type === 'POINTS' ? POINTS_TARGET_MAX : STAMPS_TARGET_MAX;
-  const unit = balanceUnit(type);
   rewards.forEach((rawReward, i) => {
     const reward = record(rawReward);
+    const currency = typeof reward.currency === 'string' ? reward.currency : (type === 'POINTS' ? 'POINTS' : 'STAMPS');
+    const targetMax = currency === 'POINTS' ? POINTS_TARGET_MAX : STAMPS_TARGET_MAX;
+    const unit = balanceUnit(currency as CardType);
     const name = trimmedText(reward.name);
     const label = name || `La recompensa ${i + 1}`;
     if (!name) problems.push(`Ponle nombre a la recompensa ${i + 1}`);
@@ -704,9 +724,9 @@ function issuesForStep(step: CardConfigIssue['step'], problems: string[]): CardC
 /** Reglas de negocio asociadas al paso del editor donde se pueden corregir. */
 export function cardConfigIssues(config: CardConfig, { pointsEnabled, now = new Date() }: CardRulesContext): CardConfigIssue[] {
   const input = record(config);
-  const type = input.type === 'POINTS' ? 'POINTS' : 'STAMPS';
+  const type = input.type as CardType;
   const issues = [
-    ...issuesForStep('TYPE', typeProblems(type, pointsEnabled)),
+    ...issuesForStep('TYPE', typeProblems(input, pointsEnabled)),
     ...issuesForStep('INFO', [
       ...basicInfoProblems(input),
       ...rewardProblems(input.rewards, type),

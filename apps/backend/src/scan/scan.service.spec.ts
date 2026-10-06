@@ -17,7 +17,7 @@ import { ScanActionDto } from './dto/scan-action.dto.js';
 import { ManualLookupLimiter } from './manual-lookup-limiter.js';
 import type { ReceiptStorageService } from './receipt-storage.service.js';
 import { ScanValidationTokens } from './validation-token.js';
-import { ScanService, resolveStampCooldownMs } from './scan.service.js';
+import { ScanService, resolveStampCooldownMs, calculateFifoConsumption } from './scan.service.js';
 
 // El cooldown se pasa explícito: el resultado no depende del .env de quien corre los tests.
 const configWithCooldown = (minutes: string) =>
@@ -1207,5 +1207,48 @@ describe('ScanService', () => {
     it('rejects an empty customer object', async () => {
       expect(await errorsOf({ merchantId, action: 'STAMP', customer: {} })).toContain('customer');
     });
+  });
+});
+
+describe('calculateFifoConsumption', () => {
+  it('should partially consume a large stamp chunk and create a remainder', () => {
+    const activeStampsList = [
+      {
+        id: 'big-stamp-1',
+        amount: 12,
+        passId: 'pass1',
+        merchantId: 'merch1',
+        brandId: 'brand1',
+        programId: 'prog1',
+        sourceScanId: 'scan1',
+        createdByUserId: 'user1',
+        earnedAt: new Date('2026-01-01'),
+        expiresAt: null,
+        currency: 'POINTS',
+      } as any,
+    ];
+
+    const { stampsToUpdate, newStampsToCreate } = calculateFifoConsumption(activeStampsList, 5);
+
+    expect(stampsToUpdate).toEqual(['big-stamp-1']);
+    expect(newStampsToCreate).toHaveLength(1);
+    expect(newStampsToCreate[0]).toMatchObject({
+      amount: 7, // 12 - 5
+      currency: 'POINTS',
+      sourceScanId: 'scan1',
+    });
+  });
+
+  it('should consume multiple stamps across boundaries exactly', () => {
+    const activeStampsList = [
+      { id: 's1', amount: 3 } as any,
+      { id: 's2', amount: 2 } as any,
+      { id: 's3', amount: 5 } as any,
+    ];
+
+    const { stampsToUpdate, newStampsToCreate } = calculateFifoConsumption(activeStampsList, 5);
+
+    expect(stampsToUpdate).toEqual(['s1', 's2']);
+    expect(newStampsToCreate).toHaveLength(0);
   });
 });

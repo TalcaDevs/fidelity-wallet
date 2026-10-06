@@ -94,7 +94,9 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
     }
   }
 
-  const receiptMissing = hasPoints && validation.receiptRequired && !receipt && validation.canAddPoints ? 'Adjunta la foto de la boleta' : null;
+  // La foto de la boleta solo es obligatoria para sumar sellos (si el local lo exige)
+  const receiptIsRequired = hasStamps && validation.receiptRequired && validation.canStamp && activeStampCount > 0;
+  const receiptMissing = receiptIsRequired && !receipt ? 'Adjunta la foto de la boleta' : null;
 
   // Progreso (mostramos sellos preferentemente, o puntos si solo hay puntos)
   const primaryBalance = hasStamps ? validation.stampsCount : validation.pointsCount;
@@ -289,11 +291,11 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
             />
           </div>
 
-          {(hasPoints ? validation.canAddPoints : validation.canStamp) && (
+          {(validation.canStamp || validation.canAddPoints) && (
             <div>
               <span className="block text-sm font-bold text-slate-300 mb-2 px-1">
                 Foto de la boleta{' '}
-                {!validation.receiptRequired && <span className="font-medium text-slate-500">(opcional)</span>}
+                {!receiptIsRequired && <span className="font-medium text-slate-500">(opcional)</span>}
               </span>
               {receipt && previewUrl ? (
                 <div className="flex items-center gap-3 rounded-2xl bg-slate-800 border-2 border-slate-700 p-2">

@@ -83,7 +83,7 @@ export function ScanReward({ result, cardType = 'STAMPS', onReset, onRedeem }: {
     redeemable.length === 1 ? redeemable[0].id : undefined,
   );
   const selected = promotions.find((p) => p.id === selectedId);
-  const stamps = result.stampsCount ?? 0;
+  const currentBalance = cardType === 'POINTS' ? (result.pointsCount ?? 0) : (result.stampsCount ?? 0);
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center duration-300 px-6 text-center overflow-y-auto py-4">
@@ -101,8 +101,8 @@ export function ScanReward({ result, cardType = 'STAMPS', onReset, onRedeem }: {
         </p>
       )}
       <p className="text-slate-300 text-lg font-medium mb-6">
-        {result.customerLabel && <>Cliente {result.customerLabel} · </>}
-        <span className="font-black text-white">{clp.format(stamps)} {unit}</span>
+        {result.customerLabel && <>Cliente {result.customerLabel} &middot; </>}
+        <span className="font-black text-white">{clp.format(currentBalance)} {unit}</span>
       </p>
 
       {promotions.length > 0 ? (
@@ -129,9 +129,15 @@ export function ScanReward({ result, cardType = 'STAMPS', onReset, onRedeem }: {
                   <span className="block font-bold text-white">{p.rewardName}</span>
                   <span className="block text-sm text-slate-400">{p.name}</span>
                 </span>
-                <span className={`shrink-0 text-sm font-black ${p.canRedeem ? 'text-amber-300' : 'text-slate-500'}`}>
-                  {p.canRedeem ? `${clp.format(p.targetStamps)} ${unit}` : `Faltan ${clp.format(p.targetStamps - stamps)}`}
-                </span>
+                {(() => {
+                  const pUnit = p.currency === 'POINTS' ? 'Puntos' : 'Sellos';
+                  const pBalance = p.currency === 'POINTS' ? (result.pointsCount ?? 0) : (result.stampsCount ?? 0);
+                  return (
+                    <span className={`shrink-0 text-sm font-black ${p.canRedeem ? 'text-amber-300' : 'text-slate-500'}`}>
+                      {p.canRedeem ? `${clp.format(p.targetStamps)} ${pUnit}` : `Faltan ${clp.format(p.targetStamps - pBalance)}`}
+                    </span>
+                  );
+                })()}
               </button>
             );
           })}

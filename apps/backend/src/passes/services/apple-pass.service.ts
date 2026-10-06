@@ -84,7 +84,7 @@ export class ApplePassService {
                 {
                   key: 'stamps',
                   label: 'SELLOS',
-                  value: `${data.activeStamps} / ${data.targetStamps}`,
+                  value: data.rewardCurrency === 'STAMPS' ? `${data.activeStamps} / ${data.targetStamps}` : String(data.activeStamps),
                 },
               ]
             : []),
@@ -93,7 +93,7 @@ export class ApplePassService {
                 {
                   key: 'points',
                   label: 'PUNTOS',
-                  value: String(data.activePoints),
+                  value: data.rewardCurrency === 'POINTS' ? `${data.activePoints} / ${data.targetStamps}` : String(data.activePoints),
                 },
               ]
             : []),
@@ -106,7 +106,7 @@ export class ApplePassService {
             ? [{ key: 'customer', label: 'TITULAR', value: data.customerLabel }]
             : []),
           ...(details.fields.includes('PROGRESS')
-            ? [{ key: 'status', label: 'ESTADO', value: statusText(card, data.stampsEnabled ? data.activeStamps : data.activePoints, data.targetStamps) }]
+            ? [{ key: 'status', label: 'ESTADO', value: statusText(card, data.rewardCurrency === 'POINTS' ? data.activePoints : data.activeStamps, data.targetStamps) }]
             : []),
         ],
         backFields,

@@ -38,10 +38,11 @@ function balanceLabel(card: CardView): string {
   return card.type === 'POINTS' ? 'Puntos' : 'Sellos';
 }
 
-export function statusText(card: CardView, activeBalance: number, target: number): string {
+export function statusText(card: CardView, activeBalance: number, target: number, currency?: 'STAMPS' | 'POINTS'): string {
+  const actualCurrency = currency || (card.type === 'POINTS' ? 'POINTS' : 'STAMPS');
   if (activeBalance >= target) return '¡Premio desbloqueado!';
   const remaining = target - activeBalance;
-  return `${remaining === 1 ? 'Falta' : 'Faltan'} ${remaining} ${balanceUnit(card.type, remaining)}`;
+  return `${remaining === 1 ? 'Falta' : 'Faltan'} ${remaining} ${balanceUnit(actualCurrency, remaining)}`;
 }
 
 /** Un campo solo existe si tiene sentido para la tarjeta (no hay "vence" en una que no vence). */
@@ -58,13 +59,14 @@ function cardTemplate(card: CardView) {
   const items = [...balanceModules, ...front.map((key) => FIELD_MODULE_ID[key])].map((id) => ({
     firstValue: { fields: [{ fieldPath: `object.textModulesData['${id}']` }] },
   }));
-  const row =
-    items.length === 1
-      ? { oneItem: { item: items[0] } }
-      : items.length === 2
-        ? { twoItems: { startItem: items[0], endItem: items[1] } }
-        : { threeItems: { startItem: items[0], middleItem: items[1], endItem: items[2] } };
-  return { cardTemplateOverride: { cardRowTemplateInfos: [row] } };
+  const rows = [];
+  for (let i = 0; i < items.length; i += 3) {
+    const chunk = items.slice(i, i + 3);
+    if (chunk.length === 1) rows.push({ oneItem: { item: chunk[0] } });
+    else if (chunk.length === 2) rows.push({ twoItems: { startItem: chunk[0], endItem: chunk[1] } });
+    else rows.push({ threeItems: { startItem: chunk[0], middleItem: chunk[1], endItem: chunk[2] } });
+  }
+  return { cardTemplateOverride: { cardRowTemplateInfos: rows } };
 }
 
 /** Clase de Google Wallet: lo común a todas las tarjetas de la marca. Al editarla, Google la
@@ -111,7 +113,7 @@ function textModules(data: PassData) {
     modules.push({
       id: 'stamps_balance',
       header: 'Sellos',
-      body: `${data.activeStamps} de ${data.targetStamps}`,
+      body: data.rewardCurrency === 'STAMPS' ? `${data.activeStamps} de ${data.targetStamps}` : String(data.activeStamps),
     });
   }
   
@@ -119,7 +121,7 @@ function textModules(data: PassData) {
     modules.push({
       id: 'points_balance',
       header: 'Puntos',
-      body: String(data.activePoints),
+      body: data.rewardCurrency === 'POINTS' ? `${data.activePoints} de ${data.targetStamps}` : String(data.activePoints),
     });
   }
   for (const key of availableFields(card)) {
@@ -129,8 +131,8 @@ function textModules(data: PassData) {
         modules.push({ id, header: 'Premio', body: data.rewardName });
         break;
       case 'PROGRESS':
-        const mainBalance = data.stampsEnabled ? data.activeStamps : data.activePoints;
-        modules.push({ id, header: 'Estado', body: statusText(card, mainBalance, data.targetStamps) });
+        const mainBalance = data.rewardCurrency === 'POINTS' ? data.activePoints : data.activeStamps;
+        modules.push({ id, header: 'Estado', body: statusText(card, mainBalance, data.targetStamps, data.rewardCurrency) });
         break;
       case 'STAMPS_EXPIRY':
         modules.push({
@@ -154,9 +156,9 @@ export function buildObjectState(data: PassData, baseUrl: string): Record<string
   const { card } = data.cardClass;
   
   // En Google Wallet, loyaltyPoints es el "saldo principal" que a veces muestra la app
-  // nativa. Priorizamos stamps si está disponible, si no points.
-  const mainBalance = data.stampsEnabled ? data.activeStamps : data.activePoints;
-  const mainLabel = data.stampsEnabled ? 'Sellos' : 'Puntos';
+  // nativa. Priorizamos según el premio seleccionado.
+  const mainBalance = data.rewardCurrency === 'POINTS' ? data.activePoints : data.activeStamps;
+  const mainLabel = data.rewardCurrency === 'POINTS' ? 'Puntos' : 'Sellos';
   const mainTarget = data.targetStamps;
   
   const state: Record<string, unknown> = {

@@ -9,6 +9,7 @@ export interface PromotionOption {
   rewardName: string;
   targetStamps: number;
   canRedeem: boolean;
+  currency?: 'STAMPS' | 'POINTS';
 }
 
 export interface ScanResult {
@@ -17,6 +18,7 @@ export interface ScanResult {
   scanId?: string;
   customerLabel?: string;
   stampsCount?: number;
+  pointsCount?: number;
   stampsAdded?: number;
   targetStamps?: number;
   rewardUnlocked?: boolean;

@@ -164,12 +164,12 @@ describe('Scan flow', () => {
     processScan.mockResolvedValueOnce({
       ok: true,
       customerLabel: 'María',
-      stampsCount: 102,
+      pointsCount: 102,
       stampsAdded: 12,
       targetStamps: 100,
       rewardUnlocked: true,
-      availablePromotions: [{ id: 'promo-1', name: 'Café', rewardName: 'Café gratis', targetStamps: 100, canRedeem: true }],
-    }).mockResolvedValueOnce({ ok: true, customerLabel: 'María', stampsCount: 2 });
+      availablePromotions: [{ id: 'promo-1', name: 'Café', rewardName: 'Café gratis', targetStamps: 100, canRedeem: true, currency: 'POINTS' }],
+    }).mockResolvedValueOnce({ ok: true, customerLabel: 'María', pointsCount: 2 });
     renderScanner(role, false);
 
     fireEvent.click(screen.getByRole('button', { name: 'Manual' }));
@@ -185,18 +185,6 @@ describe('Scan flow', () => {
     expect(screen.getAllByRole('alert')[0]).toHaveTextContent(/monto de la compra/i);
 
     fireEvent.change(screen.getByLabelText(/monto de la compra/i), { target: { value: '12500' } });
-    let receipt: File | undefined;
-    if (receiptRequired) {
-      fireEvent.click(screen.getByRole('button', { name: 'Sumar 12 puntos' }));
-      expect(processScan).not.toHaveBeenCalled();
-      expect(screen.getByRole('alert')).toHaveTextContent(/foto de la boleta/i);
-
-      vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:boleta');
-      vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
-      receipt = new File(['boleta'], 'boleta.png', { type: 'image/png' });
-      fireEvent.change(screen.getByLabelText(/tomar foto de la boleta/i, { selector: 'input' }), { target: { files: [receipt] } });
-      await screen.findByAltText('Foto de la boleta');
-    }
     fireEvent.click(screen.getByRole('button', { name: 'Sumar 12 puntos' }));
 
     expect(await screen.findByRole('heading', { name: '¡12 puntos agregados!' })).toBeInTheDocument();
@@ -205,12 +193,12 @@ describe('Scan flow', () => {
       merchantId: 'm-1',
       action: 'STAMP',
       target: { validationToken: 'token-1' },
-      extras: { purchaseAmount: 12500, note: undefined, receipt, stampCount: 0 },
+      extras: { purchaseAmount: 12500, note: undefined, receipt: undefined, stampCount: 0 },
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Canjear premio' }));
     expect(screen.getByText('102 puntos')).toBeInTheDocument();
-    expect(screen.getByText('100 puntos')).toBeInTheDocument();
+    expect(screen.getByText('100 Puntos')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Entregar Café gratis' }));
     expect(await screen.findByRole('heading', { name: '¡Premio entregado!' })).toBeInTheDocument();
     expect(processScan).toHaveBeenNthCalledWith(2, {

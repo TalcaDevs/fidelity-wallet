@@ -47,11 +47,17 @@ const SOON: Pick<Option, 'title' | 'description'>[] = [
  * Al cambiar de tipo, una meta de sellos (10) no sirve como costo en puntos ni al revés: se
  * propone una equivalente (10 sellos ≈ 100 puntos) que el dueño ajusta en el paso siguiente.
  */
-function convertRewards(rewards: CardReward[], to: CardType): CardReward[] {
-  return rewards.map((r) => ({
-    ...r,
-    target: to === 'POINTS' ? r.target * 10 : Math.min(STAMPS_TARGET_MAX, Math.max(1, Math.round(r.target / 10))),
-  }));
+function convertRewards(rewards: CardReward[], to: CardType, oldType: CardType): CardReward[] {
+  if (to === 'DUAL') return rewards;
+  return rewards.map((r) => {
+    const currentCurrency = r.currency || (oldType === 'POINTS' ? 'POINTS' : 'STAMPS');
+    if (currentCurrency === to) return { ...r, currency: to };
+    return {
+      ...r,
+      target: to === 'POINTS' ? r.target * 10 : Math.min(STAMPS_TARGET_MAX, Math.max(1, Math.round(r.target / 10))),
+      currency: to,
+    };
+  });
 }
 
 function determineNewType(stamps: boolean, points: boolean): CardType {
@@ -118,14 +124,18 @@ export function TypeStep({ editor }: { editor: CardEditor }) {
 
                 const newType = determineNewType(newStampsEnabled, newPointsEnabled);
                 
-                // Solo convertimos recompensas si pasamos de 1 moneda a otra pura
-                // Si agregamos DUAL no modificamos las recompensas, asumimos que convivirán
+                const currentType = determineNewType(config.stampsEnabled, config.pointsEnabled);
                 let newRewards = config.rewards;
-                if (!newStampsEnabled || !newPointsEnabled) {
-                  // Si estamos volviendo a un modo puro, revisamos si difiere del modo de las recompensas actuales
-                  if (newType !== saved.type && saved.type !== 'DUAL') {
-                     newRewards = convertRewards(config.rewards, newType);
-                  }
+                if (newType !== 'DUAL') {
+                  newRewards = convertRewards(config.rewards, newType, currentType);
+                }
+
+                let newWelcomeBalance = config.welcomeBalance;
+                const currentPrimary = currentType === 'POINTS' ? 'POINTS' : 'STAMPS';
+                const newPrimary = newType === 'POINTS' ? 'POINTS' : 'STAMPS';
+                
+                if (currentPrimary !== newPrimary) {
+                  newWelcomeBalance = 0;
                 }
 
                 update({
@@ -133,8 +143,7 @@ export function TypeStep({ editor }: { editor: CardEditor }) {
                   stampsEnabled: newStampsEnabled,
                   pointsEnabled: newPointsEnabled,
                   rewards: newRewards,
-                  // Reseteamos welcomeBalance si cambiamos de modo puro a modo puro distinto
-                  welcomeBalance: (saved.type !== 'DUAL' && newType !== saved.type) ? 0 : saved.welcomeBalance,
+                  welcomeBalance: newWelcomeBalance,
                 });
               }}
               className={`w-full text-left flex items-start gap-4 rounded-2xl border-2 p-5 transition-colors disabled:cursor-not-allowed ${

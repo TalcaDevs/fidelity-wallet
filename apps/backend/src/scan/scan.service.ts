@@ -16,7 +16,8 @@ import {
   pointsForAmount,
   type PanelStampsResultDto,
 } from '@fidelity/shared';
-import type { Customer, LoyaltyProgram, Pass, Promotion, Scan } from '@prisma/client';
+import type { Customer, LoyaltyProgram, Pass, Promotion, Scan, Stamp } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { MerchantRole, ScanMethod, ScanType } from '@prisma/client';
 import { passExpiresAt, toCardView, type CardView } from '../cards/card-program.js';
 import {
@@ -1041,34 +1042,7 @@ export class ScanService {
         },
       });
 
-      let remainingToConsume = promotion.targetStamps;
-      const stampsToUpdate: string[] = [];
-      const newStampsToCreate: any[] = [];
-
-      for (const stamp of activeStampsList) {
-        if (remainingToConsume <= 0) break;
-
-        if (stamp.amount <= remainingToConsume) {
-          stampsToUpdate.push(stamp.id);
-          remainingToConsume -= stamp.amount;
-        } else {
-          stampsToUpdate.push(stamp.id);
-          const remainingAmount = stamp.amount - remainingToConsume;
-          newStampsToCreate.push({
-             passId: stamp.passId,
-             merchantId: stamp.merchantId,
-             brandId: stamp.brandId,
-             programId: stamp.programId,
-             sourceScanId: stamp.sourceScanId,
-             createdByUserId: stamp.createdByUserId,
-             earnedAt: stamp.earnedAt,
-             expiresAt: stamp.expiresAt,
-             currency: stamp.currency,
-             amount: remainingAmount,
-          });
-          remainingToConsume = 0;
-        }
-      }
+      const { stampsToUpdate, newStampsToCreate } = calculateFifoConsumption(activeStampsList, promotion.targetStamps);
 
       const updateResult = await tx.stamp.updateMany({
         where: { id: { in: stampsToUpdate }, consumedAt: null },
@@ -1111,4 +1085,40 @@ export class ScanService {
       };
     });
   }
+}
+
+export function calculateFifoConsumption(
+  activeStampsList: Stamp[],
+  targetStamps: number
+): { stampsToUpdate: string[]; newStampsToCreate: Prisma.StampCreateManyInput[] } {
+  let remainingToConsume = targetStamps;
+  const stampsToUpdate: string[] = [];
+  const newStampsToCreate: Prisma.StampCreateManyInput[] = [];
+
+  for (const stamp of activeStampsList) {
+    if (remainingToConsume <= 0) break;
+
+    if (stamp.amount <= remainingToConsume) {
+      stampsToUpdate.push(stamp.id);
+      remainingToConsume -= stamp.amount;
+    } else {
+      stampsToUpdate.push(stamp.id);
+      const remainingAmount = stamp.amount - remainingToConsume;
+      newStampsToCreate.push({
+         passId: stamp.passId,
+         merchantId: stamp.merchantId,
+         brandId: stamp.brandId,
+         programId: stamp.programId,
+         sourceScanId: stamp.sourceScanId,
+         createdByUserId: stamp.createdByUserId,
+         earnedAt: stamp.earnedAt,
+         expiresAt: stamp.expiresAt,
+         currency: stamp.currency as any,
+         amount: remainingAmount,
+      });
+      remainingToConsume = 0;
+    }
+  }
+
+  return { stampsToUpdate, newStampsToCreate };
 }

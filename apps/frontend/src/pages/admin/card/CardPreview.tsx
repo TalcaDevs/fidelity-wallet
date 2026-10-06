@@ -31,15 +31,24 @@ const formatDate = (date: Date) => date.toLocaleDateString('es-CL', { day: 'nume
 
 /** Saldo y textos de ejemplo, calculados como los calcula el backend para un pase real. */
 function sample(config: CardConfig) {
-  const rewards = [...config.rewards].sort((a, b) => a.target - b.target);
-  const isPoints = config.type === 'POINTS';
-  const reward = rewards[0] ?? { name: 'Tu premio', target: isPoints ? 100 : 10 };
-  const target = Math.max(1, reward.target);
-  // En DUAL se muestran ambos.
-  const stampsBalance = Math.min(3, target);
-  const pointsBalance = Math.floor(target * 0.4);
-  const remaining = Math.max(0, target - (config.stampsEnabled ? stampsBalance : pointsBalance));
-  const unit = balanceUnit(config.type, remaining);
+  const stampsRewards = [...config.rewards].filter((r) => (r.currency || (config.type === 'POINTS' ? 'POINTS' : 'STAMPS')) === 'STAMPS').sort((a, b) => a.target - b.target);
+  const pointsRewards = [...config.rewards].filter((r) => (r.currency || (config.type === 'POINTS' ? 'POINTS' : 'STAMPS')) === 'POINTS').sort((a, b) => a.target - b.target);
+  
+  const stampsTarget = stampsRewards[0] ? Math.max(1, stampsRewards[0].target) : 10;
+  const stampsBalance = Math.min(3, stampsTarget);
+  
+  const pointsTarget = pointsRewards[0] ? Math.max(1, pointsRewards[0].target) : 100;
+  const pointsBalance = Math.floor(pointsTarget * 0.4);
+  
+  const allRewards = [...config.rewards].sort((a, b) => a.target - b.target);
+  const mainReward = allRewards[0] ?? { name: 'Tu premio', target: config.type === 'POINTS' ? 100 : 10, currency: config.type };
+  const mainCurrency = mainReward.currency || (config.type === 'POINTS' ? 'POINTS' : 'STAMPS');
+  
+  const activeBalance = mainCurrency === 'POINTS' ? pointsBalance : stampsBalance;
+  const target = Math.max(1, mainReward.target);
+  const remaining = Math.max(0, target - activeBalance);
+  
+  const unit = balanceUnit(mainCurrency, remaining);
   const cardExpiry =
     config.validity.type === 'FIXED_DATE' && config.validity.expiresAt
       ? new Date(config.validity.expiresAt)
@@ -48,7 +57,7 @@ function sample(config: CardConfig) {
         : null;
 
   const values: Record<CardFieldKey, string | null> = {
-    REWARD: reward.name || 'Tu premio',
+    REWARD: mainReward.name || 'Tu premio',
     PROGRESS: remaining <= 0 ? '¡Premio desbloqueado!' : `${remaining === 1 ? 'Falta' : 'Faltan'} ${clp.format(remaining)} ${unit}`,
     STAMPS_EXPIRY: config.stampValidityDays
       ? formatDate(new Date(Date.now() + config.stampValidityDays * 86_400_000))
@@ -62,6 +71,7 @@ function sample(config: CardConfig) {
 
   return {
     target,
+    stampsTarget,
     stampsBalance,
     pointsBalance,
     fields,
@@ -123,7 +133,7 @@ function AndroidPass({ config, brandName, face }: { config: CardConfig; brandNam
   const data = sample(config);
   const qr = useQr('fidelity-wallet-preview');
   const balances = [];
-  if (config.stampsEnabled) balances.push({ key: 'stamps', label: 'Sellos', value: `${data.stampsBalance} de ${data.target}` });
+  if (config.stampsEnabled) balances.push({ key: 'stamps', label: 'Sellos', value: `${data.stampsBalance} de ${data.stampsTarget}` });
   if (config.pointsEnabled) balances.push({ key: 'points', label: 'Puntos', value: clp.format(data.pointsBalance) });
   
   const items = [...balances, ...data.front];
@@ -137,7 +147,7 @@ function AndroidPass({ config, brandName, face }: { config: CardConfig; brandNam
         </div>
         <dl className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
           {details.showCustomerName && <DetailRow label="Titular" value={SAMPLE_NAME} />}
-          {config.stampsEnabled && <DetailRow label="Sellos" value={`${data.stampsBalance} de ${data.target}`} />}
+          {config.stampsEnabled && <DetailRow label="Sellos" value={`${data.stampsBalance} de ${data.stampsTarget}`} />}
           {config.pointsEnabled && <DetailRow label="Puntos" value={clp.format(data.pointsBalance)} />}
           {data.fields.map((f) => (
             <DetailRow key={f.key} label={f.label} value={f.value} />
@@ -180,7 +190,7 @@ function AndroidPass({ config, brandName, face }: { config: CardConfig; brandNam
         ))}
       </div>
       {config.stampsEnabled ? (
-        <StampStrip design={design} target={data.target} filled={data.stampsBalance} />
+        <StampStrip design={design} target={data.stampsTarget} filled={data.stampsBalance} />
       ) : (
         design.heroImageUrl && <img src={design.heroImageUrl} alt="" className="w-full aspect-[1032/336] object-cover" />
       )}
@@ -272,7 +282,7 @@ function ApplePass({ config, face }: { config: CardConfig; face: Face }) {
           {config.stampsEnabled && (
             <div>
               <p className="text-[10px] font-bold uppercase" style={label}>Sellos</p>
-              <p className="text-sm font-semibold" style={value}>{data.stampsBalance} / {data.target}</p>
+              <p className="text-sm font-semibold" style={value}>{data.stampsBalance} / {data.stampsTarget}</p>
             </div>
           )}
           {config.pointsEnabled && (
@@ -284,7 +294,7 @@ function ApplePass({ config, face }: { config: CardConfig; face: Face }) {
         </div>
       </div>
       {config.stampsEnabled ? (
-        <StampStrip design={design} target={data.target} filled={data.stampsBalance} />
+        <StampStrip design={design} target={data.stampsTarget} filled={data.stampsBalance} />
       ) : (
         design.heroImageUrl && <img src={design.heroImageUrl} alt="" className="w-full aspect-[1032/336] object-cover" />
       )}

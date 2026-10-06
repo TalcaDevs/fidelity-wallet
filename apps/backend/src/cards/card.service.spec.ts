@@ -182,7 +182,7 @@ describe('CardService', () => {
     });
 
     it('does not allow points unless they are enabled for the brand', async () => {
-      const points = body({ type: 'POINTS', rewards: [{ name: 'Postre', target: 500 }] });
+      const points = body({ type: 'POINTS', stampsEnabled: false, pointsEnabled: true, rewards: [{ name: 'Postre', target: 500, currency: 'POINTS' }] });
       await expect(setup().service.save(brandId, userId, points)).rejects.toBeInstanceOf(BadRequestException);
       await expect(setup({ pointsEnabled: true }).service.save(brandId, userId, points)).resolves.toBeDefined();
     });

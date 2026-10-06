@@ -23,6 +23,7 @@ export interface PassData {
   /** Saldo de puntos vigentes. */
   activePoints: number;
   targetStamps: number;
+  rewardCurrency: 'STAMPS' | 'POINTS';
   rewardName: string;
   nextExpiryAt?: Date | null;
   memberSince: Date;

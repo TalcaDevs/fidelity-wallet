@@ -171,6 +171,7 @@ describe('GoogleWalletService', () => {
     activeStamps: 4,
     activePoints: 0,
     targetStamps: 5,
+    rewardCurrency: 'STAMPS',
     rewardName: 'Almuerzo gratis',
     nextExpiryAt: null,
     memberSince: new Date('2026-01-15T12:00:00Z'),
@@ -278,7 +279,7 @@ describe('GoogleWalletService', () => {
 
     it('labels the balance as points and sets the card expiry', () => {
       const data = passData(
-        { activePoints: 120, targetStamps: 500, stampsEnabled: false, pointsEnabled: true, cardExpiresAt: new Date('2027-01-01T00:00:00Z') },
+        { activePoints: 120, targetStamps: 500, rewardCurrency: 'POINTS', stampsEnabled: false, pointsEnabled: true, cardExpiresAt: new Date('2027-01-01T00:00:00Z') },
         { type: 'POINTS', stampsEnabled: false, pointsEnabled: true },
       );
       const [object] = decodeClaims(service.generateSaveUrl(data)).payload.loyaltyObjects;

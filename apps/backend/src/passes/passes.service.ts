@@ -452,6 +452,7 @@ export class PassesService {
       activeStamps,
       activePoints,
       targetStamps: promotion.targetStamps,
+      rewardCurrency: promotion.currency || (cardClass.card.type === 'POINTS' ? 'POINTS' : 'STAMPS'),
       rewardName: promotion.rewardName,
       nextExpiryAt: nextExpiring?.expiresAt ?? null,
       memberSince: pass.createdAt,
