@@ -1,3 +1,4 @@
+import svgr from 'vite-plugin-svgr'
 import path from 'path'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -13,6 +14,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [
+      svgr({ svgrOptions: { ref: true } }),
       react(), 
       tailwindcss(),
       ...(enableHttps ? [basicSsl()] : []),
