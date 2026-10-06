@@ -7,6 +7,7 @@ import { AppService } from './app.service.js';
 import { BillingModule } from './billing/billing.module.js';
 import { CardsModule } from './cards/cards.module.js';
 import { CustomersModule } from './customers/customers.module.js';
+import { HealthModule } from './health/health.module.js';
 import { InternalModule } from './internal/internal.module.js';
 import { LocationsModule } from './locations/locations.module.js';
 import { MerchantsModule } from './merchants/merchants.module.js';
@@ -41,6 +42,7 @@ import { SupportModule } from './support/support.module.js';
     ReportsModule,
     LocationsModule,
     InternalModule,
+    HealthModule,
   ],
   controllers: [AppController],
   providers: [
