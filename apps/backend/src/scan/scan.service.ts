@@ -4,6 +4,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -170,6 +171,7 @@ function toCashierCustomer(customer: Customer | null): MaskedCustomerDto | undef
 
 @Injectable()
 export class ScanService {
+  private readonly logger = new Logger(ScanService.name);
   private readonly stampCooldownMs: number;
   private readonly ownerMaxStamps: number;
 
@@ -306,7 +308,11 @@ export class ScanService {
         options,
       );
       if (!result.alreadyScanned) {
-        void this.passesService.notifyPassUpdate(pass.id);
+        void this.passesService
+          .notifyPassUpdate(pass.id)
+          .catch((err) =>
+            this.logger.warn(`Error al notificar actualización de pase en segundo plano: ${err}`),
+          );
       }
       return result;
     }
@@ -328,7 +334,11 @@ export class ScanService {
         method,
       );
       if (!result.alreadyScanned) {
-        void this.passesService.notifyPassUpdate(pass.id);
+        void this.passesService
+          .notifyPassUpdate(pass.id)
+          .catch((err) =>
+            this.logger.warn(`Error al notificar actualización de pase en segundo plano: ${err}`),
+          );
       }
       return result;
     }
@@ -382,7 +392,11 @@ export class ScanService {
       ScanMethod.PANEL,
       options,
     );
-    void this.passesService.notifyPassUpdate(pass.id);
+    void this.passesService
+      .notifyPassUpdate(pass.id)
+      .catch((err) =>
+        this.logger.warn(`Error al notificar actualización de pase desde panel: ${err}`),
+      );
 
     return {
       scanId: result.scanId!,

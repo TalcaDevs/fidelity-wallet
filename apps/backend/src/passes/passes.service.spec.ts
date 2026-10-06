@@ -501,6 +501,19 @@ describe('PassesService', () => {
       await expect(service.notifyPassUpdate(mockPassId)).resolves.toBeUndefined();
     });
 
+    it('catches database error in notifyPassUpdate and does not produce unhandled rejection', async () => {
+      vi.spyOn(prisma.pass, 'findUnique').mockRejectedValue(new Error('DB connection pool exhausted'));
+      await expect(service.notifyPassUpdate(mockPassId)).resolves.toBeUndefined();
+    });
+
+    it('catches generic enqueue error in notifyPassUpdate and does not produce unhandled rejection', async () => {
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(createMockPass() as any);
+      const updateWorker = (service as any).updateWorker;
+      vi.spyOn(updateWorker, 'enqueue').mockRejectedValue(new Error('Transient database error'));
+
+      await expect(service.notifyPassUpdate(mockPassId)).resolves.toBeUndefined();
+    });
+
     it('catches P2003 foreign key violation in enqueuePassUpdate and does not throw', async () => {
       vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(createMockPass() as any);
       const p2003Error = new Prisma.PrismaClientKnownRequestError('Foreign key constraint failed', {

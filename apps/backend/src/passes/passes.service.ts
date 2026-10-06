@@ -240,44 +240,50 @@ export class PassesService {
   }
 
   async notifyPassUpdate(passId: string, tx?: Prisma.TransactionClient): Promise<void> {
-    const client = tx ?? this.prisma;
-    const pass = await client.pass.findUnique({
-      where: { id: passId },
-      select: { id: true },
-    });
-    if (!pass) {
-      return;
-    }
-
-    let task: PassUpdateTask;
     try {
-      task = await this.updateWorker.enqueue(passId, tx);
-    } catch (err: unknown) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+      const client = tx ?? this.prisma;
+      const pass = await client.pass.findUnique({
+        where: { id: passId },
+        select: { id: true },
+      });
+      if (!pass) {
         return;
       }
-      throw err;
-    }
 
-    if (tx) {
-      return;
-    }
-
-    const previousQueue = this.passUpdateQueues.get(passId) ?? Promise.resolve();
-
-    const currentTask = previousQueue
-      .catch(() => {})
-      .then(async () => {
-        await this.updateWorker.processPass(passId, task.id);
-      })
-      .finally(() => {
-        if (this.passUpdateQueues.get(passId) === currentTask) {
-          this.passUpdateQueues.delete(passId);
+      let task: PassUpdateTask;
+      try {
+        task = await this.updateWorker.enqueue(passId, tx);
+      } catch (err: unknown) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+          return;
         }
-      });
+        throw err;
+      }
 
-    this.passUpdateQueues.set(passId, currentTask);
-    return currentTask;
+      if (tx) {
+        return;
+      }
+
+      const previousQueue = this.passUpdateQueues.get(passId) ?? Promise.resolve();
+
+      const currentTask = previousQueue
+        .catch(() => {})
+        .then(async () => {
+          await this.updateWorker.processPass(passId, task.id);
+        })
+        .finally(() => {
+          if (this.passUpdateQueues.get(passId) === currentTask) {
+            this.passUpdateQueues.delete(passId);
+          }
+        });
+
+      this.passUpdateQueues.set(passId, currentTask);
+      return currentTask;
+    } catch (err: unknown) {
+      this.logger.warn(
+        `[PassesService] Fallo no fatal en notificación inmediata de pass ${passId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   public async dispatchPassUpdate(passId: string): Promise<void> {

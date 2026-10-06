@@ -217,25 +217,89 @@ export class PassUpdateWorkerService
       return false;
     }
 
+    let heartbeat: NodeJS.Timeout | null = null;
+    const heartbeatInterval = Math.max(1000, Math.min(Math.floor(this.staleLockMs / 3), 10000));
+    heartbeat = setInterval(async () => {
+      try {
+        await this.prisma.passUpdateTask.updateMany({
+          where: {
+            id: task.id,
+            lockedBy: claimId,
+            status: PassUpdateStatus.PROCESSING,
+          },
+          data: {
+            lockedAt: new Date(),
+          },
+        });
+      } catch {
+      }
+    }, heartbeatInterval);
+    if (typeof heartbeat.unref === 'function') {
+      heartbeat.unref();
+    }
+
     try {
       await this.dispatcher(task.passId);
+
+      if (heartbeat) {
+        clearInterval(heartbeat);
+        heartbeat = null;
+      }
+
+      const nowAfterDispatch = new Date();
+      const staleThresholdAfterDispatch = new Date(nowAfterDispatch.getTime() - this.staleLockMs);
 
       const completed = await this.prisma.passUpdateTask.updateMany({
         where: {
           id: task.id,
           lockedBy: claimId,
           status: PassUpdateStatus.PROCESSING,
+          lockedAt: { gt: staleThresholdAfterDispatch },
         },
         data: {
           status: PassUpdateStatus.COMPLETED,
           lockedAt: null,
           lockedBy: null,
           lastError: null,
+          updatedAt: nowAfterDispatch,
         },
       });
 
-      return completed.count > 0;
+      if (completed.count === 0) {
+        this.logger.warn(
+          `[PassUpdateWorker] Despacho desfasado o bloqueo vencido para pass ${task.passId}. Re-enviando estado vigente para garantizar saldo correcto en wallet.`,
+        );
+
+        try {
+          await this.dispatcher(task.passId);
+        } catch (dispatchErr: unknown) {
+          const msg = dispatchErr instanceof Error ? dispatchErr.message : String(dispatchErr);
+          this.logger.error(`[PassUpdateWorker] Error al re-despachar estado vigente: ${msg}`);
+        }
+
+        await this.prisma.passUpdateTask.updateMany({
+          where: {
+            id: task.id,
+            lockedBy: claimId,
+            status: PassUpdateStatus.PROCESSING,
+          },
+          data: {
+            status: PassUpdateStatus.COMPLETED,
+            lockedAt: null,
+            lockedBy: null,
+            lastError: null,
+          },
+        });
+
+        return false;
+      }
+
+      return true;
     } catch (err: unknown) {
+      if (heartbeat) {
+        clearInterval(heartbeat);
+        heartbeat = null;
+      }
       const errorMsg = err instanceof Error ? err.message : String(err);
       const currentTask = await this.prisma.passUpdateTask.findUnique({
         where: { id: task.id },
@@ -267,6 +331,10 @@ export class PassUpdateWorkerService
         },
       });
       return false;
+    } finally {
+      if (heartbeat) {
+        clearInterval(heartbeat);
+      }
     }
   }
 

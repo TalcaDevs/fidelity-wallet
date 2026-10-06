@@ -329,6 +329,142 @@ describe('PassUpdateWorkerService', () => {
       const resFuture = await statefulService.processSingleTask(futureTask);
       expect(resFuture).toBe(false);
     });
+
+    it('prevents stale dispatch from overwriting wallet when lock expires and re-dispatches current state', async () => {
+      const dbTasks = new Map<string, PassUpdateTask>();
+      let currentTime = new Date('2026-10-06T12:00:00Z');
+
+      const statefulPrisma = {
+        $transaction: vi.fn(async (cb: (tx: unknown) => unknown) => cb(statefulPrisma)),
+        $queryRaw: vi.fn().mockResolvedValue([]),
+        passUpdateTask: {
+          findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
+            for (const t of dbTasks.values()) {
+              if (where.passId && t.passId !== where.passId) continue;
+              if (where.status && t.status !== where.status) continue;
+              if (where.id && typeof where.id === 'object' && 'not' in (where.id as Record<string, unknown>)) {
+                if (t.id === (where.id as { not: string }).not) continue;
+              }
+              if (where.lockedAt && typeof where.lockedAt === 'object' && 'gt' in (where.lockedAt as Record<string, unknown>)) {
+                if (!t.lockedAt || t.lockedAt.getTime() <= (where.lockedAt as { gt: Date }).gt.getTime()) continue;
+              }
+              if (Array.isArray(where.OR)) {
+                const matchesOr = where.OR.some((cond: Record<string, unknown>) => {
+                  if (cond.status && t.status !== cond.status) return false;
+                  if (cond.updatedAt && typeof cond.updatedAt === 'object' && 'gte' in (cond.updatedAt as Record<string, unknown>)) {
+                    if (t.updatedAt.getTime() < (cond.updatedAt as { gte: Date }).gte.getTime()) return false;
+                  }
+                  return true;
+                });
+                if (!matchesOr) continue;
+              }
+              return t;
+            }
+            return null;
+          }),
+          findUnique: vi.fn(async ({ where }: { where: { id: string } }) => dbTasks.get(where.id) ?? null),
+          update: vi.fn(async ({ where, data }: { where: { id: string }; data: Partial<PassUpdateTask> }) => {
+            const current = dbTasks.get(where.id);
+            if (!current) throw new Error('Not found');
+            const updated = { ...current, ...data };
+            dbTasks.set(current.id, updated as PassUpdateTask);
+            return updated;
+          }),
+          updateMany: vi.fn(async ({ where, data }: { where: Record<string, unknown>; data: Partial<PassUpdateTask> }) => {
+            let matched = 0;
+            for (const current of dbTasks.values()) {
+              if (where.id && current.id !== where.id) continue;
+              if (where.status && current.status !== where.status) continue;
+              if (where.lockedBy && current.lockedBy !== where.lockedBy) continue;
+              if (where.lockedAt && typeof where.lockedAt === 'object' && 'gt' in (where.lockedAt as Record<string, unknown>)) {
+                if (!current.lockedAt || current.lockedAt.getTime() <= (where.lockedAt as { gt: Date }).gt.getTime()) continue;
+              }
+              if (Array.isArray(where.OR)) {
+                const matchesOr = where.OR.some((cond: Record<string, unknown>) => {
+                  if (cond.status && current.status !== cond.status) return false;
+                  if (cond.nextRetryAt && typeof cond.nextRetryAt === 'object' && 'lte' in (cond.nextRetryAt as Record<string, unknown>)) {
+                    if (current.nextRetryAt.getTime() > (cond.nextRetryAt as { lte: Date }).lte.getTime()) return false;
+                  }
+                  if (cond.lockedAt && typeof cond.lockedAt === 'object' && 'lte' in (cond.lockedAt as Record<string, unknown>)) {
+                    if (!current.lockedAt || current.lockedAt.getTime() > (cond.lockedAt as { lte: Date }).lte.getTime()) return false;
+                  }
+                  return true;
+                });
+                if (!matchesOr) continue;
+              }
+              const updated = { ...current, ...data };
+              dbTasks.set(current.id, updated as PassUpdateTask);
+              matched++;
+            }
+            return { count: matched };
+          }),
+        },
+      } as unknown as PrismaService;
+
+      const worker1 = new PassUpdateWorkerService(statefulPrisma, configService);
+      const worker2 = new PassUpdateWorkerService(statefulPrisma, configService);
+
+      let currentPassBalance = 2;
+      let externalSimulatedWalletBalance = 0;
+
+      let resolveWorker1Dispatcher!: () => void;
+      const worker1DispatcherPromise = new Promise<void>((resolve) => {
+        resolveWorker1Dispatcher = resolve;
+      });
+
+      worker1.registerDispatcher(async () => {
+        const balanceAtDispatchStart = currentPassBalance;
+        await worker1DispatcherPromise;
+        externalSimulatedWalletBalance = balanceAtDispatchStart;
+      });
+
+      worker2.registerDispatcher(async () => {
+        externalSimulatedWalletBalance = currentPassBalance;
+      });
+
+      const task1 = createMockTask({
+        id: 'task-1',
+        passId: mockPassId,
+        status: PassUpdateStatus.PENDING,
+        createdAt: currentTime,
+        updatedAt: currentTime,
+        nextRetryAt: currentTime,
+      });
+      dbTasks.set(task1.id, task1);
+
+      vi.useFakeTimers();
+      vi.setSystemTime(currentTime);
+
+      const worker1ProcessPromise = worker1.processSingleTask(task1);
+
+      await Promise.resolve();
+
+      currentTime = new Date(currentTime.getTime() + 121000);
+      vi.setSystemTime(currentTime);
+
+      currentPassBalance = 6;
+      const task2 = createMockTask({
+        id: 'task-2',
+        passId: mockPassId,
+        status: PassUpdateStatus.PENDING,
+        createdAt: currentTime,
+        updatedAt: currentTime,
+        nextRetryAt: currentTime,
+      });
+      dbTasks.set(task2.id, task2);
+
+      const worker2Result = await worker2.processSingleTask(task2);
+      expect(worker2Result).toBe(true);
+      expect(externalSimulatedWalletBalance).toBe(6);
+
+      resolveWorker1Dispatcher();
+      const worker1Result = await worker1ProcessPromise;
+
+      expect(worker1Result).toBe(false);
+      expect(externalSimulatedWalletBalance).toBe(6);
+
+      vi.useRealTimers();
+    });
   });
 
   describe('crash recovery & processBatch', () => {
