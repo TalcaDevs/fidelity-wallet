@@ -100,6 +100,27 @@ describe('Authentication forms', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /Continuar con Google/ })).toBeEnabled());
   });
 
+  it('preserves query parameters in redirectTo when returning from OAuth', async () => {
+    const originalHref = window.location.href;
+    window.history.pushState({}, '', '/admin/login?redirect=%2Fadmin%2Fcustomers');
+    auth.signInWithOAuth.mockResolvedValue({ error: null });
+
+    try {
+      render(<SupabaseAuth />);
+      fireEvent.click(screen.getByRole('button', { name: /Continuar con Google/ }));
+
+      expect(auth.signInWithOAuth).toHaveBeenCalledWith({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/admin?redirect=%2Fadmin%2Fcustomers`,
+        },
+      });
+      await waitFor(() => expect(screen.getByRole('button', { name: /Continuar con Google/ })).toBeEnabled());
+    } finally {
+      window.history.pushState({}, '', originalHref);
+    }
+  });
+
   it('displays error if Google OAuth rejects', async () => {
     auth.signInWithOAuth.mockRejectedValue(new Error('Popup blocked'));
     render(<SupabaseAuth />);

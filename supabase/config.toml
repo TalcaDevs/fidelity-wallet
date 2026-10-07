@@ -333,6 +333,14 @@ skip_nonce_check = false
 # If enabled, it will allow the user to successfully authenticate when the provider does not return an email address.
 email_optional = false
 
+# Para habilitar inicio de sesión con Google OAuth en desarrollo local con Supabase:
+# 1. Configurar en Google Cloud Console la URI de redirección autorizada (callback):
+#    http://127.0.0.1:54321/auth/v1/callback
+# 2. Definir las variables de entorno SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID
+#    y SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET en tu entorno local.
+# 3. Cambiar 'enabled = true' en esta sección antes de reiniciar Supabase.
+# 4. Reiniciar Supabase local con `pnpm run supabase:start` (o `npx supabase stop && npx supabase start`).
+# Mantener las credenciales fuera del repositorio.
 [auth.external.google]
 enabled = false
 client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"

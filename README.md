@@ -102,12 +102,21 @@ Consulta [HANDOFF.md](HANDOFF.md) para cuentas demo, pruebas y problemas conocid
 | Wallet | `GOOGLE_WALLET_*`, `APPLE_*`, `ALLOW_MOCK_PASSES` |
 | Imágenes | `SUPABASE_PUBLIC_URL` cuando el origen público de Storage difiere del interno |
 | Frontend | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL` |
+| Auth local | `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID`, `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET` (OAuth Google local) |
 | Legal y contacto | `VITE_LEGAL_*`, `VITE_SUPPORT_EMAIL`, `VITE_SUPPORT_WHATSAPP` |
 | Facturación demo | `VITE_FEATURE_BILLING` |
 
 La `service_role key` y las claves privadas de Wallet viven **solo en el backend**, nunca en variables `VITE_*`. `SCAN_VALIDATION_SECRET` es obligatoria en producción y debe coincidir entre instancias. Desactiva los mocks antes de producción y no definas `GOOGLE_WALLET_CLASS_ID` allí, porque forzaría una clase compartida entre marcas.
 
 Google Wallet necesita imágenes con URLs HTTPS públicas. `ALLOW_MOCK_PASSES=true` permite desarrollo sin credenciales: el pase Apple simulado es JSON, no una tarjeta instalable, y la URL Google simulada no lleva firma válida.
+
+### Google OAuth local
+
+Para habilitar el inicio de sesión con Google en Supabase local:
+1. Crea credenciales OAuth 2.0 en Google Cloud Console con la URI de redirección autorizada: `http://127.0.0.1:54321/auth/v1/callback`.
+2. Define `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID` y `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET` en las variables de entorno locales (mantén las credenciales fuera del repositorio).
+3. En `supabase/config.toml`, cambia `enabled = true` en la sección `[auth.external.google]`.
+4. Reinicia Supabase local (`pnpm run supabase:start` o `npx supabase stop && npx supabase start`).
 
 ### Pruebas en móvil
 
