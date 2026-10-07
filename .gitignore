@@ -10,3 +10,4 @@ scratch_triggers.sql
 *.tsbuildinfo
 .claude/
 skills
+scratch/

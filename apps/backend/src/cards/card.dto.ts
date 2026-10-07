@@ -46,6 +46,11 @@ export class CardRewardDto {
   @IsInt({ message: 'Lo que cuesta cada recompensa debe ser un número entero' })
   @Min(1, { message: 'Cada recompensa debe costar al menos un sello o punto' })
   target: number;
+
+  @ApiPropertyOptional({ enum: ['STAMPS', 'POINTS'] })
+  @IsOptional()
+  @IsIn(['STAMPS', 'POINTS'], { message: 'La moneda de la recompensa no es válida' })
+  currency?: 'STAMPS' | 'POINTS';
 }
 
 export class CardValidityDto {
@@ -78,6 +83,14 @@ export class SaveCardDto {
   @ApiProperty({ enum: CARD_TYPES })
   @IsIn(CARD_TYPES as string[], { message: 'El tipo de tarjeta no es válido' })
   type: CardType;
+
+  @ApiProperty()
+  @IsBoolean()
+  stampsEnabled: boolean;
+
+  @ApiProperty()
+  @IsBoolean()
+  pointsEnabled: boolean;
 
   @ApiProperty({ example: 'Tarjeta Café Central' })
   @IsString({ message: 'El nombre de la tarjeta debe ser un texto' })

@@ -16,9 +16,14 @@ export interface PassData {
   programId: string;
   merchantName: string;
   customerLabel: string;
-  /** Saldo: sellos o puntos vigentes. */
+  stampsEnabled: boolean;
+  pointsEnabled: boolean;
+  /** Saldo de sellos vigentes. */
   activeStamps: number;
+  /** Saldo de puntos vigentes. */
+  activePoints: number;
   targetStamps: number;
+  rewardCurrency: 'STAMPS' | 'POINTS';
   rewardName: string;
   nextExpiryAt?: Date | null;
   memberSince: Date;

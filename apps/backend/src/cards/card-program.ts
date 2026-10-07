@@ -52,9 +52,11 @@ export interface CardView {
 }
 
 export function toCardView(program: CardProgramRow): CardView {
+  const type: CardType = program.type === 'POINTS' ? 'POINTS' : 'STAMPS';
+
   return {
     programId: program.id,
-    type: program.type,
+    type,
     name: program.name,
     welcomeBalance: program.welcomeBalance ?? 0,
     dailyStampLimit: program.dailyStampLimit ?? true,

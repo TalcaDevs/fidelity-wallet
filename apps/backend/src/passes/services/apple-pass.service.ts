@@ -61,7 +61,7 @@ export class ApplePassService {
         label: 'VIGENCIA',
         value: data.nextExpiryAt
           ? `Próximo vencimiento: ${data.nextExpiryAt.toLocaleDateString('es-CL')}`
-          : `Tus ${unit} no vencen.`,
+          : (data.stampsEnabled && data.pointsEnabled ? 'Tus sellos y puntos no vencen.' : `Tus ${unit} no vencen.`),
       },
     ];
 
@@ -79,14 +79,24 @@ export class ApplePassService {
       ...(data.cardExpiresAt ? { expirationDate: data.cardExpiresAt.toISOString() } : {}),
       storeCard: {
         headerFields: [
-          {
-            key: 'balance',
-            label: unit.toUpperCase(),
-            value:
-              card.type === 'POINTS'
-                ? String(data.activeStamps)
-                : `${data.activeStamps} / ${data.targetStamps}`,
-          },
+          ...(data.stampsEnabled
+            ? [
+                {
+                  key: 'stamps',
+                  label: 'SELLOS',
+                  value: data.rewardCurrency === 'STAMPS' ? `${data.activeStamps} / ${data.targetStamps}` : String(data.activeStamps),
+                },
+              ]
+            : []),
+          ...(data.pointsEnabled
+            ? [
+                {
+                  key: 'points',
+                  label: 'PUNTOS',
+                  value: data.rewardCurrency === 'POINTS' ? `${data.activePoints} / ${data.targetStamps}` : String(data.activePoints),
+                },
+              ]
+            : []),
         ],
         primaryFields: details.fields.includes('REWARD')
           ? [{ key: 'reward', label: 'PREMIO', value: data.rewardName }]
@@ -96,7 +106,7 @@ export class ApplePassService {
             ? [{ key: 'customer', label: 'TITULAR', value: data.customerLabel }]
             : []),
           ...(details.fields.includes('PROGRESS')
-            ? [{ key: 'status', label: 'ESTADO', value: statusText(card, data.activeStamps, data.targetStamps) }]
+            ? [{ key: 'status', label: 'ESTADO', value: statusText(card, data.rewardCurrency === 'POINTS' ? data.activePoints : data.activeStamps, data.targetStamps, data.rewardCurrency) }]
             : []),
         ],
         backFields,

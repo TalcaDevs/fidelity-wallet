@@ -38,10 +38,11 @@ function balanceLabel(card: CardView): string {
   return card.type === 'POINTS' ? 'Puntos' : 'Sellos';
 }
 
-export function statusText(card: CardView, active: number, target: number): string {
-  if (active >= target) return '¡Premio desbloqueado!';
-  const remaining = target - active;
-  return `${remaining === 1 ? 'Falta' : 'Faltan'} ${remaining} ${balanceUnit(card.type, remaining)}`;
+export function statusText(card: CardView, activeBalance: number, target: number, currency?: 'STAMPS' | 'POINTS'): string {
+  const actualCurrency = currency || (card.type === 'POINTS' ? 'POINTS' : 'STAMPS');
+  if (activeBalance >= target) return '¡Premio desbloqueado!';
+  const remaining = target - activeBalance;
+  return `${remaining === 1 ? 'Falta' : 'Faltan'} ${remaining} ${balanceUnit(actualCurrency, remaining)}`;
 }
 
 /** Un campo solo existe si tiene sentido para la tarjeta (no hay "vence" en una que no vence). */
@@ -51,16 +52,21 @@ function availableFields(card: CardView): CardFieldKey[] {
 
 function cardTemplate(card: CardView) {
   const front = card.details.frontFields.filter((key) => availableFields(card).includes(key));
-  const items = [BALANCE_MODULE_ID, ...front.map((key) => FIELD_MODULE_ID[key])].map((id) => ({
+  const balanceModules = [];
+  if (card.stampsEnabled) balanceModules.push('stamps_balance');
+  if (card.pointsEnabled) balanceModules.push('points_balance');
+
+  const items = [...balanceModules, ...front.map((key) => FIELD_MODULE_ID[key])].map((id) => ({
     firstValue: { fields: [{ fieldPath: `object.textModulesData['${id}']` }] },
   }));
-  const row =
-    items.length === 1
-      ? { oneItem: { item: items[0] } }
-      : items.length === 2
-        ? { twoItems: { startItem: items[0], endItem: items[1] } }
-        : { threeItems: { startItem: items[0], middleItem: items[1], endItem: items[2] } };
-  return { cardTemplateOverride: { cardRowTemplateInfos: [row] } };
+  const rows = [];
+  for (let i = 0; i < items.length; i += 3) {
+    const chunk = items.slice(i, i + 3);
+    if (chunk.length === 1) rows.push({ oneItem: { item: chunk[0] } });
+    else if (chunk.length === 2) rows.push({ twoItems: { startItem: chunk[0], endItem: chunk[1] } });
+    else rows.push({ threeItems: { startItem: chunk[0], middleItem: chunk[1], endItem: chunk[2] } });
+  }
+  return { cardTemplateOverride: { cardRowTemplateInfos: rows } };
 }
 
 /** Clase de Google Wallet: lo común a todas las tarjetas de la marca. Al editarla, Google la
@@ -101,14 +107,23 @@ export function buildLoyaltyClass(classId: string, data: CardClassData, baseUrl:
 
 function textModules(data: PassData) {
   const { card } = data.cardClass;
-  const label = balanceLabel(card);
-  const modules: { id: string; header: string; body: string }[] = [
-    {
-      id: BALANCE_MODULE_ID,
-      header: label,
-      body: card.type === 'POINTS' ? String(data.activeStamps) : `${data.activeStamps} de ${data.targetStamps}`,
-    },
-  ];
+  const modules: { id: string; header: string; body: string }[] = [];
+  
+  if (data.stampsEnabled) {
+    modules.push({
+      id: 'stamps_balance',
+      header: 'Sellos',
+      body: data.rewardCurrency === 'STAMPS' ? `${data.activeStamps} de ${data.targetStamps}` : String(data.activeStamps),
+    });
+  }
+  
+  if (data.pointsEnabled) {
+    modules.push({
+      id: 'points_balance',
+      header: 'Puntos',
+      body: data.rewardCurrency === 'POINTS' ? `${data.activePoints} de ${data.targetStamps}` : String(data.activePoints),
+    });
+  }
   for (const key of availableFields(card)) {
     const id = FIELD_MODULE_ID[key];
     switch (key) {
@@ -116,13 +131,14 @@ function textModules(data: PassData) {
         modules.push({ id, header: 'Premio', body: data.rewardName });
         break;
       case 'PROGRESS':
-        modules.push({ id, header: 'Estado', body: statusText(card, data.activeStamps, data.targetStamps) });
+        const mainBalance = data.rewardCurrency === 'POINTS' ? data.activePoints : data.activeStamps;
+        modules.push({ id, header: 'Estado', body: statusText(card, mainBalance, data.targetStamps, data.rewardCurrency) });
         break;
       case 'STAMPS_EXPIRY':
         modules.push({
           id,
           header: 'Próximo vencimiento',
-          body: data.nextExpiryAt ? formatDate(data.nextExpiryAt) : `Tus ${balanceUnit(card.type)} no vencen`,
+          body: data.nextExpiryAt ? formatDate(data.nextExpiryAt) : (data.stampsEnabled && data.pointsEnabled ? 'Tus sellos y puntos no vencen' : `Tus ${balanceUnit(card.type)} no vencen`),
         });
         break;
       case 'CARD_EXPIRY':
@@ -136,12 +152,18 @@ function textModules(data: PassData) {
   return modules;
 }
 
-/** Lo del objeto que cambia con cada sello o al editar la tarjeta: va igual en el alta y en el PATCH. */
 export function buildObjectState(data: PassData, baseUrl: string): Record<string, unknown> {
   const { card } = data.cardClass;
+  
+  // En Google Wallet, loyaltyPoints es el "saldo principal" que a veces muestra la app
+  // nativa. Priorizamos según el premio seleccionado.
+  const mainBalance = data.rewardCurrency === 'POINTS' ? data.activePoints : data.activeStamps;
+  const mainLabel = data.rewardCurrency === 'POINTS' ? 'Puntos' : 'Sellos';
+  const mainTarget = data.targetStamps;
+  
   const state: Record<string, unknown> = {
-    loyaltyPoints: { label: balanceLabel(card), balance: { int: data.activeStamps } },
-    secondaryLoyaltyPoints: { label: 'Meta', balance: { int: data.targetStamps } },
+    loyaltyPoints: { label: mainLabel, balance: { int: mainBalance } },
+    secondaryLoyaltyPoints: { label: 'Meta', balance: { int: mainTarget } },
     textModulesData: textModules(data),
   };
 
