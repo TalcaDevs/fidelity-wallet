@@ -83,7 +83,7 @@ export function ScanReward({ result, cardType = 'STAMPS', onReset, onRedeem }: {
     redeemable.length === 1 ? redeemable[0].id : undefined,
   );
   const selected = promotions.find((p) => p.id === selectedId);
-  const stamps = result.stampsCount ?? 0;
+  const currentBalance = cardType === 'POINTS' ? (result.pointsCount ?? 0) : (result.stampsCount ?? 0);
 
   return (
     <div data-scan-entry className="flex-1 min-h-0 flex flex-col items-center overflow-y-auto py-5 px-2 sm:px-6 text-center [&>*]:shrink-0 [&>:first-child]:mt-auto [&>:last-child]:mb-auto">
@@ -101,8 +101,8 @@ export function ScanReward({ result, cardType = 'STAMPS', onReset, onRedeem }: {
         </p>
       )}
       <p className="text-panel-muted text-lg font-medium mb-6">
-        {result.customerLabel && <>Cliente {result.customerLabel} · </>}
-        <span className="font-extrabold text-panel-text">{clp.format(stamps)} {unit}</span>
+        {result.customerLabel && <>Cliente {result.customerLabel} &middot; </>}
+        <span className="font-extrabold text-panel-text">{clp.format(currentBalance)} {unit}</span>
       </p>
 
       {promotions.length > 0 ? (
@@ -129,9 +129,15 @@ export function ScanReward({ result, cardType = 'STAMPS', onReset, onRedeem }: {
                   <span className="block font-bold text-panel-text">{p.rewardName}</span>
                   <span className="block text-sm text-panel-muted">{p.name}</span>
                 </span>
-                <span className={`shrink-0 text-sm font-extrabold ${p.canRedeem ? 'text-panel-gold' : 'text-panel-muted'}`}>
-                  {p.canRedeem ? `${clp.format(p.targetStamps)} ${unit}` : `Faltan ${clp.format(p.targetStamps - stamps)}`}
-                </span>
+                {(() => {
+                  const pUnit = p.currency === 'POINTS' ? 'Puntos' : 'Sellos';
+                  const pBalance = p.currency === 'POINTS' ? (result.pointsCount ?? 0) : (result.stampsCount ?? 0);
+                  return (
+                    <span className={`shrink-0 text-sm font-extrabold ${p.canRedeem ? 'text-panel-gold' : 'text-panel-muted'}`}>
+                      {p.canRedeem ? `${clp.format(p.targetStamps)} ${pUnit}` : `Faltan ${clp.format(p.targetStamps - pBalance)}`}
+                    </span>
+                  );
+                })()}
               </button>
             );
           })}
@@ -184,7 +190,10 @@ export function ScanRedeemSuccess({ result, onReset }: { result: ScanResult, onR
         </svg>
       </div>
       <h2 className="text-3xl sm:text-4xl font-extrabold mb-2">¡Premio entregado!</h2>
-      <p className="text-panel-muted text-xl font-medium mb-5">Cliente {result.customerLabel}</p>
+      <p className="text-panel-muted text-xl font-medium mb-1">Cliente {result.customerLabel}</p>
+      {result.message && (
+        <p className="text-panel-text text-lg font-bold mb-5 max-w-sm">{result.message}</p>
+      )}
       
       <button onClick={onReset} className="w-full max-w-sm py-5 bg-panel-soft hover:bg-panel-border/60 rounded-2xl font-bold text-xl transition-colors">
         Escanear otro

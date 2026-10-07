@@ -135,7 +135,7 @@ function CardEditorPage({ brandId }: { brandId: string }) {
         <div>
           <h1 ref={headingRef} className="scroll-mt-6 text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text break-words">{config.name || 'Tu tarjeta'}</h1>
           <p className="text-panel-muted text-sm sm:text-base mt-1">
-            {TYPE_LABEL[config.type]} · la tarjeta que tus clientes guardan en su billetera
+            {(config.stampsEnabled && config.pointsEnabled) ? 'Sellos y Puntos' : TYPE_LABEL[config.type]} · la tarjeta que tus clientes guardan en su billetera
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">

@@ -75,7 +75,14 @@ export class CardService {
     if (foreign.length > 0) problems.push('Una de las imágenes no es válida: vuelve a subirla');
     if (problems.length > 0) throw new BadRequestException(problems);
 
-    if (config.type !== program.type && (await this.hasActiveBalance(program.id))) {
+    const disablesStamps = program.stampsEnabled && !config.stampsEnabled;
+    const disablesPoints = program.pointsEnabled && !config.pointsEnabled;
+
+    const disabledCurrencies: ('STAMPS' | 'POINTS')[] = [];
+    if (disablesStamps) disabledCurrencies.push('STAMPS');
+    if (disablesPoints) disabledCurrencies.push('POINTS');
+
+    if (disabledCurrencies.length > 0 && (await this.hasActiveBalance(program.id, disabledCurrencies))) {
       throw new ConflictException(TYPE_LOCKED);
     }
 
@@ -90,6 +97,8 @@ export class CardService {
         where: { id: program.id },
         data: {
           type: config.type,
+          stampsEnabled: config.stampsEnabled,
+          pointsEnabled: config.pointsEnabled,
           name: config.name,
           welcomeBalance: config.welcomeBalance,
           dailyStampLimit: config.dailyStampLimit,
@@ -147,8 +156,10 @@ export class CardService {
     const { validity } = dto;
     return {
       type: dto.type,
+      stampsEnabled: dto.stampsEnabled,
+      pointsEnabled: dto.pointsEnabled,
       name: dto.name.trim(),
-      rewards: dto.rewards.map((r) => ({ ...(r.id ? { id: r.id } : {}), name: r.name.trim(), target: r.target })),
+      rewards: dto.rewards.map((r) => ({ ...(r.id ? { id: r.id } : {}), name: r.name.trim(), target: r.target, currency: r.currency ?? (dto.pointsEnabled && !dto.stampsEnabled ? 'POINTS' : 'STAMPS') })),
       welcomeBalance: dto.welcomeBalance,
       dailyStampLimit: dto.dailyStampLimit,
       stampValidityDays: dto.stampValidityDays ?? null,
@@ -175,7 +186,7 @@ export class CardService {
   ): Promise<void> {
     const kept = new Set(config.rewards.map((r) => r.id).filter(Boolean));
     for (const reward of config.rewards) {
-      const data = { name: reward.name, rewardName: reward.name, targetStamps: reward.target, isActive: true };
+      const data = { name: reward.name, rewardName: reward.name, targetStamps: reward.target, currency: reward.currency ?? 'STAMPS', isActive: true };
       if (reward.id) {
         await tx.promotion.update({ where: { id: reward.id }, data });
       } else {
@@ -206,7 +217,7 @@ export class CardService {
       }),
       this.prisma.pass.count({ where: { programId: program.id } }),
       this.prisma.merchant.count({ where: { brandId, isActive: true } }),
-      this.hasActiveBalance(program.id),
+      this.hasActiveBalance(program.id, undefined),
     ]);
     const card = toCardView(program);
 
@@ -220,8 +231,10 @@ export class CardService {
       customers,
       locations,
       type: card.type,
+      stampsEnabled: program.stampsEnabled,
+      pointsEnabled: program.pointsEnabled,
       name: card.name,
-      rewards: rewards.map((r) => ({ id: r.id, name: r.rewardName, target: r.targetStamps })),
+      rewards: rewards.map((r) => ({ id: r.id, name: r.rewardName, target: r.targetStamps, currency: r.currency })),
       welcomeBalance: card.welcomeBalance,
       dailyStampLimit: card.dailyStampLimit,
       stampValidityDays: card.stampValidityDays,
@@ -239,10 +252,15 @@ export class CardService {
   }
 
   /** Algún cliente tiene sellos o puntos vigentes. */
-  private async hasActiveBalance(programId: string): Promise<boolean> {
+  private async hasActiveBalance(programId: string, currencies?: ('STAMPS' | 'POINTS')[]): Promise<boolean> {
     const now = new Date();
     const stamp = await this.prisma.stamp.findFirst({
-      where: { programId, consumedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+      where: { 
+        programId, 
+        consumedAt: null, 
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        ...(currencies && currencies.length > 0 ? { currency: { in: currencies } } : {})
+      },
       select: { id: true },
     });
     return stamp !== null;

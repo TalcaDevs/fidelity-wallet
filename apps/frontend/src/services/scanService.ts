@@ -9,6 +9,7 @@ export interface PromotionOption {
   rewardName: string;
   targetStamps: number;
   canRedeem: boolean;
+  currency?: 'STAMPS' | 'POINTS';
 }
 
 export interface ScanResult {
@@ -17,6 +18,7 @@ export interface ScanResult {
   scanId?: string;
   customerLabel?: string;
   stampsCount?: number;
+  pointsCount?: number;
   stampsAdded?: number;
   targetStamps?: number;
   rewardUnlocked?: boolean;
@@ -39,6 +41,7 @@ export interface ScanValidation {
   customerLabel: string;
   hasName: boolean;
   stampsCount: number;
+  pointsCount: number;
   targetStamps: number;
   rewardName: string;
   rewardUnlocked: boolean;
@@ -47,8 +50,13 @@ export interface ScanValidation {
   canStamp: boolean;
   maxStampsPerLoad: number;
   reasonRequired: boolean;
+  nextPointsAvailableAt: string | null;
+  canAddPoints: boolean;
+  pointsReasonRequired: boolean;
   /** Sellos por visita o puntos por monto: con puntos el monto es obligatorio. */
-  cardType: CardType;
+  cardType: CardType | null;
+  stampsEnabled: boolean;
+  pointsEnabled: boolean;
   pesosPerPoint: number;
   amountRequired: boolean;
   receiptRequired: boolean;
@@ -85,6 +93,7 @@ const mockValidate = (): Promise<ValidationResult> => {
     customerLabel: 'María',
     hasName: true,
     stampsCount: stamps,
+    pointsCount: 0,
     targetStamps: 5,
     rewardName: 'Café Gratis',
     rewardUnlocked: stamps >= 5,
@@ -93,7 +102,12 @@ const mockValidate = (): Promise<ValidationResult> => {
     canStamp: true,
     maxStampsPerLoad: 1,
     reasonRequired: false,
+    nextPointsAvailableAt: null,
+    canAddPoints: true,
+    pointsReasonRequired: false,
     cardType: 'STAMPS',
+    stampsEnabled: true,
+    pointsEnabled: false,
     pesosPerPoint: 1000,
     amountRequired: false,
     receiptRequired: false,
@@ -129,6 +143,7 @@ interface ValidationApiResponse {
   method: 'QR' | 'MANUAL';
   customer: CustomerApi;
   activeStamps: number;
+  activePoints?: number;
   targetStamps: number;
   rewardName: string;
   rewardUnlocked: boolean;
@@ -137,7 +152,12 @@ interface ValidationApiResponse {
   canStamp: boolean;
   maxStampsPerLoad: number;
   reasonRequired: boolean;
+  canAddPoints?: boolean;
+  nextPointsAvailableAt?: string | null;
+  pointsReasonRequired?: boolean;
   cardType?: CardType;
+  stampsEnabled?: boolean;
+  pointsEnabled?: boolean;
   pesosPerPoint?: number;
   amountRequired?: boolean;
   receiptRequired?: boolean;
@@ -203,6 +223,7 @@ export const validateScan = async (params: { merchantId: string; target: LookupT
       customerLabel: customerLabelOf(data.customer),
       hasName: Boolean(data.customer.firstName),
       stampsCount: data.activeStamps,
+      pointsCount: data.activePoints ?? 0,
       targetStamps: data.targetStamps,
       rewardName: data.rewardName,
       rewardUnlocked: data.rewardUnlocked,
@@ -211,7 +232,12 @@ export const validateScan = async (params: { merchantId: string; target: LookupT
       canStamp: data.canStamp,
       maxStampsPerLoad: data.maxStampsPerLoad,
       reasonRequired: data.reasonRequired,
-      cardType: data.cardType ?? 'STAMPS',
+      nextPointsAvailableAt: data.nextPointsAvailableAt ?? null,
+      canAddPoints: data.canAddPoints ?? true,
+      pointsReasonRequired: data.pointsReasonRequired ?? false,
+      cardType: data.cardType ?? null,
+      stampsEnabled: data.stampsEnabled ?? true,
+      pointsEnabled: data.pointsEnabled ?? false,
       pesosPerPoint: data.pesosPerPoint ?? 1000,
       amountRequired: data.amountRequired ?? false,
       receiptRequired: data.receiptRequired ?? false,

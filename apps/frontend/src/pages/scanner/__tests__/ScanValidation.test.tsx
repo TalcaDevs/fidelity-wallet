@@ -18,7 +18,13 @@ const base: Validation = {
   canStamp: true,
   maxStampsPerLoad: 1,
   reasonRequired: false,
+  pointsCount: 0,
+  nextPointsAvailableAt: null,
+  canAddPoints: true,
+  pointsReasonRequired: false,
   cardType: 'STAMPS',
+  stampsEnabled: true,
+  pointsEnabled: false,
   pesosPerPoint: 1000,
   amountRequired: false,
   receiptRequired: false,
@@ -55,7 +61,7 @@ describe('ScanValidation', () => {
     fireEvent.change(screen.getByLabelText(/nota/i), { target: { value: '  Mesa 4 ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Agregar sello' }));
 
-    expect(added).toEqual([{ purchaseAmount: 12500, note: 'Mesa 4', receipt: undefined }]);
+    expect(added).toEqual([{ purchaseAmount: 12500, note: 'Mesa 4', receipt: undefined, stampCount: 1 }]);
   });
 
   it('adds the stamp with every field empty', () => {
@@ -63,7 +69,7 @@ describe('ScanValidation', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Agregar sello' }));
 
-    expect(added).toEqual([{ purchaseAmount: undefined, note: undefined, receipt: undefined }]);
+    expect(added).toEqual([{ note: undefined, receipt: undefined, stampCount: 1 }]);
   });
 
   it('attaches the receipt photo and rejects other file types', async () => {
@@ -88,7 +94,7 @@ describe('ScanValidation', () => {
     const { added, onScanAnother } = setup();
 
     fireEvent.change(screen.getByLabelText(/monto de la compra/i), { target: { value: '5000' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Escanear otro sello' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Escanear otro cliente' }));
 
     expect(onScanAnother).toHaveBeenCalledTimes(1);
     expect(added).toEqual([]);
@@ -145,8 +151,7 @@ describe('ScanValidation', () => {
   });
 
   describe('tarjeta de puntos', () => {
-    const points = { cardType: 'POINTS' as const, amountRequired: true, receiptRequired: true, stampsCount: 40, targetStamps: 100 };
-    const receipt = () => new File(['x'], 'boleta.png', { type: 'image/png' });
+    const points = { cardType: 'POINTS' as const, stampsEnabled: false, pointsEnabled: true, amountRequired: true, receiptRequired: true, pointsCount: 40, targetStamps: 100 };
 
     it('derives OWNER points only from the amount even when multiple loads are allowed', () => {
       const { added } = setup({ ...points, maxStampsPerLoad: 10000, receiptRequired: false });
@@ -158,8 +163,7 @@ describe('ScanValidation', () => {
       fireEvent.change(screen.getByLabelText(/Monto de la compra/), { target: { value: '12500' } });
       fireEvent.click(screen.getByRole('button', { name: 'Sumar 12 puntos' }));
 
-      expect(added).toEqual([{ purchaseAmount: 12500, note: undefined, receipt: undefined }]);
-      expect(added[0]).not.toHaveProperty('stampCount');
+      expect(added).toEqual([{ purchaseAmount: 12500, note: undefined, receipt: undefined, stampCount: 0 }]);
       expect(added[0]).not.toHaveProperty('reason');
     });
 
@@ -168,8 +172,8 @@ describe('ScanValidation', () => {
         ...points,
         maxStampsPerLoad: 10000,
         receiptRequired: false,
-        reasonRequired: true,
-        nextStampAvailableAt: '2026-10-03T15:30:00.000Z',
+        pointsReasonRequired: true,
+        nextPointsAvailableAt: '2026-10-03T15:30:00.000Z',
       });
 
       expect(screen.queryByRole('group', { name: 'Sellos a sumar' })).not.toBeInTheDocument();
@@ -187,8 +191,8 @@ describe('ScanValidation', () => {
         note: undefined,
         receipt: undefined,
         reason: 'Segunda compra',
+        stampCount: 0,
       }]);
-      expect(added[0]).not.toHaveProperty('stampCount');
     });
 
     it('requires the amount and shows the points it gives', () => {
@@ -203,22 +207,14 @@ describe('ScanValidation', () => {
       expect(screen.getByRole('button', { name: 'Sumar 12 puntos' })).toBeInTheDocument();
     });
 
-    it('asks the STAFF for the receipt photo', async () => {
-      vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:boleta');
-      vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    it('does NOT ask the STAFF for the receipt photo when summing points', async () => {
       const { added } = setup(points);
       fireEvent.change(screen.getByLabelText(/Monto de la compra/), { target: { value: '5000' } });
       fireEvent.click(screen.getByRole('button', { name: 'Sumar 5 puntos' }));
 
-      expect(added).toEqual([]);
-      expect(screen.getByRole('alert')).toHaveTextContent(/foto de la boleta/);
-
-      fireEvent.change(screen.getByLabelText(/Foto de la boleta|Tomar foto/, { selector: 'input' }), {
-        target: { files: [receipt()] },
-      });
-      await screen.findByAltText('Foto de la boleta');
-      fireEvent.click(screen.getByRole('button', { name: 'Sumar 5 puntos' }));
-      expect(added).toEqual([expect.objectContaining({ purchaseAmount: 5000, receipt: expect.any(File) })]);
+      // Se agrega directamente sin alertar sobre la boleta
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(added).toEqual([expect.objectContaining({ purchaseAmount: 5000, stampCount: 0 })]);
     });
 
     it('rejects an amount below one point', () => {

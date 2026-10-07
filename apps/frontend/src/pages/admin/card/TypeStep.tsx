@@ -47,18 +47,41 @@ const SOON: Pick<Option, 'title' | 'description'>[] = [
  * Al cambiar de tipo, una meta de sellos (10) no sirve como costo en puntos ni al revés: se
  * propone una equivalente (10 sellos ≈ 100 puntos) que el dueño ajusta en el paso siguiente.
  */
-function convertRewards(rewards: CardReward[], to: CardType): CardReward[] {
-  return rewards.map((r) => ({
-    ...r,
-    target: to === 'POINTS' ? r.target * 10 : Math.min(STAMPS_TARGET_MAX, Math.max(1, Math.round(r.target / 10))),
-  }));
+function convertRewards(rewards: CardReward[], to: CardType, oldType: CardType, isDual: boolean): CardReward[] {
+  if (isDual) return rewards;
+  return rewards.map((r) => {
+    const currentCurrency = r.currency || oldType;
+    if (currentCurrency === to) return { ...r, currency: to };
+    return {
+      ...r,
+      target: to === 'POINTS' ? r.target * 10 : Math.min(STAMPS_TARGET_MAX, Math.max(1, Math.round(r.target / 10))),
+      currency: to,
+    };
+  });
 }
 
-function disabledReason(type: CardType, saved: CardConfigDto): string | null {
-  if (type === 'POINTS' && !saved.points.enabled) return 'Los puntos no están habilitados para tu marca.';
-  if (saved.typeLocked && type !== saved.type) {
-    return 'Tus clientes ya tienen saldo con el tipo actual: cambiarlo se los borraría.';
+function determineNewType(stamps: boolean, points: boolean, current: CardType): CardType {
+  if (stamps && points) return current;
+  if (points) return 'POINTS';
+  return 'STAMPS';
+}
+
+function disabledReason(key: 'STAMPS' | 'POINTS', stampsEnabled: boolean, pointsEnabled: boolean, saved: CardConfigDto): string | null {
+  if (key === 'POINTS' && !saved.points.enabled) return 'Los puntos no están habilitados para tu marca.';
+  
+  // Si intenta deshabilitar
+  const isCurrentlyEnabled = key === 'STAMPS' ? stampsEnabled : pointsEnabled;
+  if (isCurrentlyEnabled) {
+    // No puede deshabilitar si es la única activa
+    if ((key === 'STAMPS' && !pointsEnabled) || (key === 'POINTS' && !stampsEnabled)) {
+      return 'Debe haber al menos un modo activo.';
+    }
+    // Si la tarjeta ya fue guardada y hay saldo, no se puede quitar la modalidad activa
+    if (saved.typeLocked && isCurrentlyEnabled) {
+      return 'Tus clientes ya tienen saldo en esta modalidad: quitarla se los borraría.';
+    }
   }
+
   return null;
 }
 
@@ -70,45 +93,65 @@ export function TypeStep({ editor }: { editor: CardEditor }) {
   return (
     <div>
       <h2 className="text-xs font-extrabold uppercase tracking-widest text-panel-muted">
-        ¿Qué tipo de tarjeta quieres?
+        ¿Qué beneficios quieres ofrecer?
       </h2>
       <p className="text-sm text-panel-muted mt-1 mb-5">
-        Tu marca tiene una tarjeta, que vale en todos tus locales.
+        Puedes activar uno o ambos sistemas a la vez para tu tarjeta de fidelidad.
       </p>
 
-      <div role="radiogroup" aria-label="Tipo de tarjeta" className="space-y-3">
+      <div role="group" aria-label="Beneficios de la tarjeta" className="space-y-3">
         {OPTIONS.map((option) => {
-          const type = option.type!;
-          const selected = config.type === type;
-          const reason = disabledReason(type, saved);
-          const example = type === 'POINTS' ? `1 punto cada $${clp.format(pesosPerPoint)}` : option.example;
+          const isStamps = option.type === 'STAMPS';
+          const selected = isStamps ? config.stampsEnabled : config.pointsEnabled;
+          const reason = disabledReason(option.type as 'STAMPS' | 'POINTS', config.stampsEnabled, config.pointsEnabled, saved);
+          const example = option.type === 'POINTS' ? `1 punto cada $${clp.format(pesosPerPoint)}` : option.example;
+          
           return (
             <button
-              key={type}
+              key={option.type}
               type="button"
-              role="radio"
+              role="switch"
               aria-checked={selected}
-              disabled={!!reason && !selected}
+              disabled={!!reason}
               onClick={() => {
-                if (selected) return;
+                if (!!reason) return;
+
+                const newStampsEnabled = isStamps ? !selected : config.stampsEnabled;
+                const newPointsEnabled = !isStamps ? !selected : config.pointsEnabled;
+                
+                // Evitamos que queden ambos desactivados
+                if (!newStampsEnabled && !newPointsEnabled) return;
+
+                const newType = determineNewType(newStampsEnabled, newPointsEnabled, config.type);
+                const currentType = config.type;
+                
+                const newRewards = convertRewards(config.rewards, newType, currentType, newStampsEnabled && newPointsEnabled);
+
+                let newWelcomeBalance = config.welcomeBalance;
+                if (currentType !== newType && !(newStampsEnabled && newPointsEnabled)) {
+                  newWelcomeBalance = 0;
+                }
+
                 update({
-                  type,
-                  rewards: type === saved.type ? saved.rewards : convertRewards(config.rewards, type),
-                  welcomeBalance: type === saved.type ? saved.welcomeBalance : 0,
+                  type: newType,
+                  stampsEnabled: newStampsEnabled,
+                  pointsEnabled: newPointsEnabled,
+                  rewards: newRewards,
+                  welcomeBalance: newWelcomeBalance,
                 });
               }}
               className={`w-full text-left flex items-start gap-4 rounded-2xl border-2 p-5 transition-colors disabled:cursor-not-allowed ${
                 selected
                   ? 'border-panel-accent bg-panel-accent/5'
                   : 'border-panel-border hover:border-panel-border disabled:opacity-60'
-              }`}
+              } ${!!reason && !selected ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
               <span
                 className={`w-12 h-12 shrink-0 rounded-xl flex items-center justify-center ${
                   selected ? 'bg-panel-primary text-white' : 'bg-panel-soft text-panel-accent'
                 }`}
               >
-                <svg aria-hidden="true" className="w-6 h-6" fill={type === 'STAMPS' ? 'currentColor' : 'none'} stroke={type === 'STAMPS' ? 'none' : 'currentColor'} viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="w-6 h-6" fill={option.type === 'STAMPS' ? 'currentColor' : 'none'} stroke={option.type === 'STAMPS' ? 'none' : 'currentColor'} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={option.icon} />
                 </svg>
               </span>
@@ -118,12 +161,12 @@ export function TypeStep({ editor }: { editor: CardEditor }) {
                 <span className="inline-block mt-2 text-xs font-bold rounded-lg px-2 py-1 bg-panel-soft text-panel-muted">
                   {example}
                 </span>
-                {reason && !selected && <span className="block text-xs font-bold text-amber-700 dark:text-amber-300 mt-2">{reason}</span>}
+                {reason && <span className={`block text-xs font-bold mt-2 ${selected ? 'text-amber-700 dark:text-amber-300' : 'text-slate-500'}`}>{reason}</span>}
               </span>
               <span
                 aria-hidden="true"
                 className={`w-6 h-6 shrink-0 rounded-full border-2 flex items-center justify-center ${
-                  selected ? 'border-panel-accent bg-panel-primary text-white' : 'border-panel-border '
+                  selected ? 'border-panel-accent bg-panel-primary text-white' : 'border-panel-border'
                 }`}
               >
                 {selected && (

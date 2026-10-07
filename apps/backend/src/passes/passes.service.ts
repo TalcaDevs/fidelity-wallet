@@ -425,13 +425,28 @@ export class PassesService {
     const cardClass = await this.cardClassData(prisma, pass.programId, includeLocations);
     if (!cardClass) return null;
     const now = new Date();
-    const activeStamps = await prisma.stamp.count({
-      where: {
-        passId: pass.id,
-        consumedAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      },
-    });
+    const [activeStampsAgg, activePointsAgg] = await Promise.all([
+      prisma.stamp.aggregate({
+        _sum: { amount: true },
+        where: {
+          passId: pass.id,
+          consumedAt: null,
+          currency: 'STAMPS',
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+      }),
+      prisma.stamp.aggregate({
+        _sum: { amount: true },
+        where: {
+          passId: pass.id,
+          consumedAt: null,
+          currency: 'POINTS',
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+      }),
+    ]);
+    const activeStamps = activeStampsAgg._sum.amount ?? 0;
+    const activePoints = activePointsAgg._sum.amount ?? 0;
 
     let promotion: any = null;
     const activePromotions = prisma.promotion.findMany
@@ -446,7 +461,9 @@ export class PassesService {
       : [];
 
     if (activePromotions && activePromotions.length > 0) {
-      const reachedPromotions = activePromotions.filter((p) => activeStamps >= p.targetStamps);
+      const reachedPromotions = activePromotions.filter((p) => 
+        p.currency === 'POINTS' ? activePoints >= p.targetStamps : activeStamps >= p.targetStamps
+      );
       promotion =
         reachedPromotions.length > 0
           ? reachedPromotions[reachedPromotions.length - 1]
@@ -481,8 +498,12 @@ export class PassesService {
       programId: pass.programId,
       merchantName: pass.brand.name,
       customerLabel: passCustomerLabel(pass.customer),
+      stampsEnabled: cardClass.card.stampsEnabled,
+      pointsEnabled: cardClass.card.pointsEnabled,
       activeStamps,
+      activePoints,
       targetStamps: promotion.targetStamps,
+      rewardCurrency: promotion.currency || (cardClass.card.type === 'POINTS' ? 'POINTS' : 'STAMPS'),
       rewardName: promotion.rewardName,
       nextExpiryAt: nextExpiring?.expiresAt ?? null,
       memberSince: pass.createdAt,

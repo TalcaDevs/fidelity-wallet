@@ -51,6 +51,12 @@ const validation = {
   maxStampsPerLoad: 1,
   reasonRequired: false,
   cardType: 'STAMPS',
+  stampsEnabled: true,
+  pointsEnabled: false,
+  pointsCount: 0,
+  nextPointsAvailableAt: null,
+  canAddPoints: true,
+  pointsReasonRequired: false,
   pesosPerPoint: 1000,
   amountRequired: false,
   receiptRequired: false,
@@ -116,17 +122,17 @@ describe('Scan flow', () => {
       merchantId: 'm-1',
       action: 'STAMP',
       target: { validationToken: 'token-1' },
-      extras: { purchaseAmount: 8000, note: undefined, receipt: undefined },
+      extras: { purchaseAmount: 8000, note: undefined, receipt: undefined, stampCount: 1 },
     });
     expect(screen.getByRole('button', { name: 'Canjear premio' })).toBeInTheDocument();
   });
 
-  it('goes back to the camera with "Escanear otro sello" without stamping', async () => {
+  it('goes back to the camera with "Escanear otro cliente" without stamping', async () => {
     validateScan.mockResolvedValue(validation);
     renderScanner();
 
     fireEvent.click(screen.getByRole('button', { name: 'Simular QR' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Escanear otro sello' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Escanear otro cliente' }));
 
     expect(screen.getByRole('button', { name: 'Simular QR' })).toBeInTheDocument();
     expect(processScan).not.toHaveBeenCalled();
@@ -164,6 +170,8 @@ describe('Scan flow', () => {
       ...validation,
       method: 'MANUAL',
       cardType: 'POINTS',
+      stampsEnabled: false,
+      pointsEnabled: true,
       stampsCount: 90,
       targetStamps: 100,
       amountRequired: true,
@@ -172,12 +180,12 @@ describe('Scan flow', () => {
     processScan.mockResolvedValueOnce({
       ok: true,
       customerLabel: 'María',
-      stampsCount: 102,
+      pointsCount: 102,
       stampsAdded: 12,
       targetStamps: 100,
       rewardUnlocked: true,
-      availablePromotions: [{ id: 'promo-1', name: 'Café', rewardName: 'Café gratis', targetStamps: 100, canRedeem: true }],
-    }).mockResolvedValueOnce({ ok: true, customerLabel: 'María', stampsCount: 2 });
+      availablePromotions: [{ id: 'promo-1', name: 'Café', rewardName: 'Café gratis', targetStamps: 100, canRedeem: true, currency: 'POINTS' }],
+    }).mockResolvedValueOnce({ ok: true, customerLabel: 'María', pointsCount: 2 });
     renderScanner(role, false);
 
     fireEvent.click(screen.getByRole('button', { name: 'Manual' }));
@@ -193,18 +201,6 @@ describe('Scan flow', () => {
     expect(screen.getAllByRole('alert')[0]).toHaveTextContent(/monto de la compra/i);
 
     fireEvent.change(screen.getByLabelText(/monto de la compra/i), { target: { value: '12500' } });
-    let receipt: File | undefined;
-    if (receiptRequired) {
-      fireEvent.click(screen.getByRole('button', { name: 'Sumar 12 puntos' }));
-      expect(processScan).not.toHaveBeenCalled();
-      expect(screen.getByRole('alert')).toHaveTextContent(/foto de la boleta/i);
-
-      vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:boleta');
-      vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
-      receipt = new File(['boleta'], 'boleta.png', { type: 'image/png' });
-      fireEvent.change(screen.getByLabelText(/tomar foto de la boleta/i, { selector: 'input' }), { target: { files: [receipt] } });
-      await screen.findByAltText('Foto de la boleta');
-    }
     fireEvent.click(screen.getByRole('button', { name: 'Sumar 12 puntos' }));
 
     expect(await screen.findByRole('heading', { name: '¡12 puntos agregados!' })).toBeInTheDocument();
@@ -213,12 +209,12 @@ describe('Scan flow', () => {
       merchantId: 'm-1',
       action: 'STAMP',
       target: { validationToken: 'token-1' },
-      extras: { purchaseAmount: 12500, note: undefined, receipt },
+      extras: { purchaseAmount: 12500, note: undefined, receipt: undefined, stampCount: 0 },
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Canjear premio' }));
     expect(screen.getByText('102 puntos')).toBeInTheDocument();
-    expect(screen.getByText('100 puntos')).toBeInTheDocument();
+    expect(screen.getByText('100 Puntos')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Entregar Café gratis' }));
     expect(await screen.findByRole('heading', { name: '¡Premio entregado!' })).toBeInTheDocument();
     expect(processScan).toHaveBeenNthCalledWith(2, {

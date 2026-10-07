@@ -78,7 +78,9 @@ describe('ScanService: reglas de la tarjeta', () => {
       },
       stamp: {
         count: vi.fn().mockResolvedValue(12),
+        aggregate: vi.fn().mockResolvedValue({ _sum: { amount: 12 } }),
         findFirst: vi.fn().mockResolvedValue(null),
+        updateMany: vi.fn(async (args) => { return { count: args?.where?.id?.in?.length || 0 }; }),
         createMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
       scanReceipt: { create: vi.fn() },
@@ -112,7 +114,7 @@ describe('ScanService: reglas de la tarjeta', () => {
       file,
     );
 
-  const createdRows = () => vi.mocked(prisma.stamp.createMany).mock.calls[0]?.[0]?.data as unknown[];
+  const createdRows = () => vi.mocked(prisma.stamp.createMany).mock.calls[0]?.[0]?.data as any[];
 
   describe('puntos', () => {
     beforeEach(() => {
@@ -145,7 +147,8 @@ describe('ScanService: reglas de la tarjeta', () => {
       const result = await stamp({ purchaseAmount: 12_500 }, await receipt());
 
       expect(result.pointsAdded).toBe(12);
-      expect(createdRows()).toHaveLength(12);
+      expect(createdRows()).toHaveLength(1);
+      expect(createdRows()[0].amount).toBe(12);
       expect(prisma.scan.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ pointsEarned: 12, purchaseAmount: 12_500 }),
       });
@@ -228,7 +231,7 @@ describe('ScanService: reglas de la tarjeta', () => {
     beforeEach(() => {
       program = {
         ...program,
-        type: 'DUAL',
+        type: 'STAMPS',
         stampsEnabled: true,
         pointsEnabled: true,
         dailyStampLimit: false, // Usaremos el cooldown regular de 30 min (STAMP_COOLDOWN_MINUTES="30")

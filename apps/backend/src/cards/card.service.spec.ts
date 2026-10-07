@@ -22,6 +22,8 @@ const program = (overrides: Record<string, unknown> = {}) => ({
   id: programId,
   brandId,
   type: 'STAMPS',
+  stampsEnabled: true,
+  pointsEnabled: false,
   name: 'Tarjeta de sellos',
   isActive: true,
   stampValidityDays: null,
@@ -41,6 +43,8 @@ const program = (overrides: Record<string, unknown> = {}) => ({
 const body = (overrides: Partial<SaveCardDto> = {}): SaveCardDto =>
   ({
     type: 'STAMPS',
+    stampsEnabled: true,
+    pointsEnabled: false,
     name: 'Tarjeta Café',
     rewards: [{ id: rewardA, name: 'Café gratis', target: 8 }, { name: 'Torta', target: 12 }],
     welcomeBalance: 1,
@@ -142,10 +146,10 @@ describe('CardService', () => {
       });
       expect(prisma.promotion.update).toHaveBeenCalledWith({
         where: { id: rewardA },
-        data: { name: 'Café gratis', rewardName: 'Café gratis', targetStamps: 8, isActive: true },
+        data: { name: 'Café gratis', rewardName: 'Café gratis', targetStamps: 8, isActive: true, currency: 'STAMPS' },
       });
       expect(prisma.promotion.create).toHaveBeenCalledWith({
-        data: { name: 'Torta', rewardName: 'Torta', targetStamps: 12, isActive: true, programId },
+        data: { name: 'Torta', rewardName: 'Torta', targetStamps: 12, isActive: true, programId, currency: 'STAMPS' },
       });
       // B no se canjeó nunca: se borra.
       expect(prisma.promotion.delete).toHaveBeenCalledWith({ where: { id: rewardB } });
@@ -178,7 +182,7 @@ describe('CardService', () => {
     });
 
     it('does not allow points unless they are enabled for the brand', async () => {
-      const points = body({ type: 'POINTS', rewards: [{ name: 'Postre', target: 500 }] });
+      const points = body({ type: 'POINTS', stampsEnabled: false, pointsEnabled: true, rewards: [{ name: 'Postre', target: 500, currency: 'POINTS' }] });
       await expect(setup().service.save(brandId, userId, points)).rejects.toBeInstanceOf(BadRequestException);
       await expect(setup({ pointsEnabled: true }).service.save(brandId, userId, points)).resolves.toBeDefined();
     });
@@ -186,7 +190,7 @@ describe('CardService', () => {
     it('does not switch between stamps and points while customers have balance', async () => {
       const { service, prisma } = setup({ pointsEnabled: true, activeBalance: true });
       await expect(
-        service.save(brandId, userId, body({ type: 'POINTS', rewards: [{ name: 'Postre', target: 500 }] })),
+        service.save(brandId, userId, body({ type: 'POINTS', stampsEnabled: false, pointsEnabled: true, rewards: [{ name: 'Postre', target: 500 }] })),
       ).rejects.toBeInstanceOf(ConflictException);
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });

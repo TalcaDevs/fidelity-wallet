@@ -23,6 +23,8 @@ const card = (overrides: Partial<CardConfigDto> = {}): CardConfigDto => ({
   customers: 12,
   locations: 1,
   type: 'STAMPS',
+  stampsEnabled: true,
+  pointsEnabled: false,
   name: 'Tarjeta Café',
   rewards: [{ id: 'r-1', name: 'Café gratis', target: 10 }],
   welcomeBalance: 0,
@@ -73,7 +75,7 @@ describe('CardEditor', () => {
     vi.spyOn(cardService, 'getCard').mockResolvedValue(card());
     renderEditor();
 
-    const points = await screen.findByRole('radio', { name: /Puntos por compra/ });
+    const points = await screen.findByRole('switch', { name: /Puntos por compra/ });
     expect(points).toBeDisabled();
     expect(screen.getByText(/no están habilitados/)).toBeInTheDocument();
   });
@@ -82,7 +84,8 @@ describe('CardEditor', () => {
     vi.spyOn(cardService, 'getCard').mockResolvedValue(card({ points: { enabled: true, pesosPerPoint: 500 } }));
     renderEditor();
 
-    fireEvent.click(await screen.findByRole('radio', { name: /Puntos por compra/ }));
+    fireEvent.click(await screen.findByRole('switch', { name: /Puntos por compra/ }));
+    fireEvent.click(screen.getByRole('switch', { name: /Sellos \/ Visitas/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Continuar →' }));
 
     expect(screen.getByLabelText('puntos de la recompensa 1')).toHaveValue('100');

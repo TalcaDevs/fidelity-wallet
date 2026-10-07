@@ -64,6 +64,7 @@ describe('ScanService: validación en caja', () => {
     stamp: {
       createMany: ReturnType<typeof vi.fn>;
       count: ReturnType<typeof vi.fn>;
+      aggregate: ReturnType<typeof vi.fn>;
       findFirst: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
     };
@@ -100,6 +101,7 @@ describe('ScanService: validación en caja', () => {
           return { count: data.length };
         }),
         count: vi.fn().mockResolvedValue(3),
+        aggregate: vi.fn().mockResolvedValue({ _sum: { amount: 0 } }),
         findFirst: vi.fn().mockResolvedValue(null),
         create: vi.fn().mockResolvedValue({ id: 'stamp-1' }),
       },
@@ -149,7 +151,9 @@ describe('ScanService: validación en caja', () => {
           return { count: data.length };
         }),
         count: vi.fn().mockResolvedValue(3),
+        aggregate: vi.fn().mockResolvedValue({ _sum: { amount: 3 } }),
         findFirst: vi.fn().mockResolvedValue(null),
+        updateMany: vi.fn(async (args) => { return { count: args?.where?.id?.in?.length || 0 }; }),
         create: vi.fn().mockResolvedValue({ id: 'stamp-1' }),
       },
       scanReceipt: { create: vi.fn() },
@@ -313,7 +317,7 @@ describe('ScanService: validación en caja', () => {
       );
 
       expect(result.stampsAdded).toBe(4);
-      expect(txClient.stamp.create).toHaveBeenCalledTimes(4);
+      expect(txClient.stamp.createMany).toHaveBeenCalledTimes(1);
       expect(txClient.auditLog.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           actorType: 'OWNER',
@@ -422,7 +426,7 @@ describe('ScanService: validación en caja', () => {
       expect(txClient.scan.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ method: ScanMethod.PANEL, merchantId, stampCount: 2, purchaseAmount: 9900 }),
       });
-      expect(txClient.stamp.create).toHaveBeenCalledTimes(2);
+      expect(txClient.stamp.createMany).toHaveBeenCalledTimes(1);
       expect(txClient.auditLog.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           action: 'pass.stamps_added',

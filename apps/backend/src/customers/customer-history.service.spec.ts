@@ -72,7 +72,7 @@ describe('CustomerHistoryService', () => {
       },
       stamp: {
         count: vi.fn().mockResolvedValue(3),
-        groupBy: vi.fn().mockResolvedValue([{ consumedByScanId: 'scan-2', _count: { _all: 5 } }]),
+        groupBy: vi.fn().mockResolvedValue([{ consumedByScanId: 'scan-2', _sum: { amount: 5 } }]),
       },
       auditLog: { create: vi.fn() },
     };

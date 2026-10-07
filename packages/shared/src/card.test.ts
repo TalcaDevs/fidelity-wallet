@@ -22,6 +22,8 @@ const now = new Date('2026-10-03T12:00:00Z');
 
 const config = (overrides: Partial<CardConfig> = {}): CardConfig => ({
   type: 'STAMPS',
+  stampsEnabled: true,
+  pointsEnabled: false,
   name: 'Tarjeta Café',
   rewards: [{ name: 'Café gratis', target: 10 }],
   welcomeBalance: 0,
@@ -49,13 +51,13 @@ describe('cardConfigProblems', () => {
   });
 
   it('rejects points when the brand does not have them enabled', () => {
-    const problems = cardConfigProblems(config({ type: 'POINTS', rewards: [{ name: 'Postre', target: 500 }] }), {
+    const problems = cardConfigProblems(config({ type: 'POINTS', pointsEnabled: true, stampsEnabled: false, rewards: [{ name: 'Postre', target: 500 }] }), {
       pointsEnabled: false,
       now,
     });
     expect(problems.join()).toMatch(/no están habilitados/);
     expect(
-      cardConfigProblems(config({ type: 'POINTS', rewards: [{ name: 'Postre', target: 500 }] }), {
+      cardConfigProblems(config({ type: 'POINTS', pointsEnabled: true, stampsEnabled: false, rewards: [{ name: 'Postre', target: 500 }] }), {
         pointsEnabled: true,
         now,
       }),
@@ -108,6 +110,8 @@ describe('cardConfigProblems', () => {
     const problems = cardConfigProblems(
       config({
         type: 'POINTS',
+        pointsEnabled: true,
+        stampsEnabled: false,
         name: ' ',
         rewards: [{ name: ' ', target: 0 }],
         welcomeBalance: 100_001,
@@ -147,6 +151,8 @@ describe('cardConfigProblems', () => {
       cardConfigProblems(
         config({
           type: 'POINTS',
+          pointsEnabled: true,
+          stampsEnabled: false,
           rewards: [{ name: 'Premio', target: 1_000_000 }],
           welcomeBalance: 100_000,
           stampValidityDays: 3650,
