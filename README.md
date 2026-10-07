@@ -116,7 +116,8 @@ Para habilitar el inicio de sesión con Google en Supabase local:
 1. Crea credenciales OAuth 2.0 en Google Cloud Console con la URI de redirección autorizada: `http://127.0.0.1:54321/auth/v1/callback`.
 2. Define `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID` y `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET` en las variables de entorno locales (mantén las credenciales fuera del repositorio).
 3. En `supabase/config.toml`, cambia `enabled = true` en la sección `[auth.external.google]`.
-4. Reinicia Supabase local (`pnpm run supabase:start` o `npx supabase stop && npx supabase start`).
+4. Verifica que `auth.site_url` apunte al frontend (`http://localhost:5173`) y que `auth.additional_redirect_urls` incluya `http://localhost:5173/**` y `http://127.0.0.1:5173/**` para permitir el retorno autorizado al panel `/admin` contemplando query parameters (ej. `?redirect=...`).
+5. Reinicia Supabase local (`pnpm run supabase:start` o `npx supabase stop && npx supabase start`).
 
 ### Pruebas en móvil
 
