@@ -90,6 +90,7 @@ describe('CardEditor', () => {
 
     expect(screen.getByLabelText('sellos de la recompensa 1')).toHaveValue('10');
     expect(screen.getByLabelText('Moneda de la recompensa 1')).toHaveValue('STAMPS');
+    expect(screen.getByLabelText('Moneda de la recompensa 1')).toBeDisabled();
     expect(screen.getByText(/Oculta para los clientes/)).toBeInTheDocument();
     expect(screen.getByLabelText('Sellos de bienvenida')).toHaveValue('2');
     expect(screen.getByLabelText('Puntos de bienvenida')).toHaveValue('30');
@@ -125,6 +126,7 @@ describe('CardEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continuar →' }));
     fireEvent.click(screen.getByRole('button', { name: '+ Agregar recompensa' }));
     expect(screen.getByLabelText('Moneda de la recompensa 6')).toHaveValue('POINTS');
+    expect(screen.getByLabelText('Moneda de la recompensa 6')).toBeEnabled();
     expect(screen.getByRole('option', { name: 'Sellos', selected: false })).not.toBeDisabled();
     fireEvent.change(screen.getByLabelText('Nombre de la recompensa 6'), { target: { value: 'Postre' } });
     fireEvent.click(screen.getByRole('button', { name: '+ Agregar recompensa' }));
@@ -147,7 +149,7 @@ describe('CardEditor', () => {
     expect(screen.getByRole('button', { name: '+ Agregar recompensa' })).toHaveProperty('disabled', expectedLimit === 3);
   });
 
-  it('rejects activating hidden rewards beyond the API quota and blocks transferring another hidden reward into it', async () => {
+  it('rejects activating hidden rewards beyond the API quota and preserves existing reward currencies', async () => {
     const rewards = [
       ...Array.from({ length: 3 }, (_, i) => ({ id: `s-${i}`, name: `Sello ${i + 1}`, target: 10, currency: 'STAMPS' as const })),
       { id: 'p-1', name: 'Punto', target: 100, currency: 'POINTS' as const },
@@ -157,6 +159,7 @@ describe('CardEditor', () => {
     renderEditor();
     fireEvent.click(await screen.findByRole('button', { name: 'Continuar →' }));
     expect(screen.getByRole('option', { name: 'Sellos', selected: false })).toBeDisabled();
+    expect(screen.getByLabelText('Moneda de la recompensa 4')).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Tipo' }));
     fireEvent.click(screen.getByRole('switch', { name: /Puntos por compra/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Continuar →' }));

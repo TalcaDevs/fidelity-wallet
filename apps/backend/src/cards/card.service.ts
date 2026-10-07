@@ -9,7 +9,6 @@ import {
 } from '@nestjs/common';
 import {
   CARD_IMAGE_KINDS,
-  CARD_REWARDS_STORAGE_MAX,
   IMAGE_FIELD_OF,
   cardConfigProblems,
   getPlan,
@@ -25,7 +24,14 @@ import {
 import type { LoyaltyProgram, Prisma } from '@prisma/client';
 import { findBrandProgram, requireActiveBrandOwner } from '../common/access/brand-access.js';
 import { recordAudit } from '../common/audit/audit.js';
-import { activeRewardCount, cardRewardLimits, validateCardRewardLimits } from '../common/plan/card-reward-limits.js';
+import {
+  activeRewardCount,
+  cardRewardLimits,
+  cardRewardPlanLimit,
+  cardRewardPolicy,
+  validateCardRewardLimits,
+  type StoredCardReward,
+} from '../common/plan/card-reward-limits.js';
 import { PLAN_LIMIT_CODE } from '../common/plan/plan-limits.js';
 import type { UploadedImage } from '../common/storage/image.js';
 import { PassesService } from '../passes/passes.service.js';
@@ -64,23 +70,14 @@ export class CardService {
   async save(brandId: string, userId: string, dto: SaveCardDto): Promise<CardConfigDto> {
     await requireActiveBrandOwner(this.prisma, userId, brandId);
     const program = await this.requireProgram(brandId);
-    const brand = await this.prisma.brand.findUniqueOrThrow({
-      where: { id: brandId },
-      select: { pointsEnabled: true },
-    });
-
     let config = this.toConfig(dto, program);
     let current = toCardView(program).design;
-    // El cupo definitivo se calcula bajo lock; esta validación temprana revisa la forma
-    // sin bloquear a una tienda que conserva más premios que su plan actual.
-    const problems = cardConfigProblems(config, { pointsEnabled: brand.pointsEnabled, maxRewards: CARD_REWARDS_STORAGE_MAX });
     // Solo imágenes subidas a la carpeta de la marca: el backend las descarga para dibujar la
     // tira de sellos, y una URL ajena sería una puerta a pedidos hacia cualquier servidor.
     const foreign = designImages(config.design).filter(
       (url) => !this.storage.belongsToBrand(url, brandId),
     );
-    if (foreign.length > 0) problems.push('Una de las imágenes no es válida: vuelve a subirla');
-    if (problems.length > 0) throw new BadRequestException(problems);
+    if (foreign.length > 0) throw new BadRequestException(['Una de las imágenes no es válida: vuelve a subirla']);
 
     await this.prisma.$transaction(async (tx) => {
       // Configuración toma primero marca y después programa; caja comparte el lock del programa.
@@ -90,14 +87,22 @@ export class CardService {
       const currentProgram = await tx.loyaltyProgram.findFirst({ where: { id: program.id, brandId } });
       if (!currentProgram) throw new NotFoundException('Tu marca aún no tiene una tarjeta');
       config = this.toConfig(dto, currentProgram);
-      current = toCardView(currentProgram).design;
+      const currentCard = toCardView(currentProgram);
+      current = currentCard.design;
       const existing = await tx.promotion.findMany({ where: { programId: program.id } });
-      const usage = activeRewardCount(existing, toCardView(currentProgram));
-      const { rewardLimit, rewardPlanLimit } = cardRewardLimits(this.configService, currentBrand.planId, usage);
-      const requestedUsage = activeRewardCount(
-        config.rewards.map((reward) => ({ isActive: true, currency: reward.currency ?? config.type })),
-        config,
-      );
+      const policy = cardRewardPolicy({
+        existing,
+        requested: config.rewards,
+        currentModalities: currentCard,
+        requestedModalities: config,
+        planLimit: cardRewardPlanLimit(this.configService, currentBrand.planId),
+      });
+      // La moneda de un premio existente se resuelve desde BD bajo lock antes de validarlo.
+      if (policy.problems.length > 0) {
+        throw new BadRequestException(policy.problems.length === 1 ? policy.problems[0] : policy.problems);
+      }
+      config = { ...config, rewards: policy.rewards };
+      const { rewardUsage: usage, rewardLimit, rewardPlanLimit, requestedUsage } = policy;
       if (requestedUsage > rewardLimit) {
         const legacy = usage > rewardPlanLimit
           ? ` Puedes conservar hasta ${rewardLimit} recompensas activas existentes, sin aumentar su cantidad.`
@@ -112,17 +117,7 @@ export class CardService {
         });
       }
       const currentProblems = cardConfigProblems(config, { pointsEnabled: currentBrand.pointsEnabled, maxRewards: rewardLimit });
-      const suppliedIds = new Set(config.rewards.map((reward) => reward.id).filter(Boolean));
-      const omittedHidden = existing.filter((reward) => reward.isActive && !suppliedIds.has(reward.id)
-        && (reward.currency === 'POINTS' ? !config.pointsEnabled : !config.stampsEnabled)).length;
-      if (config.rewards.length + omittedHidden > CARD_REWARDS_STORAGE_MAX) {
-        currentProblems.push(`Puedes conservar hasta ${CARD_REWARDS_STORAGE_MAX} recompensas entre ambas modalidades`);
-      }
       if (currentProblems.length > 0) throw new BadRequestException(currentProblems);
-      const existingIds = new Set(existing.map((p) => p.id));
-      if (config.rewards.some((r) => r.id && !existingIds.has(r.id))) {
-        throw new BadRequestException('Una de las recompensas no pertenece a tu tarjeta');
-      }
       await tx.loyaltyProgram.update({
         where: { id: program.id },
         data: {
@@ -144,19 +139,28 @@ export class CardService {
           designVersion: { increment: 1 },
         },
       });
-      await this.saveRewards(tx, program.id, config, existing);
+      await this.saveRewards(tx, program.id, config, policy.removedRewards);
       await recordAudit(tx, {
         actorUserId: userId,
         actorType: 'OWNER',
         action: 'card.update',
         entity: 'LoyaltyProgram',
         entityId: program.id,
-        before: { type: currentProgram.type, name: currentProgram.name, stampsEnabled: currentProgram.stampsEnabled, pointsEnabled: currentProgram.pointsEnabled },
+        before: {
+          type: currentProgram.type,
+          name: currentProgram.name,
+          stampsEnabled: currentProgram.stampsEnabled,
+          pointsEnabled: currentProgram.pointsEnabled,
+          welcomeStamps: currentCard.welcomeStamps,
+          welcomePoints: currentCard.welcomePoints,
+        },
         after: {
           type: config.type,
           name: config.name,
           stampsEnabled: config.stampsEnabled,
           pointsEnabled: config.pointsEnabled,
+          welcomeStamps: config.welcomeStamps,
+          welcomePoints: config.welcomePoints,
           rewards: config.rewards.map((r) => ({ name: r.name, target: r.target })),
         },
       });
@@ -193,7 +197,7 @@ export class CardService {
       stampsEnabled: dto.stampsEnabled,
       pointsEnabled: dto.pointsEnabled,
       name: dto.name.trim(),
-      rewards: dto.rewards.map((r) => ({ ...(r.id ? { id: r.id } : {}), name: r.name.trim(), target: r.target, currency: r.currency ?? (dto.pointsEnabled && !dto.stampsEnabled ? 'POINTS' : 'STAMPS') })),
+      rewards: dto.rewards.map((r) => ({ ...(r.id ? { id: r.id } : {}), name: r.name.trim(), target: r.target, currency: r.currency })),
       welcomeBalance: dto.welcomeBalance,
       welcomeStamps: dto.welcomeStamps ?? (dto.type === 'STAMPS' ? dto.welcomeBalance : toCardView(program).welcomeStamps),
       welcomePoints: dto.welcomePoints ?? (dto.type === 'POINTS' ? dto.welcomeBalance : toCardView(program).welcomePoints),
@@ -218,9 +222,8 @@ export class CardService {
     tx: Prisma.TransactionClient,
     programId: string,
     config: CardConfig,
-    existing: { id: string; isActive: boolean; currency: 'STAMPS' | 'POINTS' }[],
+    removedRewards: readonly StoredCardReward[],
   ): Promise<void> {
-    const kept = new Set(config.rewards.map((r) => r.id).filter(Boolean));
     for (const reward of config.rewards) {
       const data = { name: reward.name, rewardName: reward.name, targetStamps: reward.target, currency: reward.currency ?? 'STAMPS', isActive: true };
       if (reward.id) {
@@ -230,9 +233,7 @@ export class CardService {
       }
     }
 
-    for (const removed of existing.filter((p) => p.isActive && !kept.has(p.id))) {
-      // Ocultar una modalidad conserva también sus recompensas omitidas por clientes antiguos.
-      if (removed.currency === 'POINTS' ? !config.pointsEnabled : !config.stampsEnabled) continue;
+    for (const removed of removedRewards) {
       const redeemed = await tx.scan.count({ where: { promotionId: removed.id } });
       if (redeemed > 0) {
         await tx.promotion.update({ where: { id: removed.id }, data: { isActive: false } });

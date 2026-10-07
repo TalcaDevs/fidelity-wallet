@@ -188,7 +188,7 @@ describe('InternalCustomersService', () => {
     });
   });
 
-  it('returns points independently and does not expose a disabled stamp balance', async () => {
+  it('maps independent balances and modality flags returned by the balance view', async () => {
     prisma.$queryRaw.mockResolvedValueOnce([
       {
         passId: 'p-1',

@@ -380,6 +380,31 @@ export interface CardReward {
   currency?: 'STAMPS' | 'POINTS';
 }
 
+/** Modalidades actuales, con compatibilidad para contratos anteriores a las banderas. */
+export interface CardModalities {
+  type?: CardType;
+  stampsEnabled?: boolean;
+  pointsEnabled?: boolean;
+}
+
+export function enabledCurrencies(modalities: CardModalities): CardType[] {
+  const type = modalities.type === undefined ? 'STAMPS' : modalities.type;
+  const stamps = modalities.stampsEnabled === undefined ? type === 'STAMPS' : modalities.stampsEnabled === true;
+  const points = modalities.pointsEnabled === undefined ? type === 'POINTS' : modalities.pointsEnabled === true;
+  return [...(stamps ? ['STAMPS' as const] : []), ...(points ? ['POINTS' as const] : [])];
+}
+
+/** Solo una moneda ausente recibe el default; un valor presente inválido se rechaza. */
+export function resolveRewardCurrency(reward: { currency?: unknown }, defaultCurrency: CardType = 'STAMPS'): CardType | undefined {
+  const currency = reward.currency === undefined ? defaultCurrency : reward.currency;
+  return currency === 'STAMPS' || currency === 'POINTS' ? currency : undefined;
+}
+
+export function isRewardEnabled(reward: { currency?: unknown }, modalities: CardModalities): boolean {
+  const currency = resolveRewardCurrency(reward, modalities.type);
+  return currency !== undefined && enabledCurrencies(modalities).includes(currency);
+}
+
 /** Lo que edita el dueño en el editor y se guarda de una vez. */
 export interface CardConfig {
   type: CardType;
@@ -675,11 +700,7 @@ function rewardProblems(raw: unknown, type: CardType, stampsEnabled: boolean, po
   if (rewards.length > CARD_REWARDS_STORAGE_MAX) {
     problems.push(`Puedes conservar hasta ${CARD_REWARDS_STORAGE_MAX} recompensas`);
   }
-  const enabledRewards = rewards.filter((rawReward) => {
-    const reward = record(rawReward);
-    const currency = reward.currency ?? type;
-    return currency === 'STAMPS' ? stampsEnabled : currency === 'POINTS' && pointsEnabled;
-  });
+  const enabledRewards = rewards.filter((rawReward) => isRewardEnabled(record(rawReward), { type, stampsEnabled, pointsEnabled }));
   if (enabledRewards.length > maxRewards) {
     problems.push(`Tu tarjeta permite hasta ${maxRewards} recompensas de modalidades activas`);
   }
@@ -688,8 +709,8 @@ function rewardProblems(raw: unknown, type: CardType, stampsEnabled: boolean, po
   }
   rewards.forEach((rawReward, i) => {
     const reward = record(rawReward);
-    const currency = typeof reward.currency === 'string' ? reward.currency : (type === 'POINTS' ? 'POINTS' : 'STAMPS');
-    if (currency !== 'STAMPS' && currency !== 'POINTS') problems.push(`La moneda de la recompensa ${i + 1} no es válida`);
+    const currency = resolveRewardCurrency(reward, type);
+    if (currency === undefined) problems.push(`La moneda de la recompensa ${i + 1} no es válida`);
     const targetMax = currency === 'POINTS' ? POINTS_TARGET_MAX : STAMPS_TARGET_MAX;
     const unit = balanceUnit(currency as CardType);
     const name = trimmedText(reward.name);

@@ -57,7 +57,7 @@ describe('ReportsOverviewService', () => {
     });
   });
 
-  it('suma unidades expiradas de sellos activos y conserva visitas como cantidad de operaciones', async () => {
+  it('suma unidades históricas expiradas y conserva visitas como cantidad de operaciones', async () => {
     vi.mocked(prisma.scan.findMany).mockResolvedValue([]);
     vi.mocked(prisma.scan.groupBy).mockResolvedValue([]);
     vi.mocked(prisma.pass.count).mockResolvedValue(0);
@@ -79,7 +79,6 @@ describe('ReportsOverviewService', () => {
         _sum: { amount: true },
         where: expect.objectContaining({
           currency: 'STAMPS',
-          program: { stampsEnabled: true },
           consumedAt: null,
         }),
       }),

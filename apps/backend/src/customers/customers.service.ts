@@ -44,6 +44,9 @@ interface Profile {
 
 const IDENTITY_FIELDS: IdentityField[] = ['rut', 'phone', 'email'];
 
+/** Reintenta con lock exclusivo sin ascender un FOR SHARE dentro de la misma transacción. */
+class NewPassRequiresExclusiveLock extends Error {}
+
 const REQUIRED_MESSAGES = {
   phone: 'Ingresa tu teléfono para obtener la tarjeta',
   email: 'Ingresa tu correo para obtener la tarjeta',
@@ -156,7 +159,7 @@ export class CustomersService {
     // Prueba del consentimiento: cuándo y qué versión de los términos aceptó (Ley 19.628).
     const termsAcceptance = { termsAcceptedAt: new Date(), termsVersion: TERMS_VERSION };
 
-    const executeTransaction = () =>
+    const executeTransaction = (exclusive = false) =>
       this.prisma.$transaction(async (tx) => {
         // 1. Validar que el local exista y esté operando
         const merchant = await tx.merchant.findUnique({
@@ -168,13 +171,33 @@ export class CustomersService {
           throw new NotFoundException('El comercio especificado no existe');
         }
 
-        // Orden compartido con configuración y límites: marca antes de programa.
-        // La bienvenida usa la configuración vigente después de esperar estos locks.
-        await tx.$queryRaw`SELECT id FROM "Brand" WHERE id = ${merchant.brandId}::uuid FOR UPDATE`;
-        const program = await findBrandProgram(tx, merchant.brandId);
-        if (program) {
-          await tx.$queryRaw`SELECT id FROM "LoyaltyProgram" WHERE id = ${program.id}::uuid FOR SHARE`;
+        // El sondeo solo elige el lock: la identidad y el pase se resuelven de nuevo bajo lock.
+        // Las visitas de clientes existentes no consumen cupo ni serializan toda la marca.
+        const candidateProgram = await findBrandProgram(tx, merchant.brandId);
+        const candidatePass = candidateProgram && !exclusive
+          ? await tx.pass.findFirst({
+              where: { programId: candidateProgram.id, customer: { OR: identityFilter(sentIdentity) } },
+              select: { id: true },
+            })
+          : null;
+        const requiresExclusive = exclusive || !candidatePass;
+        if (requiresExclusive) {
+          await tx.$queryRaw`SELECT id FROM "Brand" WHERE id = ${merchant.brandId}::uuid FOR UPDATE`;
+        } else {
+          await tx.$queryRaw`SELECT id FROM "Brand" WHERE id = ${merchant.brandId}::uuid FOR SHARE`;
         }
+        const currentMerchant = await tx.merchant.findUnique({
+          where: { id: dto.merchantId }, select: locationWithBrandSelect,
+        });
+        if (!currentMerchant || !isLocationOperational(currentMerchant)) {
+          throw new NotFoundException('El comercio especificado no existe');
+        }
+        const lockedProgram = await findBrandProgram(tx, merchant.brandId);
+        if (lockedProgram) {
+          await tx.$queryRaw`SELECT id FROM "LoyaltyProgram" WHERE id = ${lockedProgram.id}::uuid FOR SHARE`;
+        }
+        // Un editor puede haber cambiado el programa mientras se esperaba su FOR SHARE.
+        const program = await findBrandProgram(tx, merchant.brandId);
         const activePromotion = program?.isActive
           ? await tx.promotion.findFirst({ where: { programId: program.id, isActive: true, currency: { in: enabledCurrencies(toCardView(program)) } } })
           : null;
@@ -186,13 +209,18 @@ export class CustomersService {
         const card = toCardView(program);
         const { identity, profile } = applyRegistration(card.registration, sentIdentity, sentProfile);
 
+        const { customer, isNew: isNewCustomer } = await this.resolveCustomer(
+          tx, identity, profile, termsAcceptance,
+        );
+
         // Un cliente que ya tiene la tarjeta siempre puede volver a entrar; solo las altas nuevas
         // cuentan contra el límite de clientes del plan.
         const existingPass = await tx.pass.findFirst({
-          where: { programId: program.id, customer: { OR: identityFilter(identity) } },
+          where: { programId: program.id, customerId: customer.id },
           select: { id: true },
         });
         if (!existingPass) {
+          if (!requiresExclusive) throw new NewPassRequiresExclusiveLock();
           if (card.validity.type === 'FIXED_DATE' && card.validity.expiresAt && new Date(card.validity.expiresAt) <= new Date()) {
             throw new BadRequestException('Este programa de fidelidad ya terminó: no se entregan tarjetas nuevas');
           }
@@ -200,14 +228,6 @@ export class CustomersService {
             publicMessage: 'Este local no puede registrar nuevos clientes por ahora. Consulta en caja.',
           });
         }
-
-        // 2. Buscar o crear cliente (resolución de identidad y términos)
-        const { customer, isNew: isNewCustomer } = await this.resolveCustomer(
-          tx,
-          identity,
-          profile,
-          termsAcceptance,
-        );
 
         // 3. Buscar o crear el Pase (tarjeta) del programa de la marca
         const { pass, isNew: isNewPass } = await this.passesService.findOrCreatePass(
@@ -235,12 +255,13 @@ export class CustomersService {
     try {
       return await executeTransaction();
     } catch (err: unknown) {
+      if (err instanceof NewPassRequiresExclusiveLock) return await executeTransaction(true);
       // En caso de condición de carrera concurrente (P2002: unique constraint violation),
       // en PostgreSQL la transacción interactiva queda abortada. Reintentamos la transacción
       // completa una vez: en el reintento, findUnique encontrará el registro ya creado por la
       // otra llamada concurrente.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        return await executeTransaction();
+        return await executeTransaction(true);
       }
       throw err;
     }

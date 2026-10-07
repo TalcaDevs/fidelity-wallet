@@ -175,7 +175,7 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
                         )}
                       </td>
                       <td className="p-5">
-                        <span className="inline-flex items-center justify-center min-w-10 h-10 px-3 rounded-full bg-panel-accent/10 dark:bg-panel-accent/20 text-panel-accent font-bold">
+                        <span className="inline-flex flex-wrap gap-x-3 gap-y-1 items-center justify-center min-w-10 min-h-10 px-3 py-2 rounded-full bg-panel-accent/10 dark:bg-panel-accent/20 text-panel-accent font-bold">
                           {row.stampsEnabled !== false && <span>{row.activeStamps} sellos</span>}
                           {row.pointsEnabled && <span className="block">{row.activePoints ?? 0} puntos</span>}
                         </span>

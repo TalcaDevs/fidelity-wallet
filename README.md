@@ -67,6 +67,8 @@ El cupo de premios disponibles depende del plan: Prueba e Inicial, 3; Pro, 5; Ne
 
 Las escrituras de `LoyaltyProgram` y `Promotion` pasan por la API: se retiraron grants antiguos de Supabase que permitían modificar reglas o premios directamente y saltarse los cupos, bloqueos y auditoría. Las lecturas del panel conservan sus grants y RLS.
 
+La moneda de un premio existente se conserva incluso si un cliente anterior omite `currency`; cambiarla exige crear otro premio. Las bienvenidas por moneda registran sus valores anteriores y posteriores en auditoría. Las métricas históricas de sellos vencidos mantienen sus cantidades al ocultar o reactivar modalidades.
+
 ## Desarrollo local
 
 Requisitos: **Node.js 22.13 o superior**, **pnpm 11**, Docker Desktop en ejecución y Supabase CLI mediante los scripts del proyecto. El flujo utiliza Supabase. El `docker-compose.yml` de PostgreSQL aislado no reemplaza Auth ni Storage.

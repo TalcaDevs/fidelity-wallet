@@ -1,4 +1,4 @@
-import type { CardType, PublicCardDto } from '@fidelity/shared';
+import { isRewardEnabled, resolveRewardCurrency, type CardType, type PublicCardDto } from '@fidelity/shared';
 import { supabase } from '../lib/supabase';
 import { apiUrl } from '../lib/api';
 import { extractApiError } from '../lib/apiError';
@@ -73,17 +73,12 @@ export async function getMerchantWithActivePromo(merchantName: string): Promise<
     name: data.name,
     stampValidityDays: data.stampValidityDays,
     card: data.card ?? null,
-    Promotion: promotions.filter((p) => {
-      const currency = p.currency ?? data.card?.type ?? 'STAMPS';
-      return currency === 'POINTS'
-        ? (data.card?.pointsEnabled ?? data.card?.type === 'POINTS')
-        : (data.card?.stampsEnabled ?? data.card?.type !== 'POINTS');
-    }).map((p) => ({
+    Promotion: promotions.filter((p) => isRewardEnabled(p, data.card ?? {})).map((p) => ({
       id: p.id,
       name: p.name || 'Promoción Activa',
       targetStamps: p.targetStamps,
       rewardName: p.rewardName,
-      currency: p.currency ?? data.card?.type ?? 'STAMPS',
+      currency: resolveRewardCurrency(p, data.card?.type),
     }))
   };
 }

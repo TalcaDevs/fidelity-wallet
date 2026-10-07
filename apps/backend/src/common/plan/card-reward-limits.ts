@@ -1,6 +1,14 @@
 import type { ConfigService } from '@nestjs/config';
-import { CATALOG_PLANS, getPlan, type PlanId } from '@fidelity/shared';
-import { enabledCurrencies, type CardModalities } from '../../cards/card-balance.js';
+import {
+  CARD_REWARDS_STORAGE_MAX,
+  CATALOG_PLANS,
+  getPlan,
+  isRewardEnabled,
+  type CardModalities,
+  type CardReward,
+  type CardType,
+  type PlanId,
+} from '@fidelity/shared';
 
 /** Los límites de configuración son independientes del transporte de recompensas ocultas. */
 export function cardRewardPlanLimit(config: Pick<ConfigService, 'get'>, planId: PlanId): number {
@@ -25,8 +33,57 @@ export function activeRewardCount(
   rewards: readonly { isActive: boolean; currency: 'STAMPS' | 'POINTS' }[],
   modalities: CardModalities,
 ): number {
-  const currencies = enabledCurrencies(modalities);
-  return rewards.filter((reward) => reward.isActive && currencies.includes(reward.currency)).length;
+  return rewards.filter((reward) => reward.isActive && isRewardEnabled(reward, modalities)).length;
+}
+
+export interface StoredCardReward {
+  id: string;
+  isActive: boolean;
+  currency: CardType;
+}
+
+/** Política pura: conservar moneda y premios ocultos, y calcular el cupo del guardado. */
+export function cardRewardPolicy({
+  existing,
+  requested,
+  currentModalities,
+  requestedModalities,
+  planLimit,
+}: {
+  existing: readonly StoredCardReward[];
+  requested: readonly CardReward[];
+  currentModalities: CardModalities;
+  requestedModalities: CardModalities;
+  planLimit: number;
+}) {
+  const problems: string[] = [];
+  const byId = new Map(existing.map((reward) => [reward.id, reward]));
+  const suppliedIds = new Set<string>();
+  const rewards = requested.map((reward) => {
+    if (reward.id) {
+      if (suppliedIds.has(reward.id)) problems.push('Una de las recompensas está repetida');
+      suppliedIds.add(reward.id);
+    }
+    const stored = reward.id ? byId.get(reward.id) : undefined;
+    if (reward.id && !stored) problems.push('Una de las recompensas no pertenece a tu tarjeta');
+    if (stored && reward.currency !== undefined && reward.currency !== stored.currency) {
+      problems.push(`La moneda de "${reward.name}" no se puede cambiar: crea una recompensa nueva`);
+    }
+    // Solo las recompensas nuevas reciben la moneda por defecto de la modalidad elegida.
+    const defaultCurrency = requestedModalities.pointsEnabled && !requestedModalities.stampsEnabled
+      ? 'POINTS' : 'STAMPS';
+    return { ...reward, currency: stored?.currency ?? (reward.currency === undefined ? defaultCurrency : reward.currency) };
+  });
+  const rewardUsage = activeRewardCount(existing, currentModalities);
+  const rewardLimit = Math.max(planLimit, rewardUsage);
+  const requestedUsage = rewards.filter((reward) => isRewardEnabled(reward, requestedModalities)).length;
+  const omitted = existing.filter((reward) => reward.isActive && !suppliedIds.has(reward.id));
+  const removedRewards = omitted.filter((reward) => isRewardEnabled(reward, requestedModalities));
+  const hiddenRewards = omitted.filter((reward) => !isRewardEnabled(reward, requestedModalities));
+  if (rewards.length + hiddenRewards.length > CARD_REWARDS_STORAGE_MAX) {
+    problems.push(`Puedes conservar hasta ${CARD_REWARDS_STORAGE_MAX} recompensas entre ambas modalidades`);
+  }
+  return { rewards, removedRewards, problems, rewardUsage, rewardLimit, rewardPlanLimit: planLimit, requestedUsage };
 }
 
 /** Las tiendas sobre el cupo conservan sus premios y pueden reducirlos, sin seguir creciendo. */

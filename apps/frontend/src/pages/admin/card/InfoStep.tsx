@@ -11,6 +11,8 @@ import {
   WELCOME_POINTS_MAX,
   WELCOME_STAMPS_MAX,
   balanceUnit,
+  isRewardEnabled,
+  resolveRewardCurrency,
   type CardValidityType,
   type CardType,
   type FieldMode,
@@ -70,8 +72,7 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
   const { pesosPerPoint } = saved.points;
   const { validity, registration } = config;
   const rewardLimit = saved.rewardLimit ?? CARD_REWARDS_MAX;
-  const activeCurrency = (currency: CardType) => currency === 'POINTS' ? config.pointsEnabled : config.stampsEnabled;
-  const activeRewards = config.rewards.filter((reward) => activeCurrency(reward.currency ?? config.type)).length;
+  const activeRewards = config.rewards.filter((reward) => isRewardEnabled(reward, config)).length;
   const canAddReward = activeRewards < rewardLimit && config.rewards.length < CARD_REWARDS_STORAGE_MAX;
   const newRewardCurrency = config.stampsEnabled ? 'STAMPS' : 'POINTS';
   const contactHidden = (field: RegistrationField) =>
@@ -108,10 +109,10 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
         )}
         <ul className="space-y-3">
           {config.rewards.map((reward, i) => {
-            const currency = reward.currency ?? config.type;
+            const currency = resolveRewardCurrency(reward, config.type) ?? config.type;
             const rewardPoints = currency === 'POINTS';
             const unit = balanceUnit(currency);
-            const enabled = rewardPoints ? config.pointsEnabled : config.stampsEnabled;
+            const enabled = isRewardEnabled(reward, config);
             return (
             <li key={reward.id ?? `new-${i}`} className="rounded-2xl border border-panel-border p-4">
               <div className="flex gap-3 items-start">
@@ -143,6 +144,8 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
                   <select
                     aria-label={`Moneda de la recompensa ${i + 1}`}
                     value={currency}
+                    disabled={!!reward.id}
+                    title={reward.id ? 'La moneda de un premio existente se conserva. Crea otro premio para usar otra moneda.' : undefined}
                     onChange={(e) => setReward(i, { currency: e.target.value as CardType })}
                     className={`${INPUT} w-auto mt-1`}
                   >

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { balanceUnit, type CardType } from '@fidelity/shared';
+import { balanceUnit, isRewardEnabled, resolveRewardCurrency, type CardType } from '@fidelity/shared';
 import { ScanResult } from '../../services/scanService';
 
 const clp = new Intl.NumberFormat('es-CL');
@@ -78,7 +78,7 @@ export function ScanAlreadyScanned({ result, onReset }: { result?: ScanResult | 
 export function ScanReward({ result, cardType = 'STAMPS', onReset, onRedeem }: { result: ScanResult, cardType?: CardType, onReset: () => void, onRedeem?: (promotionId?: string) => void }) {
   const stampsEnabled = result.stampsEnabled ?? cardType !== 'POINTS';
   const pointsEnabled = result.pointsEnabled ?? cardType === 'POINTS';
-  const promotions = (result.availablePromotions ?? []).filter((p) => (p.currency ?? cardType) === 'POINTS' ? pointsEnabled : stampsEnabled);
+  const promotions = (result.availablePromotions ?? []).filter((p) => isRewardEnabled(p, { type: cardType, stampsEnabled, pointsEnabled }));
   const redeemable = promotions.filter((p) => p.canRedeem);
   // Con una sola opción canjeable no hay nada que elegir.
   const [selectedId, setSelectedId] = useState<string | undefined>(
@@ -135,8 +135,8 @@ export function ScanReward({ result, cardType = 'STAMPS', onReset, onRedeem }: {
                   <span className="block text-sm text-panel-muted">{p.name}</span>
                 </span>
                 {(() => {
-                  const pUnit = (p.currency ?? cardType) === 'POINTS' ? 'Puntos' : 'Sellos';
-                  const pBalance = (p.currency ?? cardType) === 'POINTS' ? (result.pointsCount ?? 0) : (result.stampsCount ?? 0);
+                  const pUnit = resolveRewardCurrency(p, cardType) === 'POINTS' ? 'Puntos' : 'Sellos';
+                  const pBalance = resolveRewardCurrency(p, cardType) === 'POINTS' ? (result.pointsCount ?? 0) : (result.stampsCount ?? 0);
                   return (
                     <span className={`shrink-0 text-sm font-extrabold ${p.canRedeem ? 'text-panel-gold' : 'text-panel-muted'}`}>
                       {p.canRedeem ? `${clp.format(p.targetStamps)} ${pUnit}` : `Faltan ${clp.format(p.targetStamps - pBalance)}`}

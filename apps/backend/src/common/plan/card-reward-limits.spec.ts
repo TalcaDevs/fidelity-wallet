@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { describe, expect, it } from 'vitest';
-import { activeRewardCount, cardRewardLimits, cardRewardPlanLimit, validateCardRewardLimits } from './card-reward-limits.js';
+import type { CardModalities, CardReward } from '@fidelity/shared';
+import { activeRewardCount, cardRewardLimits, cardRewardPlanLimit, cardRewardPolicy, validateCardRewardLimits, type StoredCardReward } from './card-reward-limits.js';
 
 const config = (values: Record<string, unknown> = {}) => Object.assign(new ConfigService(values), { skipProcessEnv: true });
 
@@ -46,5 +47,67 @@ describe('límites de recompensas por plan y entorno', () => {
     expect(activeRewardCount(rewards, { stampsEnabled: true, pointsEnabled: true })).toBe(2);
     expect(activeRewardCount(rewards, { stampsEnabled: true, pointsEnabled: false })).toBe(1);
     expect(activeRewardCount(rewards, { stampsEnabled: false, pointsEnabled: true })).toBe(1);
+  });
+});
+
+describe('política de conservación y capacidad de recompensas', () => {
+  const stamps = { stampsEnabled: true, pointsEnabled: false };
+  const points = { stampsEnabled: false, pointsEnabled: true };
+  const existing: StoredCardReward[] = [
+    { id: 'stamps', currency: 'STAMPS', isActive: true },
+    { id: 'points', currency: 'POINTS', isActive: true },
+    { id: 'inactive', currency: 'STAMPS', isActive: false },
+  ];
+  const decide = (requested: CardReward[], requestedModalities: CardModalities = stamps, stored = existing, planLimit = 3) =>
+    cardRewardPolicy({ existing: stored, requested, currentModalities: stamps, requestedModalities, planLimit });
+
+  it('conserva la moneda existente sin inferirla de la nueva modalidad, y asigna default solo a nuevos', () => {
+    const result = decide([
+      { id: 'stamps', name: 'Café', target: 10 },
+      { name: 'Postre', target: 500 },
+    ], points);
+    expect(result.problems).toEqual([]);
+    expect(result.rewards.map((reward) => reward.currency)).toEqual(['STAMPS', 'POINTS']);
+    expect(result.requestedUsage).toBe(1);
+    expect(result.removedRewards).toEqual([existing[1]]);
+  });
+
+  it('rechaza ids ajenos y cambios explícitos de moneda, incluso de premios ocultos', () => {
+    expect(decide([{ id: 'foreign', name: 'Ajeno', target: 3 }]).problems).toEqual(['Una de las recompensas no pertenece a tu tarjeta']);
+    expect(decide([{ id: 'points', name: 'Postre', target: 10, currency: 'STAMPS' }]).problems[0]).toMatch(/moneda/);
+  });
+
+  it('rechaza un mismo id repetido para no actualizar ni contar dos veces un premio', () => {
+    expect(decide([
+      { id: 'stamps', name: 'Café', target: 3 },
+      { id: 'stamps', name: 'Otro nombre', target: 5 },
+    ]).problems).toEqual(['Una de las recompensas está repetida']);
+  });
+
+  it('preserva los omitidos ocultos y solo retira los activos de la modalidad habilitada', () => {
+    expect(decide([{ name: 'Nuevo', target: 3 }]).removedRewards).toEqual([existing[0]]);
+    expect(decide([{ name: 'Nuevo', target: 500 }], points).removedRewards).toEqual([existing[1]]);
+  });
+
+  it('el cupo previo no cuenta ocultos ni inactivos y activar ambas modalidades suma premios', () => {
+    const result = decide([
+      { id: 'stamps', name: 'Café', target: 3 },
+      { id: 'points', name: 'Postre', target: 500 },
+    ], { stampsEnabled: true, pointsEnabled: true });
+    expect(result).toMatchObject({ rewardUsage: 1, rewardPlanLimit: 3, rewardLimit: 3, requestedUsage: 2 });
+  });
+
+  it('mantiene el cupo heredado y lo reduce según el uso actual sin permitir aumentos', () => {
+    const five = Array.from({ length: 5 }, (_, i) => ({ id: `old-${i}`, isActive: true, currency: 'STAMPS' as const }));
+    expect(decide([], stamps, five).rewardLimit).toBe(5);
+    expect(decide([], stamps, five.slice(0, 4)).rewardLimit).toBe(4);
+    expect(decide([], stamps, five.slice(0, 2)).rewardLimit).toBe(3);
+  });
+
+  it('incluye premios ocultos conservados al validar el límite físico', () => {
+    const hidden = Array.from({ length: 40 }, (_, i) => ({ id: `hidden-${i}`, isActive: true, currency: 'POINTS' as const }));
+    expect(decide([{ name: 'Nuevo', target: 3 }], stamps, hidden).problems)
+      .toEqual(['Puedes conservar hasta 40 recompensas entre ambas modalidades']);
+    expect(decide([{ id: 'hidden-0', name: 'Puntos', target: 500 }], stamps, hidden).problems).toEqual([]);
   });
 });

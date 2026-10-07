@@ -95,7 +95,6 @@ export class ReportsOverviewService {
         where: {
           ...filter,
           currency: 'STAMPS',
-          program: { stampsEnabled: true },
           expiresAt: { gte: from, lt: toExclusive },
           consumedAt: null,
         },
@@ -120,7 +119,6 @@ export class ReportsOverviewService {
         where: {
           ...filter,
           currency: 'STAMPS',
-          program: { stampsEnabled: true },
           expiresAt: { gte: prevFrom, lt: prevToExclusive },
           consumedAt: null,
         },

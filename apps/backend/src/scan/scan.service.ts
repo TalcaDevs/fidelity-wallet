@@ -317,7 +317,6 @@ export class ScanService {
       const result = await this.executeStampAction(
         pass,
         context,
-        activePromotions,
         callerUserId,
         maskedCustomer,
         method,
@@ -344,7 +343,6 @@ export class ScanService {
         pass,
         context,
         chosen,
-        activePromotions,
         callerUserId,
         maskedCustomer,
         method,
@@ -397,12 +395,10 @@ export class ScanService {
     this.assertCardValid(brandCard.card, pass, new Date());
 
     const context: ScanContext = { merchant, ...brandCard };
-    const activePromotions = await this.findActivePromotions(program.id, brandCard.card);
     const options = await this.buildStampOptions(dto, true, context, pass.id, receiptFile, 'PANEL');
     const result = await this.executeStampAction(
       pass,
       context,
-      activePromotions,
       callerUserId,
       toCashierCustomer(pass.customer),
       ScanMethod.PANEL,
@@ -743,7 +739,6 @@ export class ScanService {
   private async executeStampAction(
     pass: PassWithRelations,
     context: ScanContext,
-    activePromotions: Promotion[],
     callerUserId: string,
     maskedCustomer: MaskedCustomerDto | undefined,
     method: ScanMethod,
@@ -758,7 +753,6 @@ export class ScanService {
       this.stampInTransaction(
         pass,
         context,
-        activePromotions,
         callerUserId,
         maskedCustomer,
         method,
@@ -773,27 +767,32 @@ export class ScanService {
     return result;
   }
 
+  /** Programa antes que pase: el editor espera a caja y ambas operaciones releen el mismo contexto. */
+  private async lockCurrentContext(tx: Tx, passId: string, programId: string, brandId: string) {
+    await tx.$queryRaw`SELECT id FROM "LoyaltyProgram" WHERE id = ${programId}::uuid FOR SHARE`;
+    await tx.$queryRaw`SELECT id FROM "Pass" WHERE id = ${passId}::uuid FOR UPDATE`;
+    const program = await tx.loyaltyProgram.findFirst({ where: { id: programId, brandId, isActive: true } });
+    if (!program) throw new BadRequestException('La tarjeta ya no está activa');
+    const card = toCardView(program);
+    const promotions = await this.findActivePromotions(program.id, card, tx);
+    return { program, card, promotions };
+  }
+
   private stampInTransaction(
     pass: PassWithRelations,
     { merchant, program: initialProgram, card: initialCard }: ScanContext,
-    activePromotions: Promotion[],
     callerUserId: string,
     maskedCustomer: MaskedCustomerDto | undefined,
     method: ScanMethod,
     options: StampOptions,
   ): Promise<ScanResultDto> {
     return this.prisma.$transaction(async (tx) => {
-      // El editor toma FOR UPDATE sobre el programa. El mismo orden de locks evita
-      // guardar una modalidad nueva mientras una operación usa su configuración anterior.
-      await tx.$queryRaw`SELECT id FROM "LoyaltyProgram" WHERE id = ${initialProgram.id}::uuid FOR SHARE`;
-      await tx.$queryRaw`SELECT id FROM "Pass" WHERE id = ${pass.id}::uuid FOR UPDATE`;
-      const program = await tx.loyaltyProgram.findFirst({ where: { id: initialProgram.id, brandId: merchant.brandId, isActive: true } });
-      if (!program) throw new BadRequestException('La tarjeta ya no está activa');
-      const card = toCardView(program);
+      const { program, card, promotions: activePromotions } = await this.lockCurrentContext(
+        tx, pass.id, initialProgram.id, merchant.brandId,
+      );
       if (initialCard.stampsEnabled !== card.stampsEnabled || initialCard.pointsEnabled !== card.pointsEnabled) {
         throw new BadRequestException('La configuración de la tarjeta cambió. Vuelve a validar al cliente');
       }
-      activePromotions = await this.findActivePromotions(program.id, card, tx);
       if (options.source === 'SCANNER' && card.pointsEnabled && options.purchaseAmount !== undefined) {
         const brand = await tx.brand.findUnique({ where: { id: merchant.brandId }, select: { pesosPerPoint: true } });
         options = {
@@ -993,18 +992,14 @@ export class ScanService {
     pass: PassWithRelations,
     { merchant, program: initialProgram }: ScanContext,
     promotion: Promotion,
-    activePromotions: Promotion[],
     callerUserId: string,
     maskedCustomer: MaskedCustomerDto | undefined,
     method: ScanMethod,
   ): Promise<ScanResultDto> {
     return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "LoyaltyProgram" WHERE id = ${initialProgram.id}::uuid FOR SHARE`;
-      await tx.$queryRaw`SELECT id FROM "Pass" WHERE id = ${pass.id}::uuid FOR UPDATE`;
-      const program = await tx.loyaltyProgram.findFirst({ where: { id: initialProgram.id, brandId: merchant.brandId, isActive: true } });
-      if (!program) throw new BadRequestException('La tarjeta ya no está activa');
-      const card = toCardView(program);
-      activePromotions = await this.findActivePromotions(program.id, card, tx);
+      const { program, card, promotions: activePromotions } = await this.lockCurrentContext(
+        tx, pass.id, initialProgram.id, merchant.brandId,
+      );
       promotion = this.resolveRedeemPromotion(activePromotions, promotion.id);
       if (!enabledCurrencies(card).includes(promotion.currency)) throw new BadRequestException('La modalidad del premio no está habilitada');
       const now = new Date();

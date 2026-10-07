@@ -7,6 +7,9 @@ import {
   cardConfigIssues,
   cardConfigProblems,
   cardExpiryDate,
+  enabledCurrencies,
+  isRewardEnabled,
+  resolveRewardCurrency,
   contrastRatio,
   linkUri,
   normalizeDesign,
@@ -46,6 +49,29 @@ describe('pointsForAmount', () => {
 });
 
 describe('cardConfigProblems', () => {
+  it.each([123, false, {}, null, '', 'CREDITS'])('rejects a present invalid reward currency %j without treating it as the default', (currency) => {
+    const reward = { name: 'Premio', target: 10, currency };
+    expect(resolveRewardCurrency(reward, 'STAMPS')).toBeUndefined();
+    expect(isRewardEnabled(reward, config())).toBe(false);
+    const rewards = [{ name: 'Premio válido', target: 10, currency: 'STAMPS' }, reward];
+    expect(cardConfigProblems(config({ rewards: rewards as unknown as CardConfig['rewards'] }), { pointsEnabled: true, now, maxRewards: 1 })).toContain('La moneda de la recompensa 2 no es válida');
+  });
+
+  it.each(['STAMPS', 'POINTS'] as const)('resolves absent currency consistently for validation and quota in %s', (type) => {
+    const card = config({ type, stampsEnabled: type === 'STAMPS', pointsEnabled: type === 'POINTS' });
+    expect(enabledCurrencies({ type })).toEqual([type]);
+    expect(resolveRewardCurrency(card.rewards[0], type)).toBe(type);
+    expect(isRewardEnabled(card.rewards[0], card)).toBe(true);
+    expect(cardConfigProblems(card, { pointsEnabled: true, now, maxRewards: 0 })).toEqual(['Tu tarjeta permite hasta 0 recompensas de modalidades activas']);
+    expect(cardConfigProblems(card, { pointsEnabled: true, now, maxRewards: 1 })).toEqual([]);
+  });
+
+  it('respects explicit disabled flags and counts both enabled currencies', () => {
+    expect(enabledCurrencies({ type: 'STAMPS', stampsEnabled: false, pointsEnabled: true })).toEqual(['POINTS']);
+    expect(enabledCurrencies({ stampsEnabled: true, pointsEnabled: true })).toEqual(['STAMPS', 'POINTS']);
+    expect(isRewardEnabled({ currency: 'STAMPS' }, { type: 'STAMPS', stampsEnabled: false })).toBe(false);
+  });
+
   it('applies the supplied limit to active modalities while preserving hidden rewards', () => {
     const stamps = Array.from({ length: 5 }, (_, i) => ({ name: `Sello ${i + 1}`, target: 10, currency: 'STAMPS' as const }));
     const points = Array.from({ length: 5 }, (_, i) => ({ name: `Punto ${i + 1}`, target: 100, currency: 'POINTS' as const }));

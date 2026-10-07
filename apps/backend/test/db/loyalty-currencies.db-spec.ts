@@ -17,7 +17,13 @@ import type { SaveCardDto } from '../../src/cards/card.dto.js';
 import type { CardAssetsStorageService } from '../../src/cards/card-assets-storage.service.js';
 import { BrandSettingsService } from '../../src/merchants/brand-settings.js';
 import { PassesService } from '../../src/passes/passes.service.js';
+import { PassUpdateWorkerService } from '../../src/passes/services/pass-update-worker.service.js';
 import { CustomersService } from '../../src/customers/customers.service.js';
+import { ScanService } from '../../src/scan/scan.service.js';
+import { ScanActionType } from '../../src/scan/dto/scan-action.dto.js';
+import type { ManualLookupLimiter } from '../../src/scan/manual-lookup-limiter.js';
+import type { ReceiptStorageService } from '../../src/scan/receipt-storage.service.js';
+import type { ScanValidationTokens } from '../../src/scan/validation-token.js';
 import type { PrismaService } from '../../src/prisma/prisma.service.js';
 import {
   as,
@@ -54,6 +60,18 @@ function deferred() {
   return { promise, resolve };
 }
 
+async function waitForPause(
+  ready: Promise<void>,
+  operation: Promise<unknown>,
+): Promise<void> {
+  await Promise.race([
+    ready,
+    operation.then(() => {
+      throw new Error('La operación terminó antes de tomar el lock esperado');
+    }),
+  ]);
+}
+
 function cardConfigService(): ConfigService {
   return new ConfigService({
     CARD_REWARDS_LIMIT_TRIAL: '3',
@@ -63,20 +81,86 @@ function cardConfigService(): ConfigService {
   });
 }
 
-async function waitForBrandLock(mode: 'FOR SHARE' | 'FOR UPDATE') {
+function saveCardDto(overrides: Partial<SaveCardDto>): SaveCardDto {
+  return structuredClone({
+    type: 'STAMPS',
+    stampsEnabled: true,
+    pointsEnabled: false,
+    name: 'Club de sellos',
+    rewards: [{ name: 'Café', target: 3, currency: 'STAMPS' }],
+    welcomeBalance: 0,
+    welcomeStamps: 0,
+    welcomePoints: 0,
+    dailyStampLimit: true,
+    stampValidityDays: null,
+    validity: { type: 'UNLIMITED', expiresAt: null, days: null },
+    registration: DEFAULT_REGISTRATION,
+    design: { ...DEFAULT_CARD_DESIGN },
+    details: { ...DEFAULT_CARD_DETAILS },
+    ...overrides,
+  });
+}
+
+/** Identifica exclusivamente las conexiones de esta operación, incluso con suites concurrentes. */
+function operationPrisma(
+  applicationName: string,
+  hooks: {
+    afterQuery?: (query: string) => Promise<void>;
+  } = {},
+): PrismaService {
+  return new Proxy(prisma, {
+    get(target, property) {
+      if (property !== '$transaction') return Reflect.get(target, property);
+      return async (
+        run: (tx: Tx) => Promise<unknown>,
+        options?: { timeout?: number; maxWait?: number },
+      ) => {
+        return target.$transaction(
+          async (tx) => {
+            await tx.$executeRaw`SELECT set_config('application_name', ${applicationName}, true)`;
+            const tracked = new Proxy(tx, {
+              get(client, key) {
+                if (key !== '$queryRaw') return Reflect.get(client, key);
+                return async (
+                  strings: TemplateStringsArray,
+                  ...values: unknown[]
+                ) => {
+                  const result = await client.$queryRaw(strings, ...values);
+                  await hooks.afterQuery?.(strings.join('?'));
+                  return result;
+                };
+              },
+            });
+            return run(tracked);
+          },
+          { timeout: 15_000, ...options },
+        );
+      };
+    },
+  }) as unknown as PrismaService;
+}
+
+async function waitForLock(
+  applicationName: string,
+  table: 'Brand' | 'LoyaltyProgram',
+  mode: 'FOR SHARE' | 'FOR UPDATE',
+) {
   const deadline = Date.now() + 3_000;
   while (Date.now() < deadline) {
     const waiting = await prisma.$queryRaw<{ waiting: boolean }[]>`
       SELECT EXISTS (
         SELECT 1 FROM pg_stat_activity
-        WHERE datname = current_database() AND wait_event_type = 'Lock'
-          AND query LIKE '%"Brand"%' AND query LIKE ${`%${mode}%`}
+        WHERE datname = current_database() AND application_name = ${applicationName}
+          AND wait_event_type = 'Lock'
+          AND query LIKE ${`%"${table}"%`} AND query LIKE ${`%${mode}%`}
       ) AS waiting
     `;
     if (waiting[0].waiting) return;
     await new Promise<void>((resolve) => setTimeout(resolve, 10));
   }
-  throw new Error(`La operación no llegó al lock de marca ${mode}`);
+  throw new Error(
+    `La operación ${applicationName} no llegó al lock de ${table} ${mode}`,
+  );
 }
 
 describe('modalidades y saldos por moneda en PostgreSQL', () => {
@@ -198,13 +282,14 @@ describe('modalidades y saldos por moneda en PostgreSQL', () => {
       });
       return fixture;
     });
+    const saveName = `save-${brand.brandId}`;
     const cards = new CardService(
-      prisma as unknown as PrismaService,
+      operationPrisma(saveName),
       { publishCard: async () => {} } as unknown as PassesService,
       { belongsToBrand: () => true } as unknown as CardAssetsStorageService,
       cardConfigService(),
     );
-    const dto: SaveCardDto = {
+    const dto: SaveCardDto = saveCardDto({
       type: 'STAMPS',
       stampsEnabled: true,
       pointsEnabled: false,
@@ -217,16 +302,7 @@ describe('modalidades y saldos por moneda en PostgreSQL', () => {
           currency: 'STAMPS' as const,
         })),
       ],
-      welcomeBalance: 0,
-      welcomeStamps: 0,
-      welcomePoints: 0,
-      dailyStampLimit: true,
-      stampValidityDays: null,
-      validity: { type: 'UNLIMITED', expiresAt: null, days: null },
-      registration: DEFAULT_REGISTRATION,
-      design: { ...DEFAULT_CARD_DESIGN },
-      details: { ...DEFAULT_CARD_DETAILS },
-    };
+    });
     const ready = deferred();
     const release = deferred();
     const downgrade = prisma.$transaction(
@@ -247,7 +323,7 @@ describe('modalidades y saldos por moneda en PostgreSQL', () => {
         () => ({}),
         (error: unknown) => ({ error }),
       );
-      await waitForBrandLock('FOR SHARE');
+      await waitForLock(saveName, 'Brand', 'FOR SHARE');
       release.resolve();
       await downgrade;
       const result = await saving;
@@ -358,22 +434,13 @@ describe('modalidades y saldos por moneda en PostgreSQL', () => {
         target: reward.targetStamps,
         currency: reward.currency,
       }));
-      const config: SaveCardDto = {
+      const config: SaveCardDto = saveCardDto({
         type: 'STAMPS',
         stampsEnabled: true,
         pointsEnabled: false,
         name: 'Premios anteriores',
         rewards,
-        welcomeBalance: 0,
-        welcomeStamps: 0,
-        welcomePoints: 0,
-        dailyStampLimit: true,
-        stampValidityDays: null,
-        validity: { type: 'UNLIMITED', expiresAt: null, days: null },
-        registration: DEFAULT_REGISTRATION,
-        design: { ...DEFAULT_CARD_DESIGN },
-        details: { ...DEFAULT_CARD_DETAILS },
-      };
+      });
       expect(
         (await cards.save(brand.brandId, brand.ownerId, config)).rewardUsage,
       ).toBe(5);
@@ -479,17 +546,19 @@ describe('modalidades y saldos por moneda en PostgreSQL', () => {
         }),
         publishCard: async () => {},
       } as unknown as PassesService;
+      const saveName = `save-${brand.brandId}`;
+      const signupName = `signup-${brand.brandId}`;
       const customers = new CustomersService(
-        prisma as unknown as PrismaService,
+        operationPrisma(signupName),
         passes,
       );
       const cards = new CardService(
-        prisma as unknown as PrismaService,
+        operationPrisma(saveName),
         passes,
         { belongsToBrand: () => true } as unknown as CardAssetsStorageService,
         cardConfigService(),
       );
-      const dto: SaveCardDto = {
+      const dto: SaveCardDto = saveCardDto({
         type: 'STAMPS',
         stampsEnabled: true,
         pointsEnabled: false,
@@ -505,13 +574,7 @@ describe('modalidades y saldos por moneda en PostgreSQL', () => {
         welcomeBalance: 2,
         welcomeStamps: 2,
         welcomePoints: 30,
-        dailyStampLimit: true,
-        stampValidityDays: null,
-        validity: { type: 'UNLIMITED', expiresAt: null, days: null },
-        registration: DEFAULT_REGISTRATION,
-        design: { ...DEFAULT_CARD_DESIGN },
-        details: { ...DEFAULT_CARD_DETAILS },
-      };
+      });
       const ready = deferred();
       const release = deferred();
       const blocker = prisma.$transaction(
@@ -551,14 +614,14 @@ describe('modalidades y saldos por moneda en PostgreSQL', () => {
         let registered;
         if (order === 'card-first') {
           saved = save();
-          await waitForBrandLock('FOR SHARE');
+          await waitForLock(saveName, 'Brand', 'FOR SHARE');
           registered = signup();
-          await waitForBrandLock('FOR UPDATE');
+          await waitForLock(signupName, 'Brand', 'FOR UPDATE');
         } else {
           registered = signup();
-          await waitForBrandLock('FOR UPDATE');
+          await waitForLock(signupName, 'Brand', 'FOR UPDATE');
           saved = save();
-          await waitForBrandLock('FOR SHARE');
+          await waitForLock(saveName, 'Brand', 'FOR SHARE');
         }
         release.resolve();
         await Promise.all([blocker, saved, registered]);
@@ -628,31 +691,24 @@ describe('modalidades y saldos por moneda en PostgreSQL', () => {
         });
         return fixture;
       });
+      const saveName = `save-${brand.brandId}`;
+      const settingsName = `settings-${brand.brandId}`;
       const cardService = new CardService(
-        prisma as unknown as PrismaService,
+        operationPrisma(saveName),
         { publishCard: async () => {} } as unknown as PassesService,
         { belongsToBrand: () => true } as unknown as CardAssetsStorageService,
         cardConfigService(),
       );
       const settingsService = new BrandSettingsService(
-        prisma as unknown as PrismaService,
+        operationPrisma(settingsName),
       );
-      const dto: SaveCardDto = {
+      const dto: SaveCardDto = saveCardDto({
         type: 'POINTS',
         stampsEnabled: false,
         pointsEnabled: true,
         name: 'Club de puntos',
         rewards: [{ name: 'Premio de puntos', target: 50, currency: 'POINTS' }],
-        welcomeBalance: 0,
-        welcomeStamps: 0,
-        welcomePoints: 0,
-        dailyStampLimit: true,
-        stampValidityDays: null,
-        validity: { type: 'UNLIMITED', expiresAt: null, days: null },
-        registration: DEFAULT_REGISTRATION,
-        design: { ...DEFAULT_CARD_DESIGN },
-        details: { ...DEFAULT_CARD_DETAILS },
-      };
+      });
       const ready = deferred();
       const release = deferred();
       const blocker = prisma.$transaction(
@@ -678,22 +734,22 @@ describe('modalidades y saldos por moneda en PostgreSQL', () => {
         let settings;
         if (order === 'card-first') {
           save = run(cardService.save(brand.brandId, brand.ownerId, dto));
-          await waitForBrandLock('FOR SHARE');
+          await waitForLock(saveName, 'Brand', 'FOR SHARE');
           settings = run(
             settingsService.update(brand.brandId, brand.ownerId, {
               pointsEnabled: false,
             }),
           );
-          await waitForBrandLock('FOR UPDATE');
+          await waitForLock(settingsName, 'Brand', 'FOR UPDATE');
         } else {
           settings = run(
             settingsService.update(brand.brandId, brand.ownerId, {
               pointsEnabled: false,
             }),
           );
-          await waitForBrandLock('FOR UPDATE');
+          await waitForLock(settingsName, 'Brand', 'FOR UPDATE');
           save = run(cardService.save(brand.brandId, brand.ownerId, dto));
-          await waitForBrandLock('FOR SHARE');
+          await waitForLock(saveName, 'Brand', 'FOR SHARE');
         }
         release.resolve();
         await blocker;
@@ -736,6 +792,253 @@ describe('modalidades y saldos por moneda en PostgreSQL', () => {
               entity: 'LoyaltyProgram',
               entityId: brand.programId,
             },
+          });
+          await tx.brand.delete({ where: { id: brand.brandId } });
+          await tx.customer.delete({ where: { id: brand.customerId } });
+        });
+      }
+    },
+    20_000,
+  );
+  it('un registro repetido comparte Brand con otras lecturas sin esperar un lock exclusivo', async () => {
+    const brand = await prisma.$transaction((tx) =>
+      createBrand(tx, 'currencies-existing-signup'),
+    );
+    const customer = await prisma.customer.findUniqueOrThrow({
+      where: { id: brand.customerId },
+    });
+    const ready = deferred();
+    const release = deferred();
+    const blocker = prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Brand" WHERE id = ${brand.brandId}::uuid FOR SHARE`;
+        ready.resolve();
+        await release.promise;
+      },
+      { timeout: 15_000 },
+    );
+    const passes = {
+      findOrCreatePass: PassesService.prototype.findOrCreatePass.bind({
+        prisma,
+      }),
+    } as unknown as PassesService;
+    const customers = new CustomersService(
+      operationPrisma(`signup-${brand.brandId}`),
+      passes,
+    );
+    let signup: Promise<unknown> | undefined;
+    try {
+      await ready.promise;
+      signup = customers.createOrFindCustomer({
+        merchantId: brand.mainId,
+        phone: customer.phone!,
+        acceptedTerms: true,
+      });
+      const result = await Promise.race([
+        signup,
+        new Promise<never>((_resolve, reject) => {
+          const timeout = setTimeout(
+            () =>
+              reject(
+                new Error('El pase existente pidió lock exclusivo de Brand'),
+              ),
+            3_000,
+          );
+          timeout.unref();
+          void signup!.then(
+            () => clearTimeout(timeout),
+            () => clearTimeout(timeout),
+          );
+        }),
+      ]);
+      expect(result).toEqual({
+        customerId: brand.customerId,
+        passId: brand.passId,
+        isNew: false,
+      });
+      expect(
+        await prisma.pass.count({ where: { brandId: brand.brandId } }),
+      ).toBe(1);
+      expect(
+        await prisma.stamp.count({ where: { passId: brand.passId } }),
+      ).toBe(2);
+    } finally {
+      release.resolve();
+      await Promise.allSettled([blocker, ...(signup ? [signup] : [])]);
+      await prisma.$transaction(async (tx) => {
+        await tx.brand.delete({ where: { id: brand.brandId } });
+        await tx.customer.delete({ where: { id: brand.customerId } });
+      });
+    }
+  }, 20_000);
+  it.each(['card-first', 'scan-first'] as const)(
+    'serializa edición y carga preparada con configuración anterior usando locks reales: %s',
+    async (order) => {
+      const brand = await prisma.$transaction(async (tx) => {
+        const fixture = await createBrand(tx, `currencies-scan-${order}`);
+        await tx.brand.update({
+          where: { id: fixture.brandId },
+          data: { pointsEnabled: true },
+        });
+        return fixture;
+      });
+      const originalLedger = await prisma.stamp.findMany({
+        where: { passId: brand.passId },
+        orderBy: { id: 'asc' },
+      });
+      const originalScans = await prisma.scan.findMany({
+        where: { passId: brand.passId },
+        orderBy: { id: 'asc' },
+      });
+      const ready = deferred();
+      const release = deferred();
+      const saveName = `save-${brand.brandId}`;
+      const scanName = `scan-${brand.brandId}`;
+      const holdProgram =
+        (mode: 'FOR SHARE' | 'FOR UPDATE') => async (query: string) => {
+          if (query.includes('"LoyaltyProgram"') && query.includes(mode)) {
+            ready.resolve();
+            await release.promise;
+          }
+        };
+      const passes = {
+        publishCard: async () => {},
+        notifyPassUpdate: async () => {},
+        enqueuePassUpdate: PassesService.prototype.enqueuePassUpdate.bind({
+          prisma,
+          updateWorker: {
+            enqueue: PassUpdateWorkerService.prototype.enqueue.bind({ prisma }),
+          },
+        }),
+      } as unknown as PassesService;
+      const cards = new CardService(
+        operationPrisma(
+          saveName,
+          order === 'card-first'
+            ? { afterQuery: holdProgram('FOR UPDATE') }
+            : {},
+        ),
+        passes,
+        { belongsToBrand: () => true } as unknown as CardAssetsStorageService,
+        cardConfigService(),
+      );
+      const scanner = new ScanService(
+        operationPrisma(
+          scanName,
+          order === 'scan-first'
+            ? { afterQuery: holdProgram('FOR SHARE') }
+            : {},
+        ),
+        passes,
+        new ConfigService({ STAMP_COOLDOWN_MINUTES: '0' }),
+        {} as ManualLookupLimiter,
+        {
+          uploadThen: async (_upload: unknown, run: () => Promise<unknown>) =>
+            run(),
+        } as unknown as ReceiptStorageService,
+        {} as ScanValidationTokens,
+      );
+      const dto = saveCardDto({
+        type: 'POINTS',
+        stampsEnabled: false,
+        pointsEnabled: true,
+        rewards: [
+          {
+            id: brand.promotionId,
+            name: 'Café',
+            target: 3,
+            currency: 'STAMPS',
+          },
+          { name: 'Premio puntos', target: 50, currency: 'POINTS' },
+        ],
+      });
+      const runScan = () =>
+        scanner
+          .processScan(
+            {
+              action: ScanActionType.STAMP,
+              merchantId: brand.mainId,
+              passToken: `token-${brand.passId}`,
+              stampCount: 1,
+              reason: 'Prueba concurrente',
+            },
+            brand.ownerId,
+          )
+          .then(
+            (result) => ({ result }),
+            (error: unknown) => ({ error }),
+          );
+      let saving: Promise<unknown> | undefined;
+      let scanning: ReturnType<typeof runScan> | undefined;
+      try {
+        if (order === 'card-first') {
+          saving = cards.save(brand.brandId, brand.ownerId, dto);
+          await waitForPause(ready.promise, saving);
+          // La edición aún no está confirmada: processScan prepara sus opciones con STAMPS.
+          scanning = runScan();
+          await waitForLock(scanName, 'LoyaltyProgram', 'FOR SHARE');
+        } else {
+          scanning = runScan();
+          await waitForPause(ready.promise, scanning);
+          saving = cards.save(brand.brandId, brand.ownerId, dto);
+          await waitForLock(saveName, 'LoyaltyProgram', 'FOR UPDATE');
+        }
+        release.resolve();
+        await saving;
+        const scanned = await scanning!;
+        const ledger = await prisma.stamp.findMany({
+          where: { passId: brand.passId },
+          orderBy: { id: 'asc' },
+        });
+        const scans = await prisma.scan.findMany({
+          where: { passId: brand.passId },
+          orderBy: { id: 'asc' },
+        });
+        if (order === 'card-first') {
+          expect(scanned).toHaveProperty('error');
+          expect(
+            'error' in scanned ? scanned.error : undefined,
+          ).toBeInstanceOf(BadRequestException);
+          expect(
+            ('error' in scanned ? scanned.error : undefined) as Error,
+          ).toHaveProperty(
+            'message',
+            'La configuración de la tarjeta cambió. Vuelve a validar al cliente',
+          );
+          expect(scans).toEqual(originalScans);
+          expect(ledger).toEqual(originalLedger);
+        } else {
+          expect(scanned).toMatchObject({
+            result: { stampsAdded: 1, activeStamps: 3 },
+          });
+          expect(scans).toHaveLength(originalScans.length + 1);
+          expect(
+            ledger.filter((row) =>
+              originalLedger.some((original) => original.id === row.id),
+            ),
+          ).toEqual(originalLedger);
+          const added = ledger.filter(
+            (row) => !originalLedger.some((original) => original.id === row.id),
+          );
+          expect(added).toMatchObject([{ currency: 'STAMPS', amount: 1 }]);
+        }
+        expect(await readBalance(prisma, brand.passId)).toMatchObject([
+          {
+            activeStamps: 0,
+            activePoints: 0,
+            stampsEnabled: false,
+            pointsEnabled: true,
+          },
+        ]);
+      } finally {
+        release.resolve();
+        await Promise.allSettled([
+          ...(saving ? [saving] : []),
+          ...(scanning ? [scanning] : []),
+        ]);
+        await prisma.$transaction(async (tx) => {
+          await tx.auditLog.deleteMany({
+            where: { actorUserId: brand.ownerId },
           });
           await tx.brand.delete({ where: { id: brand.brandId } });
           await tx.customer.delete({ where: { id: brand.customerId } });
