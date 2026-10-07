@@ -18,7 +18,7 @@ describe('ReportsOverviewService', () => {
         groupBy: vi.fn(),
       },
       pass: { count: vi.fn() },
-      stamp: { count: vi.fn() },
+      stamp: { aggregate: vi.fn() },
     } as unknown as PrismaService;
 
     service = new ReportsOverviewService(prisma);
@@ -28,7 +28,9 @@ describe('ReportsOverviewService', () => {
     (prisma.scan.findMany as any).mockResolvedValue([]);
     (prisma.scan.groupBy as any).mockResolvedValue([]);
     (prisma.pass.count as any).mockResolvedValue(0);
-    (prisma.stamp.count as any).mockResolvedValue(0);
+    (prisma.stamp.aggregate as any).mockResolvedValue({
+      _sum: { amount: null },
+    });
 
     const result = await service.getOverview(scope, {
       from: '2026-09-01',
@@ -53,5 +55,34 @@ describe('ReportsOverviewService', () => {
       qrPercentage: 0,
       manualPercentage: 0,
     });
+  });
+
+  it('suma unidades históricas expiradas y conserva visitas como cantidad de operaciones', async () => {
+    vi.mocked(prisma.scan.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.scan.groupBy).mockResolvedValue([]);
+    vi.mocked(prisma.pass.count).mockResolvedValue(0);
+    vi.mocked(prisma.stamp.aggregate)
+      .mockResolvedValueOnce({ _sum: { amount: 12 } } as never)
+      .mockResolvedValueOnce({ _sum: { amount: 3 } } as never);
+
+    const result = await service.getOverview(scope, {
+      from: '2026-09-01',
+      to: '2026-09-05',
+    });
+    expect(result.kpis.expiredStamps).toEqual({
+      current: 12,
+      previous: 3,
+      changePercentage: 300,
+    });
+    expect(prisma.stamp.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        _sum: { amount: true },
+        where: expect.objectContaining({
+          currency: 'STAMPS',
+          consumedAt: null,
+        }),
+      }),
+    );
+    expect(result.kpis.stampsDelivered.current).toBe(0);
   });
 });

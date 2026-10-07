@@ -164,6 +164,43 @@ describe('Scan flow', () => {
     expect(await screen.findByText('El cliente no tiene una tarjeta en este comercio')).toBeInTheDocument();
   });
 
+  it.each([false, true])('redeems points directly from validation without a purchase (dual=%s)', async (dual) => {
+    validateScan.mockResolvedValue({
+      ...validation,
+      cardType: dual ? 'STAMPS' : 'POINTS',
+      stampsEnabled: dual,
+      pointsEnabled: true,
+      stampsCount: 7,
+      pointsCount: 150,
+      rewardUnlocked: true,
+      rewardCurrency: 'POINTS',
+      amountRequired: true,
+      receiptRequired: true,
+      availablePromotions: [
+        { id: 'stamp-promo', name: 'Sellos', rewardName: 'Café', targetStamps: 5, canRedeem: true, currency: 'STAMPS' },
+        { id: 'point-promo', name: 'Puntos', rewardName: 'Almuerzo', targetStamps: 100, canRedeem: true, currency: 'POINTS' },
+      ],
+    });
+    processScan.mockResolvedValue({ ok: true, customerLabel: 'María', pointsCount: 50 });
+    renderScanner();
+    fireEvent.click(screen.getByRole('button', { name: 'Simular QR' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Canjear premio' }));
+    expect(screen.getByText(dual ? '7 sellos · 150 puntos' : '150 puntos')).toBeInTheDocument();
+    expect(screen.getByText('100 Puntos')).toBeInTheDocument();
+    if (dual) {
+      expect(screen.getByText('5 Sellos')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /Almuerzo.*100 Puntos/ }));
+    } else {
+      expect(screen.queryByText('5 Sellos')).not.toBeInTheDocument();
+    }
+    expect(processScan).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Entregar Almuerzo' }));
+    expect(await screen.findByRole('heading', { name: '¡Premio entregado!' })).toBeInTheDocument();
+    expect(processScan).toHaveBeenCalledExactlyOnceWith({
+      merchantId: 'm-1', action: 'REDEEM', target: { validationToken: 'token-1' }, promotionId: 'point-promo',
+    });
+  });
+
   it.each(['STAFF', 'OWNER'] as const)('adds and redeems points through manual lookup without starting the camera as %s', async (role) => {
     const receiptRequired = role === 'STAFF';
     validateScan.mockResolvedValue({
@@ -172,7 +209,8 @@ describe('Scan flow', () => {
       cardType: 'POINTS',
       stampsEnabled: false,
       pointsEnabled: true,
-      stampsCount: 90,
+      stampsCount: 0,
+      pointsCount: 90,
       targetStamps: 100,
       amountRequired: true,
       receiptRequired,
@@ -181,7 +219,8 @@ describe('Scan flow', () => {
       ok: true,
       customerLabel: 'María',
       pointsCount: 102,
-      stampsAdded: 12,
+      stampsAdded: 0,
+      pointsAdded: 12,
       targetStamps: 100,
       rewardUnlocked: true,
       availablePromotions: [{ id: 'promo-1', name: 'Café', rewardName: 'Café gratis', targetStamps: 100, canRedeem: true, currency: 'POINTS' }],
@@ -201,6 +240,13 @@ describe('Scan flow', () => {
     expect(screen.getAllByRole('alert')[0]).toHaveTextContent(/monto de la compra/i);
 
     fireEvent.change(screen.getByLabelText(/monto de la compra/i), { target: { value: '12500' } });
+    const receipt = role === 'STAFF' ? new File(['jpeg'], 'boleta.jpg', { type: 'image/jpeg' }) : undefined;
+    if (receipt) {
+      vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:receipt');
+      vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+      fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [receipt] } });
+      await screen.findByAltText('Foto de la boleta');
+    }
     fireEvent.click(screen.getByRole('button', { name: 'Sumar 12 puntos' }));
 
     expect(await screen.findByRole('heading', { name: '¡12 puntos agregados!' })).toBeInTheDocument();
@@ -209,7 +255,7 @@ describe('Scan flow', () => {
       merchantId: 'm-1',
       action: 'STAMP',
       target: { validationToken: 'token-1' },
-      extras: { purchaseAmount: 12500, note: undefined, receipt: undefined, stampCount: 0 },
+      extras: { purchaseAmount: 12500, note: undefined, receipt, stampCount: 0 },
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Canjear premio' }));

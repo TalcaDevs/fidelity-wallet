@@ -45,7 +45,7 @@ export class MerchantsService {
                     promotions: {
                       where: { isActive: true },
                       orderBy: { createdAt: 'desc' },
-                      select: { id: true, name: true, targetStamps: true, rewardName: true },
+                      select: { id: true, name: true, targetStamps: true, rewardName: true, currency: true },
                     },
                   },
                 },
@@ -60,8 +60,10 @@ export class MerchantsService {
     }
 
     const program = merchant.brand.programs[0];
-    const promotions = program?.isActive ? program.promotions : [];
     const card = program ? toCardView(program) : null;
+    const promotions = program?.isActive && card
+      ? program.promotions.filter((p) => (p.currency ?? card.type) === 'POINTS' ? card.pointsEnabled : card.stampsEnabled)
+      : [];
     return {
       id: merchant.id,
       name: merchant.name,
@@ -74,6 +76,8 @@ export class MerchantsService {
       activePromotions: promotions,
       card: card && {
         type: card.type,
+        stampsEnabled: card.stampsEnabled,
+        pointsEnabled: card.pointsEnabled,
         name: card.name,
         backgroundColor: card.design.backgroundColor,
         textColor: card.design.textColor,
@@ -81,6 +85,8 @@ export class MerchantsService {
         heroImageUrl: card.design.heroImageUrl,
         pesosPerPoint: merchant.brand.pesosPerPoint,
         welcomeBalance: card.welcomeBalance,
+        welcomeStamps: card.stampsEnabled ? card.welcomeStamps : 0,
+        welcomePoints: card.pointsEnabled ? card.welcomePoints : 0,
         registration: card.registration,
         closed:
           card.validity.type === 'FIXED_DATE' &&

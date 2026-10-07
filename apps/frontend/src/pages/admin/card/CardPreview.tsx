@@ -4,6 +4,8 @@ import {
   STAMP_ICON_PATHS,
   autoTextColor,
   balanceUnit,
+  isRewardEnabled,
+  resolveRewardCurrency,
   linkUri,
   normalizeDesign,
   renderStampStripSvg,
@@ -31,8 +33,9 @@ const formatDate = (date: Date) => date.toLocaleDateString('es-CL', { day: 'nume
 
 /** Saldo y textos de ejemplo, calculados como los calcula el backend para un pase real. */
 function sample(config: CardConfig) {
-  const stampsRewards = [...config.rewards].filter((r) => (r.currency || (config.type === 'POINTS' ? 'POINTS' : 'STAMPS')) === 'STAMPS').sort((a, b) => a.target - b.target);
-  const pointsRewards = [...config.rewards].filter((r) => (r.currency || (config.type === 'POINTS' ? 'POINTS' : 'STAMPS')) === 'POINTS').sort((a, b) => a.target - b.target);
+  const enabledRewards = config.rewards.filter((reward) => isRewardEnabled(reward, config));
+  const stampsRewards = enabledRewards.filter((r) => resolveRewardCurrency(r, config.type) === 'STAMPS').sort((a, b) => a.target - b.target);
+  const pointsRewards = enabledRewards.filter((r) => resolveRewardCurrency(r, config.type) === 'POINTS').sort((a, b) => a.target - b.target);
   
   const stampsTarget = stampsRewards[0] ? Math.max(1, stampsRewards[0].target) : 10;
   const stampsBalance = Math.min(3, stampsTarget);
@@ -40,9 +43,9 @@ function sample(config: CardConfig) {
   const pointsTarget = pointsRewards[0] ? Math.max(1, pointsRewards[0].target) : 100;
   const pointsBalance = Math.floor(pointsTarget * 0.4);
   
-  const allRewards = [...config.rewards].sort((a, b) => a.target - b.target);
+  const allRewards = enabledRewards.sort((a, b) => a.target - b.target);
   const mainReward = allRewards[0] ?? { name: 'Tu premio', target: config.type === 'POINTS' ? 100 : 10, currency: config.type };
-  const mainCurrency = mainReward.currency || (config.type === 'POINTS' ? 'POINTS' : 'STAMPS');
+  const mainCurrency = resolveRewardCurrency(mainReward, config.type) ?? config.type;
   
   const activeBalance = mainCurrency === 'POINTS' ? pointsBalance : stampsBalance;
   const target = Math.max(1, mainReward.target);

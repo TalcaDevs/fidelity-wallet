@@ -112,9 +112,12 @@ describe('RLS por marca y local', () => {
         >`SELECT status::text FROM "Brand"`;
         expect(brand).toEqual([{ status: 'SUSPENDED' }]);
 
-        expect(
-          await tx.$executeRaw`UPDATE "Promotion" SET name = 'x' WHERE id = ${a.promotionId}::uuid`,
-        ).toBe(0);
+        await expectDbError(
+          tx,
+          () =>
+            tx.$executeRaw`UPDATE "Promotion" SET name = 'x' WHERE id = ${a.promotionId}::uuid`,
+          '42501',
+        );
       });
 
       await as(tx, a.staffMainId, async () => {
@@ -175,7 +178,12 @@ describe('RLS por marca y local', () => {
   });
 
   it('los tickets de soporte y las fotos de boletas no se leen desde el panel: solo por el backend', async () => {
-    for (const table of ['Ticket', 'TicketMessage', 'TicketAttachment', 'ScanReceipt']) {
+    for (const table of [
+      'Ticket',
+      'TicketMessage',
+      'TicketAttachment',
+      'ScanReceipt',
+    ]) {
       await inRollback(async (tx) => {
         const a = await createBrand(tx, 'a');
         await as(tx, a.ownerId, () =>
@@ -194,14 +202,16 @@ describe('RLS por marca y local', () => {
       await tx.$executeRaw`INSERT INTO "Customer" (phone, "birthDay", "birthMonth") VALUES ('+56900000001', 29, 2)`;
       await expectDbError(
         tx,
-        () => tx.$executeRaw`INSERT INTO "Customer" (phone, "birthYear") VALUES ('+56900000002', 1990)`,
+        () =>
+          tx.$executeRaw`INSERT INTO "Customer" (phone, "birthYear") VALUES ('+56900000002', 1990)`,
         'Customer_birthday_parts',
       );
     });
     await inRollback(async (tx) => {
       await expectDbError(
         tx,
-        () => tx.$executeRaw`INSERT INTO "Customer" (email) VALUES ('Maria@Gmail.com')`,
+        () =>
+          tx.$executeRaw`INSERT INTO "Customer" (email) VALUES ('Maria@Gmail.com')`,
         'Customer_email_lowercase',
       );
     });
@@ -220,30 +230,40 @@ describe('RLS por marca y local', () => {
       await inRollback(async (tx) => {
         await expectDbError(
           tx,
-          () => tx.$executeRaw`INSERT INTO "Customer" (phone, "birthDay", "birthMonth", "birthYear") VALUES (${phone}, ${day}, ${month}, ${year})`,
+          () =>
+            tx.$executeRaw`INSERT INTO "Customer" (phone, "birthDay", "birthMonth", "birthYear") VALUES (${phone}, ${day}, ${month}, ${year})`,
           'Customer_birthday_parts',
         );
       });
     }
   });
 
-  it('el OWNER edita promociones y vigencia de su marca; el STAFF no', async () => {
+  it('las promociones y la vigencia se editan por API, nunca por Supabase directo', async () => {
     await inRollback(async (tx) => {
       const a = await createBrand(tx, 'a');
 
       await as(tx, a.staffMainId, async () => {
-        const updated = await tx.$executeRaw`
-          UPDATE "Promotion" SET name = 'hack' WHERE id = ${a.promotionId}::uuid`;
-        expect(updated).toBe(0);
+        await expectDbError(
+          tx,
+          () => tx.$executeRaw`
+          UPDATE "Promotion" SET name = 'hack' WHERE id = ${a.promotionId}::uuid`,
+          '42501',
+        );
       });
 
       await as(tx, a.ownerId, async () => {
-        expect(
-          await tx.$executeRaw`UPDATE "Promotion" SET name = 'Café doble' WHERE id = ${a.promotionId}::uuid`,
-        ).toBe(1);
-        expect(
-          await tx.$executeRaw`UPDATE "LoyaltyProgram" SET "stampValidityDays" = 60 WHERE id = ${a.programId}::uuid`,
-        ).toBe(1);
+        await expectDbError(
+          tx,
+          () =>
+            tx.$executeRaw`UPDATE "Promotion" SET name = 'Café doble' WHERE id = ${a.promotionId}::uuid`,
+          '42501',
+        );
+        await expectDbError(
+          tx,
+          () =>
+            tx.$executeRaw`UPDATE "LoyaltyProgram" SET "stampValidityDays" = 60 WHERE id = ${a.programId}::uuid`,
+          '42501',
+        );
       });
     });
   });
@@ -259,7 +279,7 @@ describe('RLS por marca y local', () => {
           () => tx.$executeRaw`
             INSERT INTO "Promotion" ("programId", name, "targetStamps", "rewardName")
             VALUES (${a.programId}::uuid, 'robo', 1, 'robo')`,
-          'row-level security',
+          '42501',
         ),
       );
     });

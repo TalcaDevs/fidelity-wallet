@@ -122,7 +122,8 @@ export function InternalCustomers() {
                       {c.cards.map((card) => (
                         <p key={card.brandId}>
                           <Link to={`/internal/brands/${card.brandId}`} className="font-bold text-panel-accent hover:underline">{card.brandName}</Link>
-                          <span className="text-panel-muted"> · {card.activeStamps} sellos</span>
+                          {card.stampsEnabled !== false && <span className="text-panel-muted"> · {card.activeStamps} sellos</span>}
+                          {card.pointsEnabled && <span className="text-panel-muted"> · {card.activePoints ?? 0} puntos</span>}
                           {isSuperadmin && (
                             <>
                               {' · '}

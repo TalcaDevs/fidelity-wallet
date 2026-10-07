@@ -16,7 +16,6 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { PESOS_PER_POINT_MAX, PESOS_PER_POINT_MIN } from '@fidelity/shared';
-import { ProgramType } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import { IsBoolean, IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
 import { requireActiveBrandOwner } from '../common/access/brand-access.js';
@@ -43,7 +42,7 @@ export async function assertPointsCanBeDisabled(
   brandId: string,
 ): Promise<void> {
   const pointsCard = await db.loyaltyProgram.findFirst({
-    where: { brandId, type: ProgramType.POINTS },
+    where: { brandId, pointsEnabled: true },
     select: { id: true },
   });
   if (pointsCard) throw new ConflictException(POINTS_IN_USE);
@@ -103,32 +102,21 @@ export class BrandSettingsService {
     dto: UpdateBrandSettingsDto,
   ): Promise<BrandSettingsDto> {
     await requireActiveBrandOwner(this.prisma, userId, brandId);
-    if (dto.pointsEnabled === false) {
-      await assertPointsCanBeDisabled(this.prisma, brandId);
-    }
     const brandData = {
       ...(dto.name !== undefined ? { name: dto.name } : {}),
       ...(dto.pointsEnabled !== undefined ? { pointsEnabled: dto.pointsEnabled } : {}),
       ...(dto.pesosPerPoint !== undefined ? { pesosPerPoint: dto.pesosPerPoint } : {}),
     };
-    await this.prisma.$transaction([
-      ...(Object.keys(brandData).length > 0
-        ? [
-            this.prisma.brand.update({
-              where: { id: brandId },
-              data: brandData,
-            }),
-          ]
-        : []),
-      ...(dto.stampValidityDays !== undefined
-        ? [
-            this.prisma.loyaltyProgram.updateMany({
-              where: { brandId },
-              data: { stampValidityDays: dto.stampValidityDays },
-            }),
-          ]
-        : []),
-    ]);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Brand" WHERE id = ${brandId}::uuid FOR UPDATE`;
+      if (dto.pointsEnabled === false) await assertPointsCanBeDisabled(tx, brandId);
+      if (Object.keys(brandData).length > 0) {
+        await tx.brand.update({ where: { id: brandId }, data: brandData });
+      }
+      if (dto.stampValidityDays !== undefined) {
+        await tx.loyaltyProgram.updateMany({ where: { brandId }, data: { stampValidityDays: dto.stampValidityDays } });
+      }
+    });
     return this.read(brandId);
   }
 

@@ -12,6 +12,8 @@ export const CARD_NAME_MIN = 2;
 export const CARD_NAME_MAX = 40;
 export const REWARD_NAME_MAX = 60;
 export const CARD_REWARDS_MAX = 5;
+/** Tope técnico de premios guardados, incluyendo modalidades ocultas. */
+export const CARD_REWARDS_STORAGE_MAX = 40;
 /** Más de 30 sellos no caben legibles en la tira del pase. */
 export const STAMPS_TARGET_MAX = 30;
 export const POINTS_TARGET_MAX = 1_000_000;
@@ -378,6 +380,31 @@ export interface CardReward {
   currency?: 'STAMPS' | 'POINTS';
 }
 
+/** Modalidades actuales, con compatibilidad para contratos anteriores a las banderas. */
+export interface CardModalities {
+  type?: CardType;
+  stampsEnabled?: boolean;
+  pointsEnabled?: boolean;
+}
+
+export function enabledCurrencies(modalities: CardModalities): CardType[] {
+  const type = modalities.type === undefined ? 'STAMPS' : modalities.type;
+  const stamps = modalities.stampsEnabled === undefined ? type === 'STAMPS' : modalities.stampsEnabled === true;
+  const points = modalities.pointsEnabled === undefined ? type === 'POINTS' : modalities.pointsEnabled === true;
+  return [...(stamps ? ['STAMPS' as const] : []), ...(points ? ['POINTS' as const] : [])];
+}
+
+/** Solo una moneda ausente recibe el default; un valor presente inválido se rechaza. */
+export function resolveRewardCurrency(reward: { currency?: unknown }, defaultCurrency: CardType = 'STAMPS'): CardType | undefined {
+  const currency = reward.currency === undefined ? defaultCurrency : reward.currency;
+  return currency === 'STAMPS' || currency === 'POINTS' ? currency : undefined;
+}
+
+export function isRewardEnabled(reward: { currency?: unknown }, modalities: CardModalities): boolean {
+  const currency = resolveRewardCurrency(reward, modalities.type);
+  return currency !== undefined && enabledCurrencies(modalities).includes(currency);
+}
+
 /** Lo que edita el dueño en el editor y se guarda de una vez. */
 export interface CardConfig {
   type: CardType;
@@ -386,6 +413,9 @@ export interface CardConfig {
   name: string;
   rewards: CardReward[];
   welcomeBalance: number;
+  /** Cantidades independientes; opcionales para clientes anteriores al editor dual. */
+  welcomeStamps?: number;
+  welcomePoints?: number;
   /** Solo sellos: el STAFF suma a lo más uno por día y cliente; el dueño puede sumar más. */
   dailyStampLimit: boolean;
   /** Vigencia de cada sello o punto en días; null = no vencen. */
@@ -403,12 +433,17 @@ export interface CardPointsSettings {
 
 /** GET /api/brands/:brandId/card */
 export interface CardConfigDto extends CardConfig {
+  /** Cupo efectivo para guardar, conservando premios anteriores por encima del plan. */
+  rewardLimit?: number;
+  /** Cupo del plan aplicado por el backend, incluyendo overrides de entorno. */
+  rewardPlanLimit?: number;
+  rewardUsage?: number;
   programId: string;
   brandName: string;
   designVersion: number;
   updatedAt: string;
   points: CardPointsSettings;
-  /** Hay clientes con saldo vigente: cambiar de sellos a puntos (o al revés) se los borraría. */
+  /** Compatibilidad con editores anteriores. Siempre false: los saldos se conservan. */
   typeLocked: boolean;
   customers: number;
   locations: number;
@@ -417,6 +452,10 @@ export interface CardConfigDto extends CardConfig {
 /** Lo que la landing /join necesita de la tarjeta. */
 export interface PublicCardDto {
   type: CardType;
+  stampsEnabled?: boolean;
+  pointsEnabled?: boolean;
+  welcomeStamps?: number;
+  welcomePoints?: number;
   name: string;
   backgroundColor: string;
   textColor: string;
@@ -612,6 +651,7 @@ function linkProblem(raw: unknown, index: number): string | null {
 
 export interface CardRulesContext {
   pointsEnabled: boolean;
+  maxRewards?: number;
   now?: Date;
 }
 
@@ -653,16 +693,24 @@ function basicInfoProblems(config: Record<string, unknown>): string[] {
   return problems;
 }
 
-function rewardProblems(raw: unknown, type: CardType): string[] {
+function rewardProblems(raw: unknown, type: CardType, stampsEnabled: boolean, pointsEnabled: boolean, maxRewards: number): string[] {
   const problems: string[] = [];
   const rewards: unknown[] = Array.isArray(raw) ? raw : [];
   if (rewards.length === 0) problems.push('Agrega al menos una recompensa');
-  if (rewards.length > CARD_REWARDS_MAX) {
-    problems.push(`Puedes tener hasta ${CARD_REWARDS_MAX} recompensas`);
+  if (rewards.length > CARD_REWARDS_STORAGE_MAX) {
+    problems.push(`Puedes conservar hasta ${CARD_REWARDS_STORAGE_MAX} recompensas`);
+  }
+  const enabledRewards = rewards.filter((rawReward) => isRewardEnabled(record(rawReward), { type, stampsEnabled, pointsEnabled }));
+  if (enabledRewards.length > maxRewards) {
+    problems.push(`Tu tarjeta permite hasta ${maxRewards} recompensas de modalidades activas`);
+  }
+  if (rewards.length > 0 && enabledRewards.length === 0) {
+    problems.push('Agrega al menos una recompensa para una modalidad habilitada');
   }
   rewards.forEach((rawReward, i) => {
     const reward = record(rawReward);
-    const currency = typeof reward.currency === 'string' ? reward.currency : (type === 'POINTS' ? 'POINTS' : 'STAMPS');
+    const currency = resolveRewardCurrency(reward, type);
+    if (currency === undefined) problems.push(`La moneda de la recompensa ${i + 1} no es válida`);
     const targetMax = currency === 'POINTS' ? POINTS_TARGET_MAX : STAMPS_TARGET_MAX;
     const unit = balanceUnit(currency as CardType);
     const name = trimmedText(reward.name);
@@ -769,15 +817,17 @@ function issuesForStep(step: CardConfigIssue['step'], problems: string[]): CardC
 }
 
 /** Reglas de negocio asociadas al paso del editor donde se pueden corregir. */
-export function cardConfigIssues(config: CardConfig, { pointsEnabled, now = new Date() }: CardRulesContext): CardConfigIssue[] {
+export function cardConfigIssues(config: CardConfig, { pointsEnabled, maxRewards = CARD_REWARDS_MAX, now = new Date() }: CardRulesContext): CardConfigIssue[] {
   const input = record(config);
   const type = input.type as CardType;
   const issues = [
     ...issuesForStep('TYPE', typeProblems(input, pointsEnabled)),
     ...issuesForStep('INFO', [
       ...basicInfoProblems(input),
-      ...rewardProblems(input.rewards, type),
+      ...rewardProblems(input.rewards, type, input.stampsEnabled === true, input.pointsEnabled === true, maxRewards),
       ...balanceRuleProblems(input.welcomeBalance, type),
+      ...(input.welcomeStamps === undefined ? [] : balanceRuleProblems(input.welcomeStamps, 'STAMPS')),
+      ...(input.welcomePoints === undefined ? [] : balanceRuleProblems(input.welcomePoints, 'POINTS')),
       ...validityProblems(input.validity, input.stampValidityDays, type, now),
       ...registrationProblems(input.registration),
     ]),

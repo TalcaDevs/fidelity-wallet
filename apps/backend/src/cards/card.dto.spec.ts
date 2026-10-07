@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { ValidationPipe } from '@nestjs/common';
 import {
   DEFAULT_CARD_DESIGN,
   DEFAULT_CARD_DETAILS,
@@ -37,6 +38,16 @@ function errorPaths(errors: ValidationError[], parent = ''): string[] {
 }
 
 describe('card DTO numeric limits', () => {
+  it.each([
+    { type: 'STAMPS', stampsEnabled: true, pointsEnabled: false },
+    { type: 'POINTS', stampsEnabled: false, pointsEnabled: true },
+    { type: 'STAMPS', stampsEnabled: true, pointsEnabled: true },
+  ])('accepts enabled modalities through the strict API pipe ($type, $pointsEnabled)', async (modalities) => {
+    const pipe = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true, transformOptions: { enableImplicitConversion: true } });
+    await expect(pipe.transform({ ...body(), ...modalities, welcomeStamps: 2, welcomePoints: 20 }, { type: 'body', metatype: SaveCardDto })).resolves.toMatchObject(modalities);
+    await expect(pipe.transform({ ...body(), unexpected: true }, { type: 'body', metatype: SaveCardDto })).rejects.toThrow();
+  });
+
   it.each([0, -1, 1.5])('rejects a reward cost of %s', (target) => {
     const reward = plainToInstance(CardRewardDto, {
       name: 'Café gratis',

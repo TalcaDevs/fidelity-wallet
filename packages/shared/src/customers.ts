@@ -46,6 +46,8 @@ export interface PurchaseHistoryEntryDto {
   staffEmail: string | null;
   /** Sellos sumados (STAMP_ADDED) o consumidos (REWARD_REDEEMED). */
   stamps: number;
+  /** Puntos sumados o consumidos; no se reinterpretan al cambiar la modalidad. */
+  points?: number;
   /** Pesos chilenos. */
   purchaseAmount: number | null;
   note: string | null;
@@ -66,6 +68,7 @@ export interface CustomerProfileDto {
   birthYear: number | null;
   joinedAt: string;
   activeStamps: number;
+  activePoints?: number;
   /** Local donde se registró: el que se propone al sumar sellos desde el panel. */
   homeLocationId: string;
 }
@@ -76,6 +79,9 @@ export interface CustomerHistoryDto {
   history: Paginated<PurchaseHistoryEntryDto>;
   /** Sellos o puntos: define cómo se muestra el saldo y qué suma el dueño desde el panel. */
   cardType: CardType;
+  stampsEnabled?: boolean;
+  pointsEnabled?: boolean;
+  maxPointsPerLoad?: number;
   /** Tope por carga del dueño: OWNER_MAX_STAMPS_PER_LOAD con sellos, POINTS_PER_SCAN_MAX con puntos. */
   maxStampsPerLoad: number;
 }
@@ -85,5 +91,8 @@ export interface PanelStampsResultDto {
   scanId: string;
   stampsAdded: number;
   activeStamps: number;
+  activePoints?: number;
+  pointsAdded?: number;
+  currency?: CardType;
   rewardUnlocked: boolean;
 }

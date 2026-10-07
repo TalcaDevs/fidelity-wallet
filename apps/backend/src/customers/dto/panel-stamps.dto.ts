@@ -6,7 +6,7 @@ import {
   PURCHASE_NOTE_MAX,
 } from '@fidelity/shared';
 import { Transform } from 'class-transformer';
-import { IsInt, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min } from 'class-validator';
 
 // Llega en multipart/form-data cuando trae foto: un campo opcional vacío es "".
 const optionalText = ({ value }: { value: unknown }) => {
@@ -19,6 +19,11 @@ const optionalNumber = ({ value }: { value: unknown }) =>
 
 /** El dueño suma sellos desde la ficha del cliente, sin escanear en caja. */
 export class PanelStampsDto {
+  @ApiPropertyOptional({ enum: ['STAMPS', 'POINTS'], description: 'Obligatoria cuando ambas modalidades están activas' })
+  @IsOptional()
+  @IsIn(['STAMPS', 'POINTS'])
+  currency?: 'STAMPS' | 'POINTS';
+
   @ApiProperty({ description: 'Marca del cliente (UUID)' })
   @IsUUID('4', { message: 'El brandId debe ser un UUID v4 válido' })
   brandId: string;

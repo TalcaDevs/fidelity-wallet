@@ -25,7 +25,10 @@ export class ReportsOverviewService {
   /**
    * Reporte General (Overview): KPIs comparativos, series temporales y distribución QR vs Manual.
    */
-  async getOverview(scope: ReportScope, query: ReportPeriodQueryDto): Promise<OverviewReportDto> {
+  async getOverview(
+    scope: ReportScope,
+    query: ReportPeriodQueryDto,
+  ): Promise<OverviewReportDto> {
     const range = resolveDateRange(query);
     const filter = scopeWhere(scope);
 
@@ -38,7 +41,10 @@ export class ReportsOverviewService {
 
     // Metadata del período para alinear contratos con el frontend
     const periodFrom = formatDateInTz(range.from, range.timeZone);
-    const periodTo = formatDateInTz(new Date(range.toExclusive.getTime() - 1), range.timeZone);
+    const periodTo = formatDateInTz(
+      new Date(range.toExclusive.getTime() - 1),
+      range.timeZone,
+    );
 
     return {
       period: {
@@ -70,7 +76,11 @@ export class ReportsOverviewService {
       prevExpiredStamps,
     ] = await Promise.all([
       this.prisma.scan.findMany({
-        where: { ...filter, ...VISIT_SCANS, createdAt: { gte: from, lt: toExclusive } },
+        where: {
+          ...filter,
+          ...VISIT_SCANS,
+          createdAt: { gte: from, lt: toExclusive },
+        },
         select: {
           type: true,
           createdAt: true,
@@ -80,11 +90,21 @@ export class ReportsOverviewService {
       this.prisma.pass.count({
         where: { ...filter, createdAt: { gte: from, lt: toExclusive } },
       }),
-      this.prisma.stamp.count({
-        where: { ...filter, expiresAt: { gte: from, lt: toExclusive }, consumedAt: null },
+      this.prisma.stamp.aggregate({
+        _sum: { amount: true },
+        where: {
+          ...filter,
+          currency: 'STAMPS',
+          expiresAt: { gte: from, lt: toExclusive },
+          consumedAt: null,
+        },
       }),
       this.prisma.scan.findMany({
-        where: { ...filter, ...VISIT_SCANS, createdAt: { gte: prevFrom, lt: prevToExclusive } },
+        where: {
+          ...filter,
+          ...VISIT_SCANS,
+          createdAt: { gte: prevFrom, lt: prevToExclusive },
+        },
         select: {
           type: true,
           createdAt: true,
@@ -94,30 +114,57 @@ export class ReportsOverviewService {
       this.prisma.pass.count({
         where: { ...filter, createdAt: { gte: prevFrom, lt: prevToExclusive } },
       }),
-      this.prisma.stamp.count({
-        where: { ...filter, expiresAt: { gte: prevFrom, lt: prevToExclusive }, consumedAt: null },
+      this.prisma.stamp.aggregate({
+        _sum: { amount: true },
+        where: {
+          ...filter,
+          currency: 'STAMPS',
+          expiresAt: { gte: prevFrom, lt: prevToExclusive },
+          consumedAt: null,
+        },
       }),
     ]);
 
     // Métricas período actual
     const currStamps = currScans.filter((s) => s.type === 'STAMP_ADDED').length;
-    const currRewards = currScans.filter((s) => s.type === 'REWARD_REDEEMED').length;
-    const currActiveCustomers = new Set(currScans.map((s) => s.pass.customerId)).size;
-    const currRecurrenceRate = this.calculateRecurrenceRate(currScans, range.timeZone);
+    const currRewards = currScans.filter(
+      (s) => s.type === 'REWARD_REDEEMED',
+    ).length;
+    const currActiveCustomers = new Set(currScans.map((s) => s.pass.customerId))
+      .size;
+    const currRecurrenceRate = this.calculateRecurrenceRate(
+      currScans,
+      range.timeZone,
+    );
 
     // Métricas período anterior
     const prevStamps = prevScans.filter((s) => s.type === 'STAMP_ADDED').length;
-    const prevRewards = prevScans.filter((s) => s.type === 'REWARD_REDEEMED').length;
-    const prevActiveCustomers = new Set(prevScans.map((s) => s.pass.customerId)).size;
-    const prevRecurrenceRate = this.calculateRecurrenceRate(prevScans, range.timeZone);
+    const prevRewards = prevScans.filter(
+      (s) => s.type === 'REWARD_REDEEMED',
+    ).length;
+    const prevActiveCustomers = new Set(prevScans.map((s) => s.pass.customerId))
+      .size;
+    const prevRecurrenceRate = this.calculateRecurrenceRate(
+      prevScans,
+      range.timeZone,
+    );
 
     return {
       newCustomers: this.buildKpiMetric(currPassesCount, prevPassesCount),
-      activeCustomers: this.buildKpiMetric(currActiveCustomers, prevActiveCustomers),
+      activeCustomers: this.buildKpiMetric(
+        currActiveCustomers,
+        prevActiveCustomers,
+      ),
       stampsDelivered: this.buildKpiMetric(currStamps, prevStamps),
       rewardsRedeemed: this.buildKpiMetric(currRewards, prevRewards),
-      recurrenceRate: this.buildKpiMetric(currRecurrenceRate, prevRecurrenceRate),
-      expiredStamps: this.buildKpiMetric(currExpiredStamps, prevExpiredStamps),
+      recurrenceRate: this.buildKpiMetric(
+        currRecurrenceRate,
+        prevRecurrenceRate,
+      ),
+      expiredStamps: this.buildKpiMetric(
+        currExpiredStamps._sum.amount ?? 0,
+        prevExpiredStamps._sum.amount ?? 0,
+      ),
     };
   }
 
@@ -139,7 +186,9 @@ export class ReportsOverviewService {
     const totalActive = Object.keys(customerVisitDays).length;
     if (totalActive === 0) return 0;
 
-    const recurrentCount = Object.values(customerVisitDays).filter((days) => days.size >= 2).length;
+    const recurrentCount = Object.values(customerVisitDays).filter(
+      (days) => days.size >= 2,
+    ).length;
     return Math.round((recurrentCount / totalActive) * 1000) / 10;
   }
 
@@ -151,7 +200,11 @@ export class ReportsOverviewService {
     range: ResolvedDateRange,
   ): Promise<TimeSeriesPointDto[]> {
     const scans = await this.prisma.scan.findMany({
-      where: { ...filter, ...VISIT_SCANS, createdAt: { gte: range.from, lt: range.toExclusive } },
+      where: {
+        ...filter,
+        ...VISIT_SCANS,
+        createdAt: { gte: range.from, lt: range.toExclusive },
+      },
       select: {
         type: true,
         createdAt: true,
@@ -159,7 +212,10 @@ export class ReportsOverviewService {
       },
     });
 
-    const dailyMap: Record<string, { stamps: number; rewards: number; customerIds: Set<string> }> = {};
+    const dailyMap: Record<
+      string,
+      { stamps: number; rewards: number; customerIds: Set<string> }
+    > = {};
 
     // Inicializar todos los días del rango en timeZone para que no falten fechas en el gráfico
     let cursor = new Date(range.from.getTime());
@@ -207,7 +263,10 @@ export class ReportsOverviewService {
     if (typeof this.prisma.scan.groupBy === 'function') {
       const groups = await this.prisma.scan.groupBy({
         by: ['method'],
-        where: { ...filter, createdAt: { gte: range.from, lt: range.toExclusive } },
+        where: {
+          ...filter,
+          createdAt: { gte: range.from, lt: range.toExclusive },
+        },
         _count: { _all: true },
       });
 
@@ -217,7 +276,10 @@ export class ReportsOverviewService {
       }
     } else {
       const scans = await this.prisma.scan.findMany({
-        where: { ...filter, createdAt: { gte: range.from, lt: range.toExclusive } },
+        where: {
+          ...filter,
+          createdAt: { gte: range.from, lt: range.toExclusive },
+        },
         select: { method: true },
       });
       qrCount = scans.filter((s) => s.method === 'QR').length;
@@ -225,8 +287,10 @@ export class ReportsOverviewService {
     }
 
     const totalScans = qrCount + manualCount;
-    const qrPercentage = totalScans > 0 ? Math.round((qrCount / totalScans) * 1000) / 10 : 0;
-    const manualPercentage = totalScans > 0 ? Math.round((manualCount / totalScans) * 1000) / 10 : 0;
+    const qrPercentage =
+      totalScans > 0 ? Math.round((qrCount / totalScans) * 1000) / 10 : 0;
+    const manualPercentage =
+      totalScans > 0 ? Math.round((manualCount / totalScans) * 1000) / 10 : 0;
 
     return {
       qrCount,

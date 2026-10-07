@@ -17,6 +17,8 @@ export const cardViewSelect = {
   type: true,
   name: true,
   welcomeBalance: true,
+  welcomeStamps: true,
+  welcomePoints: true,
   dailyStampLimit: true,
   stampValidityDays: true,
   cardValidity: true,
@@ -39,6 +41,8 @@ export interface CardView {
   type: CardType;
   name: string;
   welcomeBalance: number;
+  welcomeStamps: number;
+  welcomePoints: number;
   dailyStampLimit: boolean;
   stampValidityDays: number | null;
   validity: CardValidity;
@@ -59,6 +63,8 @@ export function toCardView(program: CardProgramRow): CardView {
     type,
     name: program.name,
     welcomeBalance: program.welcomeBalance ?? 0,
+    welcomeStamps: program.welcomeStamps ?? (type === 'STAMPS' ? program.welcomeBalance ?? 0 : 0),
+    welcomePoints: program.welcomePoints ?? (type === 'POINTS' ? program.welcomeBalance ?? 0 : 0),
     dailyStampLimit: program.dailyStampLimit ?? true,
     stampValidityDays: program.stampValidityDays,
     validity: {

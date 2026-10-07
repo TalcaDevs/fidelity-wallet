@@ -13,7 +13,7 @@ export interface Plan {
   priceUsdMonthlyAnnual: number | null;
   trialDays?: number;
   /** customers: null = ilimitado. teamUsers cuenta solo STAFF: el OWNER no ocupa cupo. */
-  limits: { programs: number; locations: number; teamUsers: number; customers: number | null };
+  limits: { programs: number; locations: number; teamUsers: number; customers: number | null; rewards: number };
   features: {
     walletPasses: true;
     pushNotifications: boolean;
@@ -61,7 +61,7 @@ export const CATALOG_PLANS: readonly Plan[] = [
     priceUsdMonthly: 0,
     priceUsdMonthlyAnnual: null,
     trialDays: TRIAL_DAYS,
-    limits: { programs: 1, locations: 1, teamUsers: 1, customers: 100 },
+    limits: { programs: 1, locations: 1, teamUsers: 1, customers: 100, rewards: 3 },
     features: {
       walletPasses: true,
       pushNotifications: false,
@@ -76,7 +76,7 @@ export const CATALOG_PLANS: readonly Plan[] = [
     tagline: 'Para tu primer local',
     priceUsdMonthly: 14,
     priceUsdMonthlyAnnual: 11,
-    limits: { programs: 3, locations: 2, teamUsers: 3, customers: null },
+    limits: { programs: 3, locations: 2, teamUsers: 3, customers: null, rewards: 3 },
     features: PAID_FEATURES,
   },
   {
@@ -86,7 +86,7 @@ export const CATALOG_PLANS: readonly Plan[] = [
     highlighted: true,
     priceUsdMonthly: 24,
     priceUsdMonthlyAnnual: 19,
-    limits: { programs: 8, locations: 8, teamUsers: 15, customers: null },
+    limits: { programs: 8, locations: 8, teamUsers: 15, customers: null, rewards: 5 },
     features: PAID_FEATURES,
   },
   {
@@ -95,7 +95,7 @@ export const CATALOG_PLANS: readonly Plan[] = [
     tagline: 'Para varias sucursales',
     priceUsdMonthly: 39,
     priceUsdMonthlyAnnual: 29,
-    limits: { programs: 15, locations: 15, teamUsers: 25, customers: null },
+    limits: { programs: 15, locations: 15, teamUsers: 25, customers: null, rewards: 10 },
     features: PAID_FEATURES,
   },
 ];

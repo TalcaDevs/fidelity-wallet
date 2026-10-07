@@ -1233,9 +1233,10 @@ describe('calculateFifoConsumption', () => {
       } as any,
     ];
 
-    const { stampsToUpdate, newStampsToCreate } = calculateFifoConsumption(activeStampsList, 5);
+    const { stampsToUpdate, newStampsToCreate, partialConsumption } = calculateFifoConsumption(activeStampsList, 5);
 
     expect(stampsToUpdate).toEqual(['big-stamp-1']);
+    expect(partialConsumption).toEqual({ id: 'big-stamp-1', amount: 5 });
     expect(newStampsToCreate).toHaveLength(1);
     expect(newStampsToCreate[0]).toMatchObject({
       amount: 7, // 12 - 5

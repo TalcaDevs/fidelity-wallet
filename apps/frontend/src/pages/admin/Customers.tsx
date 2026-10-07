@@ -21,7 +21,8 @@ const CSV_COLUMNS: CsvColumn<CustomerRow>[] = [
   { header: 'RUT', value: (row) => row.rut },
   { header: 'Teléfono', value: (row) => row.phone },
   { header: 'Cumpleaños', value: (row) => formatBirthday(row.birthDay, row.birthMonth, row.birthYear) },
-  { header: 'Sellos vigentes', value: (row) => row.activeStamps },
+  { header: 'Sellos vigentes', value: (row) => row.stampsEnabled === false ? '' : row.activeStamps },
+  { header: 'Puntos vigentes', value: (row) => row.pointsEnabled ? (row.activePoints ?? 0) : '' },
   { header: 'Próximo vencimiento', value: (row) => (row.nextExpiryAt ? new Date(row.nextExpiryAt).toISOString() : null) },
   { header: 'Cliente desde', value: (row) => new Date(row.joinedAt).toISOString() },
   { header: 'Última actividad', value: (row) => new Date(row.lastActivityAt).toISOString() },
@@ -124,7 +125,7 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
             <thead>
               <tr className="bg-panel-soft border-b border-panel-border backdrop-blur-sm">
                 <th className="p-6 text-sm font-bold text-panel-muted uppercase tracking-wider">Cliente</th>
-                <th className="p-6 text-sm font-bold text-panel-muted uppercase tracking-wider">Sellos vigentes</th>
+                <th className="p-6 text-sm font-bold text-panel-muted uppercase tracking-wider">Saldo vigente</th>
                 <th className="p-6 text-sm font-bold text-panel-muted uppercase tracking-wider">Cliente desde</th>
                 <th className="p-6 text-sm font-bold text-panel-muted uppercase tracking-wider">Última actividad</th>
                 <th className="p-6 text-sm font-bold text-panel-muted uppercase tracking-wider text-right">Acciones</th>
@@ -174,8 +175,9 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
                         )}
                       </td>
                       <td className="p-5">
-                        <span className="inline-flex items-center justify-center min-w-10 h-10 px-3 rounded-full bg-panel-accent/10 dark:bg-panel-accent/20 text-panel-accent font-bold">
-                          {row.activeStamps}
+                        <span className="inline-flex flex-wrap gap-x-3 gap-y-1 items-center justify-center min-w-10 min-h-10 px-3 py-2 rounded-full bg-panel-accent/10 dark:bg-panel-accent/20 text-panel-accent font-bold">
+                          {row.stampsEnabled !== false && <span>{row.activeStamps} sellos</span>}
+                          {row.pointsEnabled && <span className="block">{row.activePoints ?? 0} puntos</span>}
                         </span>
                         {/* Si la promoción no vence, no mostramos nada: un guion o un "null" solo confunde. */}
                         {expiryLabel && (

@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { firstName } from '@fidelity/shared';
 import { Brand, Customer, Pass, PassUpdateTask, Prisma } from '@prisma/client';
+import { enabledCurrencies, readCardBalance } from '../cards/card-balance.js';
 import { passExpiresAt, toCardView } from '../cards/card-program.js';
 import { findBrandProgram, resolveLocationAccess } from '../common/access/brand-access.js';
 import { maskEmail, maskPhone, maskRut } from '../common/utils/mask.util.js';
@@ -138,7 +139,7 @@ export class PassesService {
 
     const program = await findBrandProgram(this.prisma, merchant.brandId);
     const brand = await this.prisma.brand.findUnique({ where: { id: merchant.brandId } });
-    if (!program || !brand) {
+    if (!program || !program.isActive || !brand) {
       throw new BadRequestException('El comercio no tiene una promoción activa configurada');
     }
 
@@ -390,7 +391,7 @@ export class PassesService {
       where: { id: programId },
       include: { brand: { select: { name: true } } },
     });
-    if (!program) return null;
+    if (!program || !program.isActive) return null;
 
     const locations = includeLocations
       ? await prisma.merchant.findMany({
@@ -425,37 +426,17 @@ export class PassesService {
     const cardClass = await this.cardClassData(prisma, pass.programId, includeLocations);
     if (!cardClass) return null;
     const now = new Date();
-    const [activeStampsAgg, activePointsAgg] = await Promise.all([
-      prisma.stamp.aggregate({
-        _sum: { amount: true },
-        where: {
-          passId: pass.id,
-          consumedAt: null,
-          currency: 'STAMPS',
-          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-        },
-      }),
-      prisma.stamp.aggregate({
-        _sum: { amount: true },
-        where: {
-          passId: pass.id,
-          consumedAt: null,
-          currency: 'POINTS',
-          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-        },
-      }),
-    ]);
-    const activeStamps = activeStampsAgg._sum.amount ?? 0;
-    const activePoints = activePointsAgg._sum.amount ?? 0;
+    const { activeStamps, activePoints, nextExpiryAt } = await readCardBalance(prisma, pass.id, cardClass.card, now);
+    const currencies = enabledCurrencies(cardClass.card);
 
-    let promotion: any = null;
+    let promotion: Prisma.PromotionGetPayload<Record<string, never>> | null = null;
     const activePromotions = prisma.promotion.findMany
       ? explicitPromotionId
         ? await prisma.promotion.findMany({
-            where: { id: explicitPromotionId, programId: pass.programId, isActive: true },
+            where: { id: explicitPromotionId, programId: pass.programId, isActive: true, currency: { in: currencies } },
           })
         : await prisma.promotion.findMany({
-            where: { programId: pass.programId, isActive: true },
+            where: { programId: pass.programId, isActive: true, currency: { in: currencies } },
             orderBy: { targetStamps: 'asc' },
           })
       : [];
@@ -471,25 +452,17 @@ export class PassesService {
     } else if (prisma.promotion.findFirst) {
       promotion = explicitPromotionId
         ? await prisma.promotion.findFirst({
-            where: { id: explicitPromotionId, programId: pass.programId, isActive: true },
+            where: { id: explicitPromotionId, programId: pass.programId, isActive: true, currency: { in: currencies } },
           })
         : await prisma.promotion.findFirst({
-            where: { programId: pass.programId, isActive: true },
+            where: { programId: pass.programId, isActive: true, currency: { in: currencies } },
             orderBy: { createdAt: 'desc' },
           });
     }
 
-    if (!promotion) return null;
-
-    const nextExpiring = await prisma.stamp.findFirst({
-      where: {
-        passId: pass.id,
-        consumedAt: null,
-        expiresAt: { gt: now },
-      },
-      orderBy: { expiresAt: 'asc' },
-      select: { expiresAt: true },
-    });
+    if (explicitPromotionId && !promotion) {
+      throw new BadRequestException('El premio seleccionado no está disponible en esta tarjeta');
+    }
 
     return {
       passId: pass.id,
@@ -502,10 +475,10 @@ export class PassesService {
       pointsEnabled: cardClass.card.pointsEnabled,
       activeStamps,
       activePoints,
-      targetStamps: promotion.targetStamps,
-      rewardCurrency: promotion.currency || (cardClass.card.type === 'POINTS' ? 'POINTS' : 'STAMPS'),
-      rewardName: promotion.rewardName,
-      nextExpiryAt: nextExpiring?.expiresAt ?? null,
+      targetStamps: promotion?.targetStamps ?? 0,
+      rewardCurrency: promotion?.currency ?? (cardClass.card.stampsEnabled ? 'STAMPS' : 'POINTS'),
+      rewardName: promotion?.rewardName ?? 'Sin premios configurados',
+      nextExpiryAt,
       memberSince: pass.createdAt,
       cardExpiresAt: passExpiresAt(cardClass.card, pass.createdAt),
       cardClass,

@@ -1,13 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   CARD_IMAGE_KINDS,
+  CARD_REWARDS_STORAGE_MAX,
   CARD_TYPES,
   CARD_VALIDITY_TYPES,
   type CardImageKind,
   type CardType,
   type CardValidityType,
 } from '@fidelity/shared';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
@@ -25,6 +26,10 @@ import {
 
 // Forma del cuerpo: los tipos y rangos de negocio (largo del nombre, tope de sellos, enlaces,
 // fechas futuras) los valida cardConfigProblems de @fidelity/shared, igual que el editor.
+
+// La conversión implícita global convertiría "false", números u objetos a booleanos.
+// Las modalidades usan el valor JSON original para validar el contrato sin coerción.
+const booleanFromBody = ({ obj, key }: { obj: Record<string, unknown>; key: string }) => obj[key];
 
 export class CardRewardDto {
   @ApiPropertyOptional({
@@ -85,10 +90,12 @@ export class SaveCardDto {
   type: CardType;
 
   @ApiProperty()
+  @Transform(booleanFromBody, { toClassOnly: true })
   @IsBoolean()
   stampsEnabled: boolean;
 
   @ApiProperty()
+  @Transform(booleanFromBody, { toClassOnly: true })
   @IsBoolean()
   pointsEnabled: boolean;
 
@@ -98,7 +105,7 @@ export class SaveCardDto {
 
   @ApiProperty({ type: [CardRewardDto] })
   @IsArray()
-  @ArrayMaxSize(20)
+  @ArrayMaxSize(CARD_REWARDS_STORAGE_MAX)
   @ValidateNested({ each: true })
   @Type(() => CardRewardDto)
   rewards: CardRewardDto[];
@@ -111,6 +118,18 @@ export class SaveCardDto {
   @IsInt({ message: 'El saldo de bienvenida debe ser un número entero' })
   @Min(0, { message: 'El saldo de bienvenida no puede ser negativo' })
   welcomeBalance: number;
+
+  @ApiPropertyOptional({ description: 'Sellos de bienvenida, conservados al ocultar sellos', minimum: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  welcomeStamps?: number;
+
+  @ApiPropertyOptional({ description: 'Puntos de bienvenida, conservados al ocultar puntos', minimum: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  welcomePoints?: number;
 
   @ApiProperty({
     description: 'Solo sellos: un sello por día y cliente para el STAFF',

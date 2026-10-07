@@ -72,7 +72,9 @@ export function Join() {
   const asks = (field: RegistrationField) => registration[field] !== 'HIDDEN';
   const requires = (field: RegistrationField) => registration[field] === 'REQUIRED';
   const cardType = merchant?.card?.type ?? 'STAMPS';
-  const unit = balanceUnit(cardType);
+  const stampsEnabled = merchant?.card?.stampsEnabled ?? cardType !== 'POINTS';
+  const pointsEnabled = merchant?.card?.pointsEnabled ?? cardType === 'POINTS';
+  const unit = stampsEnabled && pointsEnabled ? 'sellos y puntos' : stampsEnabled ? 'sellos' : 'puntos';
 
   const hasContact = phone.isValid || email.isValid;
   // Ni el teléfono ni el correo son obligatorios por sí solos: basta uno de los dos.
@@ -224,9 +226,14 @@ export function Join() {
   const otherPromos = merchant.Promotion ? merchant.Promotion.slice(1) : [];
   const clp = new Intl.NumberFormat('es-CL');
   const rewardText = promo
-    ? `Junta ${clp.format(promo.targetStamps)} ${unit}, llévate ${promo.rewardName}`
+    ? `Junta ${clp.format(promo.targetStamps)} ${balanceUnit(promo.currency ?? cardType, promo.targetStamps)}, llévate ${promo.rewardName}`
     : `Acumula ${unit} y gana increíbles premios`;
-  const welcome = merchant.card?.welcomeBalance ?? 0;
+  const welcomeStamps = stampsEnabled ? (merchant.card?.welcomeStamps ?? (cardType === 'STAMPS' ? merchant.card?.welcomeBalance ?? 0 : 0)) : 0;
+  const welcomePoints = pointsEnabled ? (merchant.card?.welcomePoints ?? (cardType === 'POINTS' ? merchant.card?.welcomeBalance ?? 0 : 0)) : 0;
+  const welcome = [
+    welcomeStamps > 0 ? `${clp.format(welcomeStamps)} ${balanceUnit('STAMPS', welcomeStamps)}` : '',
+    welcomePoints > 0 ? `${clp.format(welcomePoints)} ${balanceUnit('POINTS', welcomePoints)}` : '',
+  ].filter(Boolean).join(' y ');
   const brandColor = merchant.card?.backgroundColor;
 
   return (
@@ -269,9 +276,9 @@ export function Join() {
             <p className="font-extrabold text-xl relative z-10">
               {rewardText}
             </p>
-            {welcome > 0 && (
+            {welcome && (
               <p className="relative z-10 text-sm font-bold opacity-90 mt-1">
-                Y te regalamos {clp.format(welcome)} {balanceUnit(cardType, welcome)} al obtener tu tarjeta.
+                Y te regalamos {welcome} al obtener tu tarjeta.
               </p>
             )}
           </div>
@@ -285,7 +292,7 @@ export function Join() {
                 {otherPromos.map((p) => (
                   <li key={p.id} className="flex items-center justify-between gap-3 text-sm">
                     <span className="font-semibold text-panel-text">{p.rewardName}</span>
-                    <span className="shrink-0 font-bold text-panel-accent">{clp.format(p.targetStamps)} {unit}</span>
+                    <span className="shrink-0 font-bold text-panel-accent">{clp.format(p.targetStamps)} {balanceUnit(p.currency ?? cardType, p.targetStamps)}</span>
                   </li>
                 ))}
               </ul>

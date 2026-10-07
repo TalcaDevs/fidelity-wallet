@@ -77,8 +77,7 @@ model BrandMember {
 }
 
 /// La tarjeta de la marca: un programa por marca (UNIQUE brandId).
-/// Con type POINTS cada fila de Stamp es un punto: el saldo, el vencimiento y el canje FIFO
-/// funcionan igual que con sellos.
+/// Sellos y puntos pueden coexistir; cada moneda conserva su propio saldo y canje FIFO.
 model LoyaltyProgram {
   id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   brandId           String       @unique @db.Uuid
@@ -95,8 +94,10 @@ model LoyaltyProgram {
   /// Vigencia de los sellos (o puntos) en dias. NULL = no vencen.
   stampValidityDays Int?
   isActive          Boolean      @default(true)
-  /// Sellos o puntos que recibe el cliente al obtener la tarjeta.
+  /// Campo legacy: no usar para nuevas altas; la bienvenida se configura por moneda.
   welcomeBalance    Int          @default(0)
+  welcomeStamps     Int          @default(0)
+  welcomePoints     Int          @default(0)
   /// Solo STAMPS: el STAFF suma a lo más un sello por día y cliente (hora de Chile).
   dailyStampLimit   Boolean      @default(true)
   cardValidity      CardValidity @default(UNLIMITED)
@@ -188,8 +189,8 @@ model Pass {
   @@index([merchantId])
 }
 
-/// Fuente de verdad de los sellos. El saldo NO se guarda: se calcula al leer
-/// contando las filas no consumidas y no vencidas (vista PassStampBalance).
+/// Fuente de verdad de sellos y puntos. El saldo se calcula sumando amount por moneda
+/// en las filas no consumidas y no vencidas (vista PassStampBalance).
 model Stamp {
   id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   currency         Currency       @default(STAMPS)
@@ -238,8 +239,7 @@ model Scan {
   /// Auditoria: que usuario (dueno o mesero) ejecuto el scan.
   createdByUserId String?        @db.Uuid
   method          ScanMethod     @default(QR)
-  /// Sellos (o puntos) que sumó este scan. Sellos: 1 para el STAFF; el OWNER puede cargar varios
-  /// (motivo en AuditLog). Puntos: los que da el monto de la compra.
+  /// Sellos que sumó este scan. Cero en una carga exclusiva de puntos.
   stampCount      Int            @default(1)
   /// Pesos chilenos. En una tarjeta de puntos define los puntos; en una de sellos solo se registra.
   purchaseAmount  Int?

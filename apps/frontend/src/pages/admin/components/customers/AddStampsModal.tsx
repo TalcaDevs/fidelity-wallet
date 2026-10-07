@@ -1,6 +1,7 @@
 import { useCallback, useId, useMemo, useState, type FormEvent } from 'react';
 import {
   OWNER_STAMP_REASON_MAX,
+  POINTS_PER_SCAN_MAX,
   OWNER_STAMP_REASON_MIN,
   PURCHASE_AMOUNT_MAX,
   PURCHASE_NOTE_MAX,
@@ -23,6 +24,9 @@ interface AddStampsModalProps {
   homeLocationId: string;
   cardType: CardType;
   maxStampsPerLoad: number;
+  maxPointsPerLoad?: number;
+  stampsEnabled?: boolean;
+  pointsEnabled?: boolean;
   onClose: () => void;
   onAdded: (result: PanelStampsResultDto) => void;
 }
@@ -43,11 +47,16 @@ export function AddStampsModal({
   homeLocationId,
   cardType,
   maxStampsPerLoad,
+  maxPointsPerLoad = POINTS_PER_SCAN_MAX,
+  stampsEnabled = cardType !== 'POINTS',
+  pointsEnabled = cardType === 'POINTS',
   onClose,
   onAdded,
 }: AddStampsModalProps) {
-  const isPoints = cardType === 'POINTS';
-  const unit = balanceUnit(cardType);
+  const [currency, setCurrency] = useState<CardType>(stampsEnabled ? 'STAMPS' : 'POINTS');
+  const isPoints = currency === 'POINTS';
+  const unit = balanceUnit(currency);
+  const maxLoad = isPoints ? maxPointsPerLoad : maxStampsPerLoad;
   const ids = useId();
   const [stampCount, setStampCount] = useState(1);
   const [reason, setReason] = useState('');
@@ -100,6 +109,7 @@ export function AddStampsModal({
         brandId,
         merchantId: effectiveLocationId,
         stampCount,
+        currency,
         reason: reasonText,
         purchaseAmount: amountValue,
         note: note.trim() || undefined,
@@ -119,6 +129,12 @@ export function AddStampsModal({
       onClose={() => !busy && onClose()}
     >
       <form onSubmit={(e) => void handleSubmit(e)} className="space-y-5">
+        {stampsEnabled && pointsEnabled && <div>
+          <label htmlFor={`${ids}-currency`} className={LABEL}>Modalidad a sumar</label>
+          <select id={`${ids}-currency`} value={currency} onChange={(e) => { setCurrency(e.target.value as CardType); setStampCount(1); }} className={INPUT}>
+            <option value="STAMPS">Sellos</option><option value="POINTS">Puntos</option>
+          </select>
+        </div>}
         <div>
           <span id={`${ids}-count`} className={LABEL}>{isPoints ? 'Puntos a sumar' : 'Sellos a sumar'}</span>
           {isPoints ? (
@@ -129,11 +145,11 @@ export function AddStampsModal({
                 value={String(stampCount)}
                 onChange={(e) => {
                   const digits = e.target.value.replace(/\D/g, '');
-                  setStampCount(Math.max(1, Math.min(maxStampsPerLoad, digits ? Number(digits) : 1)));
+                  setStampCount(Math.max(1, Math.min(maxLoad, digits ? Number(digits) : 1)));
                 }}
                 className={`${INPUT} w-36 text-xl font-black tabular-nums`}
               />
-              <span className="text-sm text-panel-muted">Máximo {clp.format(maxStampsPerLoad)} por vez</span>
+              <span className="text-sm text-panel-muted">Máximo {clp.format(maxLoad)} por vez</span>
             </div>
           ) : (
           <div role="group" aria-labelledby={`${ids}-count`} className="flex items-center gap-3">
@@ -153,7 +169,7 @@ export function AddStampsModal({
               type="button"
               aria-label="Un sello más"
               disabled={stampCount >= maxStampsPerLoad}
-              onClick={() => setStampCount((n) => Math.min(maxStampsPerLoad, n + 1))}
+              onClick={() => setStampCount((n) => Math.min(maxLoad, n + 1))}
               className="w-11 h-11 rounded-xl bg-panel-soft text-xl font-black disabled:opacity-40"
             >
               +
@@ -257,7 +273,7 @@ export function AddStampsModal({
             disabled={busy || preparingReceipt}
             className="px-5 py-3 rounded-xl font-bold text-white bg-panel-primary hover:bg-panel-primary/90 shadow-lg shadow-brand-blue/20 disabled:opacity-50"
           >
-            {busy ? 'Sumando…' : `Sumar ${clp.format(stampCount)} ${balanceUnit(cardType, stampCount)}`}
+            {busy ? 'Sumando…' : `Sumar ${clp.format(stampCount)} ${balanceUnit(currency, stampCount)}`}
           </button>
         </div>
       </form>

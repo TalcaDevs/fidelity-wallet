@@ -46,7 +46,10 @@ describe('InternalBrandsService.update', () => {
         update: vi.fn().mockReturnValue('brand-update'),
       },
       auditLog: { create: vi.fn().mockReturnValue('audit-create') },
-      $transaction: vi.fn().mockResolvedValue([]),
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      $transaction: vi.fn((callback: (tx: unknown) => unknown) =>
+        callback(prisma),
+      ),
     };
     service = new InternalBrandsService(
       prisma as PrismaService,
@@ -75,10 +78,8 @@ describe('InternalBrandsService.update', () => {
         reason: 'No pago',
       }),
     });
-    expect(prisma.$transaction).toHaveBeenCalledWith([
-      'brand-update',
-      'audit-create',
-    ]);
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function));
+    expect(prisma.$queryRaw).toHaveBeenCalledOnce();
   });
 
   it('does not audit a no-op', async () => {
@@ -124,11 +125,15 @@ describe('InternalCustomersService', () => {
         ]),
         count: vi.fn().mockResolvedValue(1),
       },
-      stamp: {
-        groupBy: vi
-          .fn()
-          .mockResolvedValue([{ passId: 'p-1', _count: { _all: 3 } }]),
-      },
+      $queryRaw: vi.fn().mockResolvedValue([
+        {
+          passId: 'p-1',
+          activeStamps: 3,
+          activePoints: 200,
+          stampsEnabled: true,
+          pointsEnabled: true,
+        },
+      ]),
       auditLog: { create: vi.fn() },
     };
     service = new InternalCustomersService(
@@ -158,7 +163,16 @@ describe('InternalCustomersService', () => {
     expect(result.items[0]).toMatchObject({
       rut: '12.***.*78-5',
       phone: '+56 9 **** 5678',
-      cards: [{ brandId: 'b-1', brandName: 'Café', activeStamps: 3 }],
+      cards: [
+        {
+          brandId: 'b-1',
+          brandName: 'Café',
+          activeStamps: 3,
+          activePoints: 200,
+          stampsEnabled: true,
+          pointsEnabled: true,
+        },
+      ],
     });
   });
 
@@ -171,6 +185,29 @@ describe('InternalCustomersService', () => {
         entityId: 'c-1',
         reason: 'Ticket #1000',
       }),
+    });
+  });
+
+  it('maps independent balances and modality flags returned by the balance view', async () => {
+    prisma.$queryRaw.mockResolvedValueOnce([
+      {
+        passId: 'p-1',
+        activeStamps: 0,
+        activePoints: 200,
+        stampsEnabled: false,
+        pointsEnabled: true,
+      },
+    ]);
+    const result = await service.search({
+      page: 1,
+      pageSize: 20,
+      brandId: 'b-1',
+    });
+    expect(result.items[0].cards[0]).toMatchObject({
+      activeStamps: 0,
+      activePoints: 200,
+      stampsEnabled: false,
+      pointsEnabled: true,
     });
   });
 });

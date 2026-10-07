@@ -9,7 +9,7 @@ import type {
   Paginated,
   RevealedCustomerDto,
 } from '@fidelity/shared';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { recordAudit } from '../common/audit/audit.js';
 import { UserDirectoryService } from '../common/users/user-directory.service.js';
 import { maskPhone, maskRut } from '../common/utils/mask.util.js';
@@ -59,7 +59,7 @@ export class InternalCustomersService {
       this.prisma.customer.count({ where }),
     ]);
 
-    const balances = await this.activeStamps(
+    const balances = await this.activeBalances(
       customers.flatMap((c) => c.passes.map((p) => p.id)),
     );
     const items = customers.map((c) => ({
@@ -70,7 +70,12 @@ export class InternalCustomersService {
       cards: c.passes.map((p) => ({
         brandId: p.brandId,
         brandName: p.brand.name,
-        activeStamps: balances.get(p.id) ?? 0,
+        ...(balances.get(p.id) ?? {
+          activeStamps: 0,
+          activePoints: 0,
+          stampsEnabled: false,
+          pointsEnabled: false,
+        }),
         joinedAt: p.createdAt.toISOString(),
       })),
     }));
@@ -137,19 +142,32 @@ export class InternalCustomersService {
     };
   }
 
-  private async activeStamps(passIds: string[]): Promise<Map<string, number>> {
+  private async activeBalances(passIds: string[]): Promise<
+    Map<
+      string,
+      {
+        activeStamps: number;
+        activePoints: number;
+        stampsEnabled: boolean;
+        pointsEnabled: boolean;
+      }
+    >
+  > {
     if (passIds.length === 0) return new Map();
-    const now = new Date();
-    const rows = await this.prisma.stamp.groupBy({
-      by: ['passId'],
-      where: {
-        passId: { in: passIds },
-        consumedAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      },
-      _count: { _all: true },
-    });
-    return new Map(rows.map((r) => [r.passId, r._count._all]));
+    const rows = await this.prisma.$queryRaw<
+      {
+        passId: string;
+        activeStamps: number;
+        activePoints: number;
+        stampsEnabled: boolean;
+        pointsEnabled: boolean;
+      }[]
+    >(Prisma.sql`
+      SELECT "passId", "activeStamps", "activePoints", "stampsEnabled", "pointsEnabled"
+      FROM public."PassStampBalance"
+      WHERE "passId" IN (${Prisma.join(passIds.map((id) => Prisma.sql`${id}::uuid`))})
+    `);
+    return new Map(rows.map(({ passId, ...balance }) => [passId, balance]));
   }
 }
 

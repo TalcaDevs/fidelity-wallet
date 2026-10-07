@@ -59,7 +59,7 @@ describe('CustomerHistoryService', () => {
     prisma = {
       brandMember: { findUnique: vi.fn().mockResolvedValue({ role: 'OWNER' }) },
       brand: { findUnique: vi.fn().mockResolvedValue({ status: 'ACTIVE' }) },
-      loyaltyProgram: { findFirst: vi.fn().mockResolvedValue({ id: 'prog-1' }) },
+      loyaltyProgram: { findFirst: vi.fn().mockResolvedValue({ id: 'prog-1', type: 'STAMPS', stampsEnabled: true, pointsEnabled: false }) },
       pass: {
         findUnique: vi.fn().mockResolvedValue({ id: 'p-1', merchantId: 'loc-1', createdAt: new Date('2026-09-01'), customer }),
       },
@@ -71,8 +71,9 @@ describe('CustomerHistoryService', () => {
         ]),
       },
       stamp: {
-        count: vi.fn().mockResolvedValue(3),
-        groupBy: vi.fn().mockResolvedValue([{ consumedByScanId: 'scan-2', _sum: { amount: 5 } }]),
+        aggregate: vi.fn(async ({ where }: { where: { currency: string } }) => ({ _sum: { amount: where.currency === 'POINTS' ? 30 : 3 } })),
+        findFirst: vi.fn().mockResolvedValue(null),
+        groupBy: vi.fn().mockResolvedValue([{ consumedByScanId: 'scan-2', currency: 'STAMPS', _sum: { amount: 5 } }]),
       },
       auditLog: { create: vi.fn() },
     };
@@ -105,6 +106,16 @@ describe('CustomerHistoryService', () => {
       receiptUrl: 'https://signed/boleta',
     });
     expect(prisma.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('returns both actual currency balances and hides only the disabled one', async () => {
+    prisma.loyaltyProgram.findFirst.mockResolvedValue({ id: 'prog-1', type: 'POINTS', stampsEnabled: false, pointsEnabled: true });
+    prisma.scan.findMany.mockResolvedValue([{ ...stampScan, stampCount: 0, pointsEarned: 30 }]);
+    const result = await service.forOwner(customerId, query, ownerId);
+    expect(result.customer).toMatchObject({ activeStamps: 0, activePoints: 30 });
+    expect(result.history.items[0]).toMatchObject({ stamps: 0, points: 30 });
+    expect(result).toMatchObject({ stampsEnabled: false, pointsEnabled: true, maxStampsPerLoad: 6, maxPointsPerLoad: 10000 });
+    expect(prisma.stamp.aggregate).toHaveBeenCalledTimes(1);
   });
 
   it('does not show the history to a STAFF member', async () => {

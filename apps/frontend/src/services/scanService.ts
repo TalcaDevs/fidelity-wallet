@@ -20,6 +20,10 @@ export interface ScanResult {
   stampsCount?: number;
   pointsCount?: number;
   stampsAdded?: number;
+  pointsAdded?: number;
+  rewardCurrency?: CardType;
+  stampsEnabled?: boolean;
+  pointsEnabled?: boolean;
   targetStamps?: number;
   rewardUnlocked?: boolean;
   rewardName?: string;
@@ -43,6 +47,7 @@ export interface ScanValidation {
   stampsCount: number;
   pointsCount: number;
   targetStamps: number;
+  rewardCurrency?: CardType;
   rewardName: string;
   rewardUnlocked: boolean;
   availablePromotions: PromotionOption[];
@@ -126,7 +131,12 @@ interface ScanApiResponse {
   passId: string;
   scanId?: string;
   activeStamps: number;
+  activePoints?: number;
   stampsAdded?: number;
+  pointsAdded?: number;
+  rewardCurrency?: CardType;
+  stampsEnabled?: boolean;
+  pointsEnabled?: boolean;
   targetStamps: number;
   rewardUnlocked: boolean;
   rewardName: string;
@@ -145,6 +155,7 @@ interface ValidationApiResponse {
   activeStamps: number;
   activePoints?: number;
   targetStamps: number;
+  rewardCurrency?: CardType;
   rewardName: string;
   rewardUnlocked: boolean;
   availablePromotions: PromotionOption[];
@@ -225,6 +236,7 @@ export const validateScan = async (params: { merchantId: string; target: LookupT
       stampsCount: data.activeStamps,
       pointsCount: data.activePoints ?? 0,
       targetStamps: data.targetStamps,
+      rewardCurrency: data.rewardCurrency,
       rewardName: data.rewardName,
       rewardUnlocked: data.rewardUnlocked,
       availablePromotions: data.availablePromotions ?? [],
@@ -295,7 +307,12 @@ export const processScan = async (params: ScanParams): Promise<ScanResult> => {
       customerLabel: customerLabelOf(data.customer),
       stampsCount: data.activeStamps,
       stampsAdded: data.stampsAdded,
+      pointsCount: data.activePoints ?? 0,
+      pointsAdded: data.pointsAdded,
+      stampsEnabled: data.stampsEnabled,
+      pointsEnabled: data.pointsEnabled,
       targetStamps: data.targetStamps,
+      rewardCurrency: data.rewardCurrency,
       rewardUnlocked: data.rewardUnlocked,
       rewardName: data.rewardName,
       alreadyScanned: data.alreadyScanned,

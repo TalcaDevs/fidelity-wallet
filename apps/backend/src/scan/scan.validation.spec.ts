@@ -60,6 +60,8 @@ describe('ScanService: validación en caja', () => {
   let passesService: { notifyPassUpdate: ReturnType<typeof vi.fn>; enqueuePassUpdate: ReturnType<typeof vi.fn> };
   let txClient: {
     $queryRaw: ReturnType<typeof vi.fn>;
+    loyaltyProgram: { findFirst: ReturnType<typeof vi.fn> };
+    promotion: { findMany: ReturnType<typeof vi.fn> };
     scan: { findFirst: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn> };
     stamp: {
       createMany: ReturnType<typeof vi.fn>;
@@ -90,6 +92,8 @@ describe('ScanService: validación en caja', () => {
       enqueuePassUpdate: vi.fn().mockResolvedValue(undefined),
     };
     txClient = {
+      loyaltyProgram: { findFirst: vi.fn(async () => prisma.loyaltyProgram.findFirst()) },
+      promotion: { findMany: vi.fn(async () => [promotion]) },
       $queryRaw: vi.fn().mockResolvedValue([]),
       scan: {
         findFirst: vi.fn(async () => latestStamp),

@@ -15,4 +15,8 @@ describe('plans catalog', () => {
       expect(plan.limits.customers).toBeNull();
     }
   });
+
+  it('provides increasing reward allowances across paid plans', () => {
+    expect(CATALOG_PLANS.map((plan) => plan.limits.rewards)).toEqual([3, 3, 5, 10]);
+  });
 });

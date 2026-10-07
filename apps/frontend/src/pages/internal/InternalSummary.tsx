@@ -29,13 +29,13 @@ function Activity({ days }: { days: InternalSummaryDto['activity'] }) {
       <div className="flex flex-wrap items-baseline justify-between gap-2 mb-6">
         <h2 className="text-lg font-bold">Actividad de los últimos 7 días</h2>
         <div className="flex gap-4 text-xs font-bold text-panel-muted">
-          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-panel-primary" />Sellos</span>
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-panel-primary" />Cargas</span>
           <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-panel-gold" />Canjes</span>
         </div>
       </div>
       <div className="grid grid-cols-7 gap-2 sm:gap-4 items-end h-48">
         {days.map((d) => (
-          <div key={d.date} className="flex flex-col items-center justify-end h-full gap-1" title={`${d.stamps} sellos · ${d.redemptions} canjes · ${d.newCustomers} clientes nuevos`}>
+          <div key={d.date} className="flex flex-col items-center justify-end h-full gap-1" title={`${d.stamps} cargas · ${d.redemptions} canjes · ${d.newCustomers} clientes nuevos`}>
             <span className="text-xs font-bold text-panel-muted">{d.stamps + d.redemptions}</span>
             <div className="w-full max-w-10 flex flex-col justify-end rounded-lg overflow-hidden bg-panel-soft" style={{ height: '100%' }}>
               <div className="bg-panel-gold" style={{ height: `${(d.redemptions / max) * 100}%` }} />

@@ -24,7 +24,7 @@ export function OverviewTab({ overview }: OverviewTabProps) {
           changePercentage={overview.kpis.activeCustomers.changePercentage}
         />
         <KpiCard
-          title="Sellos Entregados"
+          title="Cargas Registradas"
           current={overview.kpis.stampsDelivered.current}
           previous={overview.kpis.stampsDelivered.previous}
           changePercentage={overview.kpis.stampsDelivered.changePercentage}
@@ -58,13 +58,13 @@ export function OverviewTab({ overview }: OverviewTabProps) {
             <div>
               <h3 className="text-xl font-bold text-panel-text">Evolución Diaria</h3>
               <p className="text-xs text-panel-muted">
-                Tendencia de sellos y canjes entregados día a día
+                Tendencia de cargas y canjes registrados día a día
               </p>
             </div>
             <div className="flex items-center gap-5 text-xs font-semibold">
               <div className="flex items-center gap-2">
                 <span className="w-3.5 h-3.5 rounded-full bg-panel-accent border-2 border-white shadow-sm inline-block" />
-                <span className="text-panel-text">Sellos (Azul)</span>
+                <span className="text-panel-text">Cargas (Azul)</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-3.5 h-3.5 rounded-full bg-panel-orange border-2 border-white shadow-sm inline-block" />

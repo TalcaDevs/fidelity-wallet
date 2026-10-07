@@ -43,7 +43,7 @@ export function Dashboard({ session, brandId }: { session: Session | null; brand
           loading={loading}
         />
         <StatCard
-          title="Sellos Entregados"
+          title="Cargas Registradas"
           value={stampsDelivered}
           icon={STAMPS_ICON}
           color="yellow"

@@ -7,6 +7,9 @@ import {
   cardConfigIssues,
   cardConfigProblems,
   cardExpiryDate,
+  enabledCurrencies,
+  isRewardEnabled,
+  resolveRewardCurrency,
   contrastRatio,
   linkUri,
   normalizeDesign,
@@ -46,6 +49,57 @@ describe('pointsForAmount', () => {
 });
 
 describe('cardConfigProblems', () => {
+  it.each([123, false, {}, null, '', 'CREDITS'])('rejects a present invalid reward currency %j without treating it as the default', (currency) => {
+    const reward = { name: 'Premio', target: 10, currency };
+    expect(resolveRewardCurrency(reward, 'STAMPS')).toBeUndefined();
+    expect(isRewardEnabled(reward, config())).toBe(false);
+    const rewards = [{ name: 'Premio válido', target: 10, currency: 'STAMPS' }, reward];
+    expect(cardConfigProblems(config({ rewards: rewards as unknown as CardConfig['rewards'] }), { pointsEnabled: true, now, maxRewards: 1 })).toContain('La moneda de la recompensa 2 no es válida');
+  });
+
+  it.each(['STAMPS', 'POINTS'] as const)('resolves absent currency consistently for validation and quota in %s', (type) => {
+    const card = config({ type, stampsEnabled: type === 'STAMPS', pointsEnabled: type === 'POINTS' });
+    expect(enabledCurrencies({ type })).toEqual([type]);
+    expect(resolveRewardCurrency(card.rewards[0], type)).toBe(type);
+    expect(isRewardEnabled(card.rewards[0], card)).toBe(true);
+    expect(cardConfigProblems(card, { pointsEnabled: true, now, maxRewards: 0 })).toEqual(['Tu tarjeta permite hasta 0 recompensas de modalidades activas']);
+    expect(cardConfigProblems(card, { pointsEnabled: true, now, maxRewards: 1 })).toEqual([]);
+  });
+
+  it('respects explicit disabled flags and counts both enabled currencies', () => {
+    expect(enabledCurrencies({ type: 'STAMPS', stampsEnabled: false, pointsEnabled: true })).toEqual(['POINTS']);
+    expect(enabledCurrencies({ stampsEnabled: true, pointsEnabled: true })).toEqual(['STAMPS', 'POINTS']);
+    expect(isRewardEnabled({ currency: 'STAMPS' }, { type: 'STAMPS', stampsEnabled: false })).toBe(false);
+  });
+
+  it('applies the supplied limit to active modalities while preserving hidden rewards', () => {
+    const stamps = Array.from({ length: 5 }, (_, i) => ({ name: `Sello ${i + 1}`, target: 10, currency: 'STAMPS' as const }));
+    const points = Array.from({ length: 5 }, (_, i) => ({ name: `Punto ${i + 1}`, target: 100, currency: 'POINTS' as const }));
+    const dual = config({ rewards: [...stamps, ...points], pointsEnabled: true });
+    expect(cardConfigProblems(dual, { pointsEnabled: true, now, maxRewards: 10 })).toEqual([]);
+    expect(cardConfigProblems(dual, { pointsEnabled: true, now, maxRewards: 5 })).toEqual(['Tu tarjeta permite hasta 5 recompensas de modalidades activas']);
+    expect(cardConfigProblems(config({ type: 'POINTS', stampsEnabled: false, pointsEnabled: true, rewards: [...stamps, ...points.slice(0, 3)] }), { pointsEnabled: true, now, maxRewards: 3 })).toEqual([]);
+    expect(cardConfigProblems(config({ rewards: [...stamps, { name: 'Sexto', target: 10 }] }), { pointsEnabled: true, now })).toEqual(['Tu tarjeta permite hasta 5 recompensas de modalidades activas']);
+    expect(cardConfigProblems(config({ type: 'POINTS', stampsEnabled: false, pointsEnabled: true, rewards: [...points, { name: 'Sexto', target: 100 }] }), { pointsEnabled: true, now, maxRewards: 3 })).toEqual(['Tu tarjeta permite hasta 3 recompensas de modalidades activas']);
+  });
+
+  it('bounds hidden storage separately from the active plan allowance', () => {
+    const hidden = Array.from({ length: 40 }, (_, i) => ({ name: `Premio ${i}`, target: 10, currency: 'STAMPS' as const }));
+    expect(cardConfigProblems(config({ type: 'POINTS', stampsEnabled: false, pointsEnabled: true, rewards: [...hidden, { name: 'Puntos', target: 100, currency: 'POINTS' }] }), { pointsEnabled: true, now, maxRewards: 3 })).toEqual(['Puedes conservar hasta 40 recompensas']);
+  });
+
+  it('keeps hidden rewards unchanged and requires an enabled reward', () => {
+    const rewards = [{ name: 'Café', target: 10, currency: 'STAMPS' as const }, { name: 'Postre', target: 500, currency: 'POINTS' as const }];
+    expect(cardConfigProblems(config({ rewards, welcomeStamps: 2, welcomePoints: 20 }), { pointsEnabled: true, now })).toEqual([]);
+    expect(cardConfigProblems(config({ rewards: [rewards[1]] }), { pointsEnabled: true, now })).toEqual(['Agrega al menos una recompensa para una modalidad habilitada']);
+    expect(rewards[1]).toEqual({ name: 'Postre', target: 500, currency: 'POINTS' });
+  });
+
+  it('validates independent welcome quantities even when their modality is hidden', () => {
+    expect(cardConfigProblems(config({ welcomeStamps: -1 }), { pointsEnabled: false, now }).join()).toMatch(/bienvenida/);
+    expect(cardConfigProblems(config({ welcomePoints: 100001 }), { pointsEnabled: false, now }).join()).toMatch(/bienvenida/);
+  });
+
   it('accepts the defaults', () => {
     expect(cardConfigProblems(config(), { pointsEnabled: false, now })).toEqual([]);
   });

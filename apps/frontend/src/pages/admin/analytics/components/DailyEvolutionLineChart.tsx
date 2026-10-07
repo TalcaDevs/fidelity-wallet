@@ -93,9 +93,9 @@ export function DailyEvolutionLineChart({ timeSeries }: DailyEvolutionLineChartP
         viewBox={`0 0 ${svgWidth} ${svgHeight}`}
         className="w-full h-auto select-none"
         role="img"
-        aria-label="Gráfico interactivo de evolución diaria de sellos y canjes"
+        aria-label="Gráfico interactivo de evolución diaria de cargas y canjes"
       >
-        <desc>Evolución de sellos entregados y premios canjeados a lo largo del tiempo</desc>
+        <desc>Evolución de cargas registradas y premios canjeados a lo largo del tiempo</desc>
         <defs>
           <linearGradient id="stampsGradient" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="var(--fw-panel-accent, #087bd7)" stopOpacity="0.25" />
@@ -260,7 +260,7 @@ export function DailyEvolutionLineChart({ timeSeries }: DailyEvolutionLineChartP
               className="cursor-pointer focus:outline-none"
               tabIndex={0}
               role="button"
-              aria-label={`Fecha ${point.date}: ${point.stamps} sellos, ${point.rewards} canjes`}
+              aria-label={`Fecha ${point.date}: ${point.stamps} cargas, ${point.rewards} canjes`}
               onMouseEnter={() => setHoveredIndex(i)}
               onMouseLeave={() => setHoveredIndex(null)}
               onFocus={() => setHoveredIndex(i)}
@@ -288,7 +288,7 @@ export function DailyEvolutionLineChart({ timeSeries }: DailyEvolutionLineChartP
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-panel-accent inline-block" />
             <span className="font-medium text-panel-muted">
-              Sellos: <strong className="text-panel-text tabular-nums">{hoveredPoint.stamps}</strong>
+              Cargas: <strong className="text-panel-text tabular-nums">{hoveredPoint.stamps}</strong>
             </span>
           </div>
           <div className="flex items-center gap-2">

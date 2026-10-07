@@ -116,7 +116,7 @@ describe('Analytics Page', () => {
     expect(screen.getByText(/85\.7%/)).toBeInTheDocument();
     expect(screen.getByText('Cantidad')).toBeInTheDocument();
     expect(screen.getByText('Días')).toBeInTheDocument();
-    expect(screen.getByText('Sellos (Azul)')).toBeInTheDocument();
+    expect(screen.getByText('Cargas (Azul)')).toBeInTheDocument();
     expect(screen.getByText('Canjes (Naranja)')).toBeInTheDocument();
   });
 

@@ -104,6 +104,62 @@ describe('CustomersService', () => {
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
+  describe('locks de registro', () => {
+    beforeEach(() => {
+      prismaMock.merchant.findUnique.mockResolvedValue(activeLocation);
+      prismaMock.customer.findUnique.mockResolvedValue({
+        id: 'c-1', rut: '11111111-1', phone: '+56912345678', email: null,
+        name: null, birthDay: null, termsVersion: TERMS_VERSION,
+      });
+      passesServiceMock.findOrCreatePass.mockResolvedValue({ pass: { id: 'p-1' }, isNew: false });
+    });
+
+    const lockQueries = () => prismaMock.$queryRaw.mock.calls.map(([strings]: [TemplateStringsArray]) => strings.join('?'));
+
+    it('un pase existente comparte la marca y no consulta el cupo de altas', async () => {
+      prismaMock.pass.findFirst.mockResolvedValue({ id: 'p-1' });
+      await service.createOrFindCustomer(validDto());
+      expect(lockQueries().filter((sql: string) => sql.includes('"Brand"'))).toEqual([
+        'SELECT id FROM "Brand" WHERE id = ?::uuid FOR SHARE',
+      ]);
+      expect(prismaMock.brand.findUnique).not.toHaveBeenCalled();
+      expect(prismaMock.pass.findFirst).toHaveBeenLastCalledWith({
+        where: { programId: 'prog-1', customerId: 'c-1' }, select: { id: true },
+      });
+    });
+
+    it('una tarjeta nueva toma lock exclusivo antes de comprobar capacidad', async () => {
+      await service.createOrFindCustomer(validDto());
+      expect(lockQueries().filter((sql: string) => sql.includes('"Brand"'))).toEqual([
+        'SELECT id FROM "Brand" WHERE id = ?::uuid FOR UPDATE',
+        'SELECT id FROM "Brand" WHERE id = ?::uuid FOR UPDATE',
+      ]);
+      expect(prismaMock.brand.findUnique).toHaveBeenCalled();
+    });
+
+    it('si desaparece el pase sondeado reinicia con UPDATE sin ascender el SHARE de la transacción', async () => {
+      prismaMock.pass.findFirst.mockResolvedValueOnce({ id: 'p-1' });
+      await service.createOrFindCustomer(validDto());
+      expect(prismaMock.$transaction).toHaveBeenCalledTimes(2);
+      expect(lockQueries().filter((sql: string) => sql.includes('"Brand"'))).toEqual([
+        'SELECT id FROM "Brand" WHERE id = ?::uuid FOR SHARE',
+        'SELECT id FROM "Brand" WHERE id = ?::uuid FOR UPDATE',
+        'SELECT id FROM "Brand" WHERE id = ?::uuid FOR UPDATE',
+      ]);
+      expect(prismaMock.customer.create).not.toHaveBeenCalled();
+    });
+
+    it('revalida identidad aunque el sondeo encuentre un pase por uno de los datos', async () => {
+      prismaMock.pass.findFirst.mockResolvedValue({ id: 'p-1' });
+      prismaMock.customer.findMany.mockResolvedValue([
+        { id: 'c-1', rut: '11111111-1', phone: null, email: null },
+        { id: 'c-2', rut: null, phone: '+56912345678', email: null },
+      ]);
+      await expect(service.createOrFindCustomer(validDto())).rejects.toThrow('Los datos proporcionados no coinciden');
+      expect(passesServiceMock.findOrCreatePass).not.toHaveBeenCalled();
+    });
+  });
+
   describe('lo que pide la tarjeta', () => {
     beforeEach(() => {
       prismaMock.merchant.findUnique.mockResolvedValue(activeLocation);
@@ -145,7 +201,8 @@ describe('CustomersService', () => {
         data: expect.objectContaining({ passId: 'p-1', method: 'WELCOME', stampCount: 2, type: 'STAMP_ADDED' }),
       });
       const [{ data: rows }] = prismaMock.stamp.createMany.mock.calls[0];
-      expect(rows).toHaveLength(2);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ currency: 'STAMPS', amount: 2 });
       expect(rows[0]).toMatchObject({ sourceScanId: 'scan-welcome', expiresAt: expect.any(Date) });
       // El saldo se da antes de armar el pase, para que la tarjeta nazca con él.
       expect(prismaMock.stamp.createMany.mock.invocationCallOrder[0]).toBeLessThan(
@@ -156,6 +213,18 @@ describe('CustomersService', () => {
       prismaMock.scan.create.mockClear();
       await service.createOrFindCustomer(validDto());
       expect(prismaMock.scan.create).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { type: 'POINTS', stampsEnabled: false, pointsEnabled: true, expected: [{ currency: 'POINTS', amount: 50 }] },
+      { type: 'STAMPS', stampsEnabled: true, pointsEnabled: true, expected: [{ currency: 'STAMPS', amount: 2 }, { currency: 'POINTS', amount: 50 }] },
+      { type: 'STAMPS', stampsEnabled: true, pointsEnabled: false, expected: [{ currency: 'STAMPS', amount: 2 }] },
+    ])('grants only enabled welcome currencies ($type, $pointsEnabled)', async ({ expected, ...modalities }) => {
+      prismaMock.loyaltyProgram.findFirst.mockResolvedValue({ ...stampsProgram, ...modalities, welcomeStamps: 2, welcomePoints: 50 });
+      await service.createOrFindCustomer(validDto());
+      const [{ data: rows }] = prismaMock.stamp.createMany.mock.calls[0];
+      expect(rows.map(({ currency, amount }: { currency: string; amount: number }) => ({ currency, amount }))).toEqual(expected);
+      expect(prismaMock.scan.create).toHaveBeenCalledWith({ data: expect.objectContaining({ stampCount: modalities.stampsEnabled ? 2 : 0, pointsEarned: modalities.pointsEnabled ? 50 : 0 }) });
     });
 
     it('does not hand out new cards once a fixed-term card ended', async () => {

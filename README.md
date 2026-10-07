@@ -2,13 +2,13 @@
 
 Plataforma SaaS B2B2C de fidelización para comercios. El cliente obtiene una tarjeta desde un QR público, sin crear una contraseña ni instalar una app. El personal registra compras y canjes desde un escáner web y el dueño administra la tarjeta, sus locales y su equipo.
 
-Este README describe el código integrado en `dev` hasta el PR [#27](https://github.com/TalcaDevs/fidelity-wallet/pull/27), al **4 de octubre de 2026**. No acredita un despliegue productivo ni reemplaza las pruebas en dispositivos reales.
+Este README describe el código de esta revisión, incluida la corrección de modalidades al **7 de octubre de 2026**. No acredita un despliegue productivo ni reemplaza las pruebas en dispositivos reales.
 
 ## Estado actual
 
 | Área | Implementado | Pendiente relevante |
 | --- | --- | --- |
-| Fidelización | Tarjeta por marca de sellos o puntos, bienvenida, vigencia, varias recompensas y canje FIFO transaccional | Anular cargas erróneas con motivo y auditoría |
+| Fidelización | Tarjeta por marca de sellos, puntos o ambos; cambio de modalidades conservando saldo, bienvenida por moneda, vigencia, varias recompensas y canje FIFO transaccional | Anular cargas erróneas con motivo y auditoría |
 | Alta y caja | Alta atómica con teléfono o correo, registro configurable, validación previa HMAC, QR e ingreso manual, monto y foto de boleta | Recuperación segura del pase y pruebas prolongadas en dispositivos |
 | Panel | Editor de tarjeta, clientes e historial, equipo, locales, reportes y soporte | Selección del local para un dueño con varias sucursales y reportes pendientes |
 | Google Wallet | Emisión JWT firmada, publicación del diseño y actualización del saldo por OAuth2/PATCH | Reintentos durables, invalidación al borrar un pase y validación de cercanía en terreno |
@@ -35,9 +35,9 @@ La mayor parte de los flujos usa `/api/*`. El dashboard y algunas consultas de c
 ### Modelo de datos y permisos
 
 - `Brand` es la marca. `Merchant` es un local y conserva su nombre de tabla para mantener compatibilidad con RLS y QR existentes.
-- Una `LoyaltyProgram` por marca define la tarjeta `STAMPS` o `POINTS`. `Promotion` define cada recompensa.
+- Una `LoyaltyProgram` por marca define las modalidades con `stampsEnabled` y `pointsEnabled`; `type` conserva la modalidad principal por compatibilidad. `Promotion.currency` define la moneda de cada recompensa.
 - `Customer` es global. `Pass` es único por cliente y programa y contiene un token aleatorio de 32 bytes para el QR.
-- `Stamp` es el libro de saldo: una fila por sello o punto. El saldo se calcula con movimientos vigentes y no consumidos, sin contador persistido.
+- `Stamp` es el libro de saldo: cada movimiento tiene `currency` y `amount`. El saldo suma cantidades vigentes y no consumidas de modalidades activas, sin contador persistido. Ocultar una modalidad conserva sus movimientos y vencimientos; reactivarla recupera el saldo que aún siga vigente.
 - `Scan` registra las cargas y canjes. La foto de boleta vive en Storage privado y `ScanReceipt`, separada de los datos que lee el cajero.
 - `BrandMember` determina los permisos `OWNER` y `STAFF`. El personal queda restringido a su local en backend y RLS.
 - `PlatformAdmin` y `AuditLog` sostienen el panel interno. Las notas internas de soporte no se exponen al dueño.
@@ -60,6 +60,14 @@ La mayor parte de los flujos usa `/api/*`. El dashboard y algunas consultas de c
 4. `/api/scan` confirma la compra. En sellos aplica el límite diario de Chile o la espera configurada. En puntos calcula `floor(monto / pesosPerPoint)` y exige foto de boleta al `STAFF`.
 5. El canje descuenta el costo de la recompensa con FIFO y bloqueo transaccional del pase. El saldo sirve entre locales de la misma marca.
 6. El backend solicita la actualización de Google Wallet en segundo plano. Una falla externa hoy queda en logs y no tiene reintento durable.
+
+El cambio de modalidades se permite aunque existan tarjetas y saldos. No convierte premios ni saldos entre monedas. La carga manual del panel elige una moneda; en caja, una tarjeta dual acumula sellos y puntos según sus reglas independientes. Las bienvenidas `welcomeStamps` y `welcomePoints` también son independientes. El error productivo `property pointsEnabled should not exist` requiere desplegar la API compilada con el DTO compatible, no retirar el campo del formulario. Para este cambio, aplicar primero las migraciones `20261006150000_loyalty_currency_balances` y `20261006160000_card_mutations_backend_only`, después el backend con shared compilado y finalmente el frontend.
+
+El cupo de premios disponibles depende del plan: Prueba e Inicial, 3; Pro, 5; Negocio, 10. El backend permite configurar cada cupo con `CARD_REWARDS_LIMIT_TRIAL`, `CARD_REWARDS_LIMIT_STARTER`, `CARD_REWARDS_LIMIT_PRO` y `CARD_REWARDS_LIMIT_BUSINESS` (enteros de 1 a 20; requieren reinicio). Cuenta el total de premios de modalidades activas; los ocultos se conservan sin ocupar cupo. Un plan o límite menor conserva los premios que ya estaban disponibles, pero impide aumentar su cantidad. La API devuelve el cupo efectivo al editor; el catálogo comercial muestra valores de referencia. Se conserva un tope técnico de 40 premios guardados, incluidos los ocultos.
+
+Las escrituras de `LoyaltyProgram` y `Promotion` pasan por la API: se retiraron grants antiguos de Supabase que permitían modificar reglas o premios directamente y saltarse los cupos, bloqueos y auditoría. Las lecturas del panel conservan sus grants y RLS.
+
+La moneda de un premio existente se conserva incluso si un cliente anterior omite `currency`; cambiarla exige crear otro premio. Las bienvenidas por moneda registran sus valores anteriores y posteriores en auditoría. Las métricas históricas de sellos vencidos mantienen sus cantidades al ocultar o reactivar modalidades.
 
 ## Desarrollo local
 
@@ -99,6 +107,7 @@ Consulta [HANDOFF.md](HANDOFF.md) para cuentas demo, pruebas y problemas conocid
 | --- | --- |
 | Backend | `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `BACKEND_URL`, `ALLOWED_ORIGINS` |
 | Escáner | `SCAN_VALIDATION_SECRET`, `STAMP_COOLDOWN_MINUTES`, `OWNER_MAX_STAMPS_PER_LOAD` |
+| Premios por plan | `CARD_REWARDS_LIMIT_TRIAL`, `CARD_REWARDS_LIMIT_STARTER`, `CARD_REWARDS_LIMIT_PRO`, `CARD_REWARDS_LIMIT_BUSINESS` |
 | Wallet | `GOOGLE_WALLET_*`, `APPLE_*`, `ALLOW_MOCK_PASSES` |
 | Imágenes | `SUPABASE_PUBLIC_URL` cuando el origen público de Storage difiere del interno |
 | Frontend | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL` |

@@ -93,7 +93,7 @@ export class GoogleWalletService {
     try {
       const resourceId = this.resolveResourceId(passId);
       const payload = buildObjectState(this.withPublicPassImages(data), this.baseUrl());
-      const res = await this.executePatchRequest(resourceId, payload, accessToken);
+      const res = await this.updateObjectState(resourceId, payload, accessToken);
 
       return await this.handlePatchResponse(res, passId, activeStamps);
     } catch (err: unknown) {
@@ -321,18 +321,31 @@ export class GoogleWalletService {
     return (await response.json()) as { access_token: string; expires_in?: number };
   }
 
-  private executePatchRequest(
+  private async updateObjectState(
     resourceId: string,
     payload: Record<string, unknown>,
     accessToken: string,
   ): Promise<Response> {
-    return this.walletRequest('PATCH', `/loyaltyObject/${resourceId}`, payload, accessToken);
+    const path = `/loyaltyObject/${resourceId}`;
+    // PATCH no borra campos omitidos: una tira anterior revelaría sellos ocultos.
+    // GET + PUT conserva el resto del objeto al retirar la imagen de la modalidad anterior.
+    if (!payload.heroImage) {
+      const current = await this.walletRequest('GET', path, undefined, accessToken);
+      if (!current.ok) return current;
+      const existing = await current.json() as Record<string, unknown>;
+      if (existing.heroImage) {
+        const replacement = { ...existing, ...payload };
+        delete replacement.heroImage;
+        return this.walletRequest('PUT', path, replacement, accessToken);
+      }
+    }
+    return this.walletRequest('PATCH', path, payload, accessToken);
   }
 
   private walletRequest(
-    method: 'PATCH' | 'POST',
+    method: 'GET' | 'PUT' | 'PATCH' | 'POST',
     path: string,
-    payload: Record<string, unknown>,
+    payload: Record<string, unknown> | undefined,
     accessToken: string,
   ): Promise<Response> {
     return fetch(`${WALLET_API}${path}`, {
@@ -341,7 +354,7 @@ export class GoogleWalletService {
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(payload),
+      ...(payload ? { body: JSON.stringify(payload) } : {}),
       signal: AbortSignal.timeout(5000),
     });
   }
