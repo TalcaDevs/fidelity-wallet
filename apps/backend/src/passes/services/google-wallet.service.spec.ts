@@ -146,6 +146,8 @@ describe('GoogleWalletService', () => {
     type: 'STAMPS',
     name: 'Tarjeta Café',
     welcomeBalance: 0,
+    welcomeStamps: 0,
+    welcomePoints: 0,
     dailyStampLimit: true,
     stampValidityDays: null,
     validity: { type: 'UNLIMITED', expiresAt: null, days: null },
@@ -185,7 +187,7 @@ describe('GoogleWalletService', () => {
       if (url.includes('oauth2.googleapis.com')) {
         return { ok: true, status: 200, json: async () => ({ access_token: 'mock-auth-token', expires_in: 3600 }) };
       }
-      return { text: async () => '{}', ...walletResponse };
+      return { text: async () => '{}', json: async () => ({}), ...walletResponse };
     });
     vi.stubGlobal('fetch', mockFetch);
     return mockFetch;
@@ -308,6 +310,24 @@ describe('GoogleWalletService', () => {
   });
 
   describe('updateLoyaltyObject', () => {
+    it('removes a previous stamps image while preserving external object fields', async () => {
+      const mockFetch = vi.fn(async (url: string, options?: RequestInit) => {
+        if (url.includes('oauth2.googleapis.com')) return { ok: true, status: 200, json: async () => ({ access_token: 'mock-auth-token', expires_in: 3600 }) };
+        if (options?.method === 'GET') return { ok: true, status: 200, json: async () => ({ id: 'object-id', barcode: { value: 'existing-qr' }, heroImage: { sourceUri: { uri: 'old-stamps-strip' } } }) };
+        return { ok: true, status: 200 };
+      });
+      vi.stubGlobal('fetch', mockFetch);
+      const result = await service.updateLoyaltyObject(passData({ activeStamps: 0, activePoints: 100, rewardCurrency: 'POINTS', stampsEnabled: false, pointsEnabled: true }, { stampsEnabled: false, pointsEnabled: true }));
+      expect(result.success).toBe(true);
+      const calls = walletCalls(mockFetch);
+      expect(calls.map((call) => call[1]?.method)).toEqual(['GET', 'PUT']);
+      const body = JSON.parse(calls[1][1]!.body as string);
+      expect(body.heroImage).toBeUndefined();
+      expect(body.barcode).toEqual({ value: 'existing-qr' });
+      expect(body.loyaltyPoints).toEqual({ balance: { int: 100 }, label: 'Puntos' });
+      expect(body.textModulesData.some((module: { id: string }) => module.id === 'stamps_balance')).toBe(false);
+    });
+
     it('executes PATCH request with correct resourceId, payload and singular text', async () => {
       const mockFetch = stubWalletApi({ ok: true, status: 200 });
 

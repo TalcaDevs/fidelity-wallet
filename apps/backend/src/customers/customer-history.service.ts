@@ -6,6 +6,8 @@ import { findBrandProgram, requireActiveBrandOwner } from '../common/access/bran
 import { recordAudit } from '../common/audit/audit.js';
 import { UserDirectoryService } from '../common/users/user-directory.service.js';
 import { maskEmail, maskPhone, maskRut } from '../common/utils/mask.util.js';
+import { readCardBalance } from '../cards/card-balance.js';
+import { toCardView } from '../cards/card-program.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ReceiptStorageService } from '../scan/receipt-storage.service.js';
 import { resolveOwnerMaxStamps } from '../scan/scan.service.js';
@@ -78,7 +80,7 @@ export class CustomerHistoryService {
     }
 
     const now = new Date();
-    const [scans, totalsByType, activeStamps] = await Promise.all([
+    const [scans, totalsByType, balances] = await Promise.all([
       this.prisma.scan.findMany({
         where: { passId: pass.id },
         orderBy: { createdAt: 'desc' },
@@ -96,13 +98,7 @@ export class CustomerHistoryService {
         _count: { _all: true },
         _sum: { purchaseAmount: true },
       }),
-      this.prisma.stamp.count({
-        where: {
-          passId: pass.id,
-          consumedAt: null,
-          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-        },
-      }),
+      readCardBalance(this.prisma, pass.id, toCardView(program), now),
     ]);
 
     const total = totalsByType.reduce((sum, g) => sum + g._count._all, 0);
@@ -115,12 +111,12 @@ export class CustomerHistoryService {
     const redeemIds = scans.filter((s) => s.type === ScanType.REWARD_REDEEMED).map((s) => s.id);
     const consumed = redeemIds.length
       ? await this.prisma.stamp.groupBy({
-          by: ['consumedByScanId'],
+          by: ['consumedByScanId', 'currency'],
           where: { consumedByScanId: { in: redeemIds } },
           _sum: { amount: true },
         })
       : [];
-    const consumedByScan = new Map(consumed.map((c) => [c.consumedByScanId, c._sum?.amount ?? 0]));
+    const consumedByScan = new Map(consumed.map((c) => [`${c.consumedByScanId}:${c.currency}`, c._sum.amount ?? 0]));
 
     const staff = await this.users.lookup(
       scans.flatMap((s) => (s.createdByUserId ? [s.createdByUserId] : [])),
@@ -136,7 +132,8 @@ export class CustomerHistoryService {
       method: s.method,
       locationName: s.merchant.name,
       staffEmail: s.createdByUserId ? (staff.get(s.createdByUserId)?.email ?? null) : null,
-      stamps: s.type === ScanType.STAMP_ADDED ? s.stampCount : (consumedByScan.get(s.id) ?? 0),
+      stamps: s.type === ScanType.STAMP_ADDED ? s.stampCount : (consumedByScan.get(`${s.id}:STAMPS`) ?? 0),
+      points: s.type === ScanType.STAMP_ADDED ? s.pointsEarned : (consumedByScan.get(`${s.id}:POINTS`) ?? 0),
       purchaseAmount: s.purchaseAmount,
       note: s.note,
       rewardName: s.promotion?.rewardName ?? null,
@@ -144,7 +141,7 @@ export class CustomerHistoryService {
     }));
 
     return {
-      customer: this.profile(pass, activeStamps, maskIdentifiers),
+      customer: this.profile(pass, balances, maskIdentifiers),
       totals: {
         visits: purchases.reduce((sum, g) => sum + g._count._all, 0),
         redemptions: redemptions.reduce((sum, g) => sum + g._count._all, 0),
@@ -152,13 +149,16 @@ export class CustomerHistoryService {
       },
       history: { items, page, pageSize, total },
       cardType: program.type,
-      maxStampsPerLoad: program.type === 'POINTS' ? POINTS_PER_SCAN_MAX : this.maxStampsPerLoad,
+      stampsEnabled: program.stampsEnabled,
+      pointsEnabled: program.pointsEnabled,
+      maxStampsPerLoad: this.maxStampsPerLoad,
+      maxPointsPerLoad: POINTS_PER_SCAN_MAX,
     };
   }
 
   private profile(
     { customer, createdAt, merchantId }: { customer: Customer; createdAt: Date; merchantId: string },
-    activeStamps: number,
+    balances: { activeStamps: number; activePoints: number },
     maskIdentifiers: boolean,
   ): CustomerHistoryDto['customer'] {
     const mask = <T extends string | null>(value: T, masker: (v: string) => string) =>
@@ -173,7 +173,7 @@ export class CustomerHistoryService {
       birthMonth: customer.birthMonth,
       birthYear: customer.birthYear,
       joinedAt: createdAt.toISOString(),
-      activeStamps,
+      ...balances,
       homeLocationId: merchantId,
     };
   }

@@ -16,8 +16,10 @@ export function configOf(dto: CardConfigDto): CardConfig {
     stampsEnabled: dto.stampsEnabled,
     pointsEnabled: dto.pointsEnabled,
     name: dto.name,
-    rewards: dto.rewards,
+    rewards: dto.rewards.map((reward) => ({ ...reward, currency: reward.currency ?? dto.type })),
     welcomeBalance: dto.welcomeBalance,
+    welcomeStamps: dto.welcomeStamps ?? (dto.type === 'STAMPS' ? dto.welcomeBalance : 0),
+    welcomePoints: dto.welcomePoints ?? (dto.type === 'POINTS' ? dto.welcomeBalance : 0),
     dailyStampLimit: dto.dailyStampLimit,
     stampValidityDays: dto.stampValidityDays,
     validity: dto.validity,
@@ -75,7 +77,7 @@ export function useCardEditor(brandId: string) {
   /** Guarda si pasa las mismas reglas que aplica el backend; si no, devuelve los problemas. */
   const save = useCallback(async (): Promise<boolean> => {
     if (!config || !saved) return false;
-    const found = cardConfigIssues(config, { pointsEnabled: saved.points.enabled });
+    const found = cardConfigIssues(config, { pointsEnabled: saved.points.enabled, maxRewards: saved.rewardLimit });
     setProblems(found);
     if (found.length > 0) return false;
 

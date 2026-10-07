@@ -1,4 +1,4 @@
-import { balanceUnit, type CardType, type CustomerHistoryDto, type PurchaseHistoryEntryDto } from '@fidelity/shared';
+import { balanceUnit, type CustomerHistoryDto, type PurchaseHistoryEntryDto } from '@fidelity/shared';
 import { formatBirthday, formatDate, formatDateTime } from '../../lib/formatDate';
 
 const clp = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
@@ -30,9 +30,12 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function EntryRow({ entry, cardType }: { entry: PurchaseHistoryEntryDto; cardType: CardType }) {
+function EntryRow({ entry }: { entry: PurchaseHistoryEntryDto }) {
   const isStamp = entry.type === 'STAMP_ADDED';
-  const unit = balanceUnit(cardType, entry.stamps);
+  const quantities = [
+    entry.stamps > 0 ? `${entry.stamps} ${balanceUnit('STAMPS', entry.stamps)}` : '',
+    (entry.points ?? 0) > 0 ? `${entry.points} ${balanceUnit('POINTS', entry.points)}` : '',
+  ].filter(Boolean).join(' y ');
   return (
     <li className="p-4 sm:p-5 flex gap-4">
       <span
@@ -43,7 +46,7 @@ function EntryRow({ entry, cardType }: { entry: PurchaseHistoryEntryDto; cardTyp
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <p className="font-bold text-panel-text">
             {isStamp
-              ? cardType === 'STAMPS' && entry.stamps === 1 ? 'Sello' : `${entry.stamps} ${unit}`
+              ? quantities || 'Carga'
               : `Canje: ${entry.rewardName ?? 'premio'}`}
             {entry.purchaseAmount !== null && (
               <span className="ml-2 font-extrabold tabular-nums">{clp.format(entry.purchaseAmount)}</span>
@@ -58,7 +61,7 @@ function EntryRow({ entry, cardType }: { entry: PurchaseHistoryEntryDto; cardTyp
           {entry.staffEmail && <> · {entry.staffEmail}</>}
           {' · '}
           {METHOD_LABELS[entry.method]}
-          {!isStamp && <> · {entry.stamps} {unit} usados</>}
+          {!isStamp && <> · {quantities} usados</>}
         </p>
         {entry.note && <p className="mt-1 text-sm text-panel-text">“{entry.note}”</p>}
       </div>
@@ -104,7 +107,8 @@ export function PurchaseHistory({
       </section>
 
       <section aria-label="Totales" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat label={`${data.cardType === 'POINTS' ? 'Puntos' : 'Sellos'} vigentes`} value={String(customer.activeStamps)} />
+        {(data.stampsEnabled ?? data.cardType !== 'POINTS') && <Stat label="Sellos vigentes" value={String(customer.activeStamps)} />}
+        {(data.pointsEnabled ?? data.cardType === 'POINTS') && <Stat label="Puntos vigentes" value={String(customer.activePoints ?? 0)} />}
         <Stat label="Visitas" value={String(totals.visits)} />
         <Stat label="Canjes" value={String(totals.redemptions)} />
         <Stat label="Compras registradas" value={clp.format(totals.purchaseAmount)} />
@@ -118,7 +122,7 @@ export function PurchaseHistory({
           <p className="p-5 text-panel-muted">Todavía no tiene {balanceUnit(data.cardType)} ni canjes.</p>
         ) : (
           <ol className="divide-y divide-panel-border">
-            {history.items.map((entry) => <EntryRow key={entry.id} entry={entry} cardType={data.cardType} />)}
+            {history.items.map((entry) => <EntryRow key={entry.id} entry={entry} />)}
           </ol>
         )}
         {pages > 1 && (

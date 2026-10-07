@@ -28,6 +28,7 @@ export function getPlanBenefits(plan: Plan) {
     plan.limits.customers === null
       ? "Clientes ilimitados"
       : `Hasta ${plan.limits.customers} clientes`,
+    `Hasta ${plan.limits.rewards} recompensas activas`,
     "Tarjetas digitales en Wallet",
     ...(plan.features.advancedMetrics
       ? ["Métricas para conocer a tus clientes"]

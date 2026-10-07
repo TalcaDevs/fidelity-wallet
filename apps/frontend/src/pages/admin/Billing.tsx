@@ -41,6 +41,7 @@ function planFeatures(plan: Plan): string[] {
     `${limits.locations} ${limits.locations === 1 ? 'sucursal' : 'sucursales'}`,
     `${limits.teamUsers} ${limits.teamUsers === 1 ? 'usuario' : 'usuarios'} de equipo`,
     limits.customers === null ? 'Clientes ilimitados' : `Hasta ${limits.customers} clientes`,
+    `Hasta ${limits.rewards} recompensas activas`,
     'Apple y Google Wallet',
     ...(features.pushNotifications ? ['Notificaciones push y por ubicación'] : []),
     features.advancedMetrics ? 'Métricas avanzadas y exportar a Excel' : 'Métricas básicas',

@@ -228,6 +228,15 @@ export class MaskedCustomerDto {
 }
 
 export class ScanResultDto {
+  @ApiProperty({ description: 'Sellos habilitados en la tarjeta vigente' })
+  stampsEnabled: boolean;
+
+  @ApiProperty({ description: 'Puntos habilitados en la tarjeta vigente' })
+  pointsEnabled: boolean;
+
+  @ApiPropertyOptional({ enum: ['STAMPS', 'POINTS'] })
+  rewardCurrency?: 'STAMPS' | 'POINTS';
+
   @ApiProperty({ description: 'Indica si el escaneo fue exitoso', example: true })
   success: boolean;
 
@@ -318,6 +327,9 @@ export class ScanResultDto {
 }
 
 export class ScanValidationDto {
+  @ApiPropertyOptional({ enum: ['STAMPS', 'POINTS'], description: 'Moneda del premio de referencia' })
+  rewardCurrency?: 'STAMPS' | 'POINTS';
+
   @ApiProperty({
     description:
       'Comprobante para POST /api/scan (validationToken). Vence en 10 minutos y solo sirve para este usuario y local',

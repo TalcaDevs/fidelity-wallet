@@ -35,11 +35,12 @@ const FIELD_MODULE_ID: Record<CardFieldKey, string> = {
 const BALANCE_MODULE_ID = 'balance';
 
 function balanceLabel(card: CardView): string {
-  return card.type === 'POINTS' ? 'Puntos' : 'Sellos';
+  return card.stampsEnabled ? 'Sellos' : 'Puntos';
 }
 
 export function statusText(card: CardView, activeBalance: number, target: number, currency?: 'STAMPS' | 'POINTS'): string {
-  const actualCurrency = currency || (card.type === 'POINTS' ? 'POINTS' : 'STAMPS');
+  const actualCurrency = currency ?? (card.stampsEnabled ? 'STAMPS' : 'POINTS');
+  if (target < 1) return 'Acumula saldo';
   if (activeBalance >= target) return '¡Premio desbloqueado!';
   const remaining = target - activeBalance;
   return `${remaining === 1 ? 'Falta' : 'Faltan'} ${remaining} ${balanceUnit(actualCurrency, remaining)}`;
@@ -113,7 +114,7 @@ function textModules(data: PassData) {
     modules.push({
       id: 'stamps_balance',
       header: 'Sellos',
-      body: data.rewardCurrency === 'STAMPS' ? `${data.activeStamps} de ${data.targetStamps}` : String(data.activeStamps),
+      body: data.rewardCurrency === 'STAMPS' && data.targetStamps > 0 ? `${data.activeStamps} de ${data.targetStamps}` : String(data.activeStamps),
     });
   }
   
@@ -121,7 +122,7 @@ function textModules(data: PassData) {
     modules.push({
       id: 'points_balance',
       header: 'Puntos',
-      body: data.rewardCurrency === 'POINTS' ? `${data.activePoints} de ${data.targetStamps}` : String(data.activePoints),
+      body: data.rewardCurrency === 'POINTS' && data.targetStamps > 0 ? `${data.activePoints} de ${data.targetStamps}` : String(data.activePoints),
     });
   }
   for (const key of availableFields(card)) {
@@ -138,7 +139,7 @@ function textModules(data: PassData) {
         modules.push({
           id,
           header: 'Próximo vencimiento',
-          body: data.nextExpiryAt ? formatDate(data.nextExpiryAt) : (data.stampsEnabled && data.pointsEnabled ? 'Tus sellos y puntos no vencen' : `Tus ${balanceUnit(card.type)} no vencen`),
+          body: data.nextExpiryAt ? formatDate(data.nextExpiryAt) : (data.stampsEnabled && data.pointsEnabled ? 'Tus sellos y puntos no vencen' : `Tus ${balanceUnit(card.stampsEnabled ? 'STAMPS' : 'POINTS')} no vencen`),
         });
         break;
       case 'CARD_EXPIRY':
@@ -169,9 +170,9 @@ export function buildObjectState(data: PassData, baseUrl: string): Record<string
 
   const filled = Math.min(data.activeStamps, data.targetStamps);
   const strip = stampStripUrl(baseUrl, card, data.targetStamps, filled);
-  if (card.type === 'STAMPS' && isPublicImageUrl(strip)) {
+  if (card.stampsEnabled && data.rewardCurrency === 'STAMPS' && data.targetStamps > 0 && isPublicImageUrl(strip)) {
     state.heroImage = image(strip, `${filled} de ${data.targetStamps} sellos`);
-  } else if (card.type === 'POINTS' && isPublicImageUrl(card.design.heroImageUrl)) {
+  } else if (card.pointsEnabled && isPublicImageUrl(card.design.heroImageUrl)) {
     state.heroImage = image(card.design.heroImageUrl, card.name);
   }
 

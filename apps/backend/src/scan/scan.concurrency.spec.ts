@@ -42,6 +42,7 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
     targetStamps: 5,
     rewardName: 'Postre Gratis',
     isActive: true,
+    currency: 'STAMPS',
     createdAt: new Date(),
   };
 
@@ -99,6 +100,8 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
   it('strictly executes SELECT FOR UPDATE on Pass inside the database transaction', async () => {
     const rawQuerySpy = vi.fn().mockResolvedValue([]);
     const txMock = {
+      ...accessMocks(),
+      promotion: { findMany: vi.fn().mockResolvedValue([mockPromotion]) },
       $queryRaw: rawQuerySpy,
       scan: {
         findFirst: vi.fn().mockResolvedValue(null),
@@ -138,8 +141,10 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
     await service.processScan(dto, mockUserId1);
 
     // Verify row-level lock FOR UPDATE was acquired
-    expect(rawQuerySpy).toHaveBeenCalledTimes(1);
-    const sqlChunks = rawQuerySpy.mock.calls[0][0];
+    expect(rawQuerySpy).toHaveBeenCalledTimes(2);
+    expect(rawQuerySpy.mock.calls[0][0].join('')).toContain('"LoyaltyProgram"');
+    expect(rawQuerySpy.mock.calls[0][0].join('')).toContain('FOR SHARE');
+    const sqlChunks = rawQuerySpy.mock.calls[1][0];
     expect(sqlChunks.join('')).toContain('FOR UPDATE');
     expect(sqlChunks.join('')).toContain('SELECT id FROM "Pass" WHERE id =');
   });
@@ -160,7 +165,10 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
 
     const createTx = () => {
       return {
-        $queryRaw: vi.fn(async () => {
+        ...accessMocks(),
+        promotion: { findMany: vi.fn().mockResolvedValue([mockPromotion]) },
+        $queryRaw: vi.fn(async (chunks: TemplateStringsArray) => {
+          if (chunks.join('').includes('"LoyaltyProgram"')) return [];
           // Simulate pessimistic row lock: wait if another transaction holds the lock
           while (isRowLocked) {
             await new Promise((resolve) => setTimeout(resolve, 10));
@@ -279,7 +287,10 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
     const stampCreates: string[] = [];
 
     const createTx = () => ({
-      $queryRaw: vi.fn(async () => {
+      ...accessMocks(),
+      promotion: { findMany: vi.fn().mockResolvedValue([mockPromotion]) },
+      $queryRaw: vi.fn(async (chunks: TemplateStringsArray) => {
+          if (chunks.join('').includes('"LoyaltyProgram"')) return [];
         while (isRowLocked) {
           await new Promise((resolve) => setTimeout(resolve, 5));
         }

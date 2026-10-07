@@ -3,6 +3,9 @@ import type { PublicCardDto } from '@fidelity/shared';
 import { IsNotEmpty, IsString } from 'class-validator';
 
 export class PublicPromotionDto {
+  @ApiProperty({ enum: ['STAMPS', 'POINTS'], description: 'Moneda del costo de la recompensa' })
+  currency?: 'STAMPS' | 'POINTS';
+
   @ApiProperty({ description: 'ID de la promoción', example: 'e4c08495-e224-4122-9f9f-e0117ab81cd7' })
   id: string;
 

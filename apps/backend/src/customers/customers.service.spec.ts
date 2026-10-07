@@ -145,7 +145,8 @@ describe('CustomersService', () => {
         data: expect.objectContaining({ passId: 'p-1', method: 'WELCOME', stampCount: 2, type: 'STAMP_ADDED' }),
       });
       const [{ data: rows }] = prismaMock.stamp.createMany.mock.calls[0];
-      expect(rows).toHaveLength(2);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ currency: 'STAMPS', amount: 2 });
       expect(rows[0]).toMatchObject({ sourceScanId: 'scan-welcome', expiresAt: expect.any(Date) });
       // El saldo se da antes de armar el pase, para que la tarjeta nazca con él.
       expect(prismaMock.stamp.createMany.mock.invocationCallOrder[0]).toBeLessThan(
@@ -156,6 +157,18 @@ describe('CustomersService', () => {
       prismaMock.scan.create.mockClear();
       await service.createOrFindCustomer(validDto());
       expect(prismaMock.scan.create).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { type: 'POINTS', stampsEnabled: false, pointsEnabled: true, expected: [{ currency: 'POINTS', amount: 50 }] },
+      { type: 'STAMPS', stampsEnabled: true, pointsEnabled: true, expected: [{ currency: 'STAMPS', amount: 2 }, { currency: 'POINTS', amount: 50 }] },
+      { type: 'STAMPS', stampsEnabled: true, pointsEnabled: false, expected: [{ currency: 'STAMPS', amount: 2 }] },
+    ])('grants only enabled welcome currencies ($type, $pointsEnabled)', async ({ expected, ...modalities }) => {
+      prismaMock.loyaltyProgram.findFirst.mockResolvedValue({ ...stampsProgram, ...modalities, welcomeStamps: 2, welcomePoints: 50 });
+      await service.createOrFindCustomer(validDto());
+      const [{ data: rows }] = prismaMock.stamp.createMany.mock.calls[0];
+      expect(rows.map(({ currency, amount }: { currency: string; amount: number }) => ({ currency, amount }))).toEqual(expected);
+      expect(prismaMock.scan.create).toHaveBeenCalledWith({ data: expect.objectContaining({ stampCount: modalities.stampsEnabled ? 2 : 0, pointsEarned: modalities.pointsEnabled ? 50 : 0 }) });
     });
 
     it('does not hand out new cards once a fixed-term card ended', async () => {

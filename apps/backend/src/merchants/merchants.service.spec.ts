@@ -64,6 +64,21 @@ describe('MerchantsService', () => {
   });
 
   describe('findPublicBySlug', () => {
+    it('only exposes enabled rewards and independent welcome amounts', async () => {
+      vi.spyOn(prisma.merchant, 'findUnique').mockResolvedValue(withProgram({
+        ...program,
+        stampsEnabled: true,
+        pointsEnabled: false,
+        welcomeStamps: 2,
+        welcomePoints: 30,
+        promotions: [...promotions.map((p) => ({ ...p, currency: 'STAMPS' })), { id: 'points-reward', name: 'Postre', rewardName: 'Postre', targetStamps: 100, currency: 'POINTS' }],
+      }) as never);
+      const result = await service.findPublicBySlug('cafeteria-central');
+      expect(result.activePromotions).toHaveLength(1);
+      expect(result.activePromotion?.currency).toBe('STAMPS');
+      expect(result.card).toMatchObject({ stampsEnabled: true, pointsEnabled: false, welcomeStamps: 2, welcomePoints: 0 });
+    });
+
     it('returns public merchant data with the featured and all active promotions', async () => {
       const result = await service.findPublicBySlug('cafeteria-central');
 
@@ -123,7 +138,7 @@ describe('MerchantsService', () => {
                   promotions: {
                     where: { isActive: true },
                     orderBy: { createdAt: 'desc' },
-                    select: { id: true, name: true, targetStamps: true, rewardName: true },
+                    select: { id: true, name: true, targetStamps: true, rewardName: true, currency: true },
                   },
                 },
               },

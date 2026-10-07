@@ -25,9 +25,11 @@ export function CustomerDetail({ brandId }: { brandId: string | null }) {
 
   const handleAdded = (result: PanelStampsResultDto) => {
     setAdding(false);
-    const cardType = data?.cardType ?? 'STAMPS';
+    const currency = result.currency ?? data?.cardType ?? 'STAMPS';
+    const added = currency === 'POINTS' ? (result.pointsAdded ?? 0) : result.stampsAdded;
+    const balance = currency === 'POINTS' ? (result.activePoints ?? 0) : result.activeStamps;
     notifySuccess(
-      `Sumamos ${result.stampsAdded} ${balanceUnit(cardType, result.stampsAdded)}. Ahora tiene ${result.activeStamps}.` +
+      `Sumamos ${added} ${balanceUnit(currency, added)}. Ahora tiene ${balance}.` +
         (result.rewardUnlocked ? ' Ya puede canjear un premio.' : ''),
     );
     // La carga nueva queda arriba en el historial: se vuelve a la primera página.
@@ -56,7 +58,7 @@ export function CustomerDetail({ brandId }: { brandId: string | null }) {
             <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 5v14m-7-7h14" />
             </svg>
-            Sumar {balanceUnit(data.cardType)}
+            Sumar {data.stampsEnabled && data.pointsEnabled ? 'sellos o puntos' : balanceUnit(data.cardType)}
           </button>
         )}
       </header>
@@ -84,6 +86,9 @@ export function CustomerDetail({ brandId }: { brandId: string | null }) {
           homeLocationId={data.customer.homeLocationId}
           cardType={data.cardType}
           maxStampsPerLoad={data.maxStampsPerLoad}
+          maxPointsPerLoad={data.maxPointsPerLoad}
+          stampsEnabled={data.stampsEnabled}
+          pointsEnabled={data.pointsEnabled}
           onClose={() => setAdding(false)}
           onAdded={handleAdded}
         />

@@ -17,6 +17,9 @@ export interface CustomerRow {
   // Saldo vigente: sellos ni consumidos ni vencidos. Reemplaza al viejo
   // contador plano Pass.stampsCount, que no sabía de vencimientos.
   activeStamps: number;
+  activePoints?: number;
+  stampsEnabled?: boolean;
+  pointsEnabled?: boolean;
   nextExpiryAt: string | null;
   joinedAt: string;
   lastActivityAt: string;
@@ -43,6 +46,9 @@ interface RawPassRow {
 interface RawBalanceRow {
   passId: string;
   activeStamps: number;
+  activePoints?: number;
+  stampsEnabled?: boolean;
+  pointsEnabled?: boolean;
   nextExpiryAt: string | null;
 }
 
@@ -64,7 +70,7 @@ export async function listCustomers(brandId: string): Promise<CustomerRow[]> {
       .order('updatedAt', { ascending: false }),
     supabase
       .from('PassStampBalance')
-      .select('passId, activeStamps, nextExpiryAt')
+      .select('passId, activeStamps, activePoints, stampsEnabled, pointsEnabled, nextExpiryAt')
       .eq('brandId', brandId),
   ]);
 
@@ -92,6 +98,9 @@ export async function listCustomers(brandId: string): Promise<CustomerRow[]> {
       birthYear: customer?.birthYear ?? null,
       // Un pase sin sellos vigentes puede no tener fila en la vista.
       activeStamps: balance?.activeStamps ?? 0,
+      activePoints: balance?.activePoints ?? 0,
+      stampsEnabled: balance?.stampsEnabled ?? true,
+      pointsEnabled: balance?.pointsEnabled ?? false,
       nextExpiryAt: balance?.nextExpiryAt ?? null,
       joinedAt: row.createdAt,
       lastActivityAt: row.updatedAt,
@@ -143,6 +152,7 @@ export function getCustomerHistory(customerId: string, brandId: string, page = 1
 }
 
 export interface PanelStampsInput {
+  currency?: 'STAMPS' | 'POINTS';
   brandId: string;
   merchantId: string;
   stampCount: number;

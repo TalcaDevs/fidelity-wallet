@@ -43,7 +43,7 @@ export class ApplePassService {
       'TALCADEVS1';
 
     const { card } = data.cardClass;
-    const unit = balanceUnit(card.type);
+    const unit = balanceUnit(card.stampsEnabled ? 'STAMPS' : 'POINTS');
     const { details } = card;
     const backFields = [
       ...details.sections.map((section, i) => ({
@@ -84,7 +84,7 @@ export class ApplePassService {
                 {
                   key: 'stamps',
                   label: 'SELLOS',
-                  value: data.rewardCurrency === 'STAMPS' ? `${data.activeStamps} / ${data.targetStamps}` : String(data.activeStamps),
+                  value: data.rewardCurrency === 'STAMPS' && data.targetStamps > 0 ? `${data.activeStamps} / ${data.targetStamps}` : String(data.activeStamps),
                 },
               ]
             : []),
@@ -93,7 +93,7 @@ export class ApplePassService {
                 {
                   key: 'points',
                   label: 'PUNTOS',
-                  value: data.rewardCurrency === 'POINTS' ? `${data.activePoints} / ${data.targetStamps}` : String(data.activePoints),
+                  value: data.rewardCurrency === 'POINTS' && data.targetStamps > 0 ? `${data.activePoints} / ${data.targetStamps}` : String(data.activePoints),
                 },
               ]
             : []),

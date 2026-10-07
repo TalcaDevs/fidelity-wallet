@@ -1,9 +1,7 @@
 import { Link } from 'react-router-dom';
 import {
   DEFAULT_PESOS_PER_POINT,
-  STAMPS_TARGET_MAX,
   type CardConfigDto,
-  type CardReward,
   type CardType,
 } from '@fidelity/shared';
 import { ROUTES } from '../../../components/routing/routePaths';
@@ -43,23 +41,6 @@ const SOON: Pick<Option, 'title' | 'description'>[] = [
   { title: 'Membresía', description: 'Una credencial con el nombre del socio y su nivel.' },
 ];
 
-/**
- * Al cambiar de tipo, una meta de sellos (10) no sirve como costo en puntos ni al revés: se
- * propone una equivalente (10 sellos ≈ 100 puntos) que el dueño ajusta en el paso siguiente.
- */
-function convertRewards(rewards: CardReward[], to: CardType, oldType: CardType, isDual: boolean): CardReward[] {
-  if (isDual) return rewards;
-  return rewards.map((r) => {
-    const currentCurrency = r.currency || oldType;
-    if (currentCurrency === to) return { ...r, currency: to };
-    return {
-      ...r,
-      target: to === 'POINTS' ? r.target * 10 : Math.min(STAMPS_TARGET_MAX, Math.max(1, Math.round(r.target / 10))),
-      currency: to,
-    };
-  });
-}
-
 function determineNewType(stamps: boolean, points: boolean, current: CardType): CardType {
   if (stamps && points) return current;
   if (points) return 'POINTS';
@@ -76,10 +57,7 @@ function disabledReason(key: 'STAMPS' | 'POINTS', stampsEnabled: boolean, points
     if ((key === 'STAMPS' && !pointsEnabled) || (key === 'POINTS' && !stampsEnabled)) {
       return 'Debe haber al menos un modo activo.';
     }
-    // Si la tarjeta ya fue guardada y hay saldo, no se puede quitar la modalidad activa
-    if (saved.typeLocked && isCurrentlyEnabled) {
-      return 'Tus clientes ya tienen saldo en esta modalidad: quitarla se los borraría.';
-    }
+
   }
 
   return null;
@@ -96,7 +74,7 @@ export function TypeStep({ editor }: { editor: CardEditor }) {
         ¿Qué beneficios quieres ofrecer?
       </h2>
       <p className="text-sm text-panel-muted mt-1 mb-5">
-        Puedes activar uno o ambos sistemas a la vez para tu tarjeta de fidelidad.
+        Puedes activar uno o ambos sistemas a la vez. Al desactivar uno se ocultan sus saldos y premios; se conserva el saldo vigente para cuando lo reactives.
       </p>
 
       <div role="group" aria-label="Beneficios de la tarjeta" className="space-y-3">
@@ -114,7 +92,7 @@ export function TypeStep({ editor }: { editor: CardEditor }) {
               aria-checked={selected}
               disabled={!!reason}
               onClick={() => {
-                if (!!reason) return;
+                if (reason) return;
 
                 const newStampsEnabled = isStamps ? !selected : config.stampsEnabled;
                 const newPointsEnabled = !isStamps ? !selected : config.pointsEnabled;
@@ -123,21 +101,12 @@ export function TypeStep({ editor }: { editor: CardEditor }) {
                 if (!newStampsEnabled && !newPointsEnabled) return;
 
                 const newType = determineNewType(newStampsEnabled, newPointsEnabled, config.type);
-                const currentType = config.type;
-                
-                const newRewards = convertRewards(config.rewards, newType, currentType, newStampsEnabled && newPointsEnabled);
-
-                let newWelcomeBalance = config.welcomeBalance;
-                if (currentType !== newType && !(newStampsEnabled && newPointsEnabled)) {
-                  newWelcomeBalance = 0;
-                }
 
                 update({
                   type: newType,
                   stampsEnabled: newStampsEnabled,
                   pointsEnabled: newPointsEnabled,
-                  rewards: newRewards,
-                  welcomeBalance: newWelcomeBalance,
+                  welcomeBalance: newType === 'POINTS' ? (config.welcomePoints ?? 0) : (config.welcomeStamps ?? 0),
                 });
               }}
               className={`w-full text-left flex items-start gap-4 rounded-2xl border-2 p-5 transition-colors disabled:cursor-not-allowed ${

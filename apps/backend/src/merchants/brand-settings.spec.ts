@@ -11,6 +11,7 @@ import {
 
 function setup({ role = 'OWNER', status = 'ACTIVE' } = {}) {
   const prisma = {
+    $queryRaw: vi.fn().mockResolvedValue([]),
     brandMember: { findUnique: vi.fn().mockResolvedValue({ role }) },
     brand: {
       findUnique: vi.fn().mockResolvedValue({ status }),
@@ -26,7 +27,7 @@ function setup({ role = 'OWNER', status = 'ACTIVE' } = {}) {
       updateMany: vi.fn().mockReturnValue('program.updateMany'),
       findFirst: vi.fn().mockResolvedValue(null),
     },
-    $transaction: vi.fn().mockResolvedValue([]),
+    $transaction: vi.fn((fn: (tx: unknown) => unknown) => fn(prisma)),
   };
   return {
     prisma,
@@ -52,10 +53,7 @@ describe('BrandSettingsService', () => {
       stampValidityDays: null,
     });
 
-    expect(prisma.$transaction).toHaveBeenCalledWith([
-      'brand.update',
-      'program.updateMany',
-    ]);
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function));
     expect(prisma.brand.update).toHaveBeenCalledWith({
       where: { id: 'b-1' },
       data: { name: 'Café Nuevo' },
@@ -70,7 +68,7 @@ describe('BrandSettingsService', () => {
     const { service, prisma } = setup();
     await service.update('b-1', 'u-1', { stampValidityDays: 30 });
     expect(prisma.brand.update).not.toHaveBeenCalled();
-    expect(prisma.$transaction).toHaveBeenCalledWith(['program.updateMany']);
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function));
   });
 
   it('saves the points settings on the brand', async () => {
@@ -88,7 +86,8 @@ describe('BrandSettingsService', () => {
     await expect(
       service.update('b-1', 'u-1', { pointsEnabled: false }),
     ).rejects.toBeInstanceOf(ConflictException);
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.brand.update).not.toHaveBeenCalled();
+    expect(prisma.loyaltyProgram.findFirst).toHaveBeenCalledWith({ where: { brandId: 'b-1', pointsEnabled: true }, select: { id: true } });
   });
 
   it.each([

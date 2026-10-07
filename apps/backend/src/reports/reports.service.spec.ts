@@ -53,6 +53,7 @@ describe('ReportsService', () => {
       },
       stamp: {
         count: vi.fn(),
+        aggregate: vi.fn(),
         findMany: vi.fn(),
       },
       scan: {
@@ -149,12 +150,12 @@ describe('ReportsService', () => {
     });
 
     it('throws BadRequestException on invalid date strings', () => {
-      expect(() =>
-        resolveDateRange({ from: 'not-a-date' }),
-      ).toThrow(BadRequestException);
-      expect(() =>
-        resolveDateRange({ to: 'invalid-date' }),
-      ).toThrow(BadRequestException);
+      expect(() => resolveDateRange({ from: 'not-a-date' })).toThrow(
+        BadRequestException,
+      );
+      expect(() => resolveDateRange({ to: 'invalid-date' })).toThrow(
+        BadRequestException,
+      );
     });
 
     it('throws BadRequestException if from > to', () => {
@@ -179,7 +180,10 @@ describe('ReportsService', () => {
       const range = resolveDateRange({});
       expect(range.timeZone).toBe('America/Santiago');
       expect(range.toExclusive.getTime()).toBeGreaterThan(range.from.getTime());
-      const diffDays = Math.round((range.toExclusive.getTime() - range.from.getTime()) / (24 * 3600 * 1000));
+      const diffDays = Math.round(
+        (range.toExclusive.getTime() - range.from.getTime()) /
+          (24 * 3600 * 1000),
+      );
       expect(diffDays).toBe(30);
     });
   });
@@ -201,9 +205,9 @@ describe('ReportsService', () => {
         .mockResolvedValueOnce(10);
 
       // 0 expired in current, 0 in previous
-      (prisma.stamp.count as any)
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0);
+      (prisma.stamp.aggregate as any)
+        .mockResolvedValueOnce({ _sum: { amount: null } })
+        .mockResolvedValueOnce({ _sum: { amount: null } });
 
       const mockCurrentScans = [
         {
@@ -318,7 +322,10 @@ describe('ReportsService', () => {
       (prisma.scan.findMany as any).mockResolvedValue([
         {
           createdAt: past40Days,
-          pass: { customerId: 'cust-dormant', createdAt: new Date('2026-01-01T00:00:00Z') },
+          pass: {
+            customerId: 'cust-dormant',
+            createdAt: new Date('2026-01-01T00:00:00Z'),
+          },
         },
       ]);
       (prisma.pass.findMany as any).mockResolvedValue(mockPasses);

@@ -98,7 +98,7 @@ export interface InternalCustomerDto {
   rut: string | null;
   phone: string | null;
   createdAt: string;
-  cards: { brandId: string; brandName: string; activeStamps: number; joinedAt: string }[];
+  cards: { brandId: string; brandName: string; activeStamps: number; activePoints?: number; stampsEnabled?: boolean; pointsEnabled?: boolean; joinedAt: string }[];
 }
 
 export interface RevealCustomerInput {

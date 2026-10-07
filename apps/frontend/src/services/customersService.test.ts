@@ -1,6 +1,29 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { deleteCustomer } from './customersService';
+import { deleteCustomer, listCustomers } from './customersService';
 import { supabase } from '../lib/supabase';
+
+describe('customersService - balances', () => {
+  it('keeps independent point and stamp balances and modality flags from the balance view', async () => {
+    const passes = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      order: vi.fn().mockResolvedValue({ data: [{ id: 'p-1', customerId: 'c-1', createdAt: '2026-10-01', updatedAt: '2026-10-06', customer: { name: 'María' } }], error: null }),
+    };
+    const balances = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockResolvedValue({ data: [{ passId: 'p-1', activeStamps: 0, activePoints: 42, stampsEnabled: false, pointsEnabled: true, nextExpiryAt: null }], error: null }),
+    };
+    const from = vi.spyOn(supabase, 'from')
+      .mockReturnValueOnce(passes as unknown as ReturnType<typeof supabase.from>)
+      .mockReturnValueOnce(balances as unknown as ReturnType<typeof supabase.from>);
+    try {
+      expect(await listCustomers('b-1')).toEqual([expect.objectContaining({ activeStamps: 0, activePoints: 42, stampsEnabled: false, pointsEnabled: true })]);
+      expect(balances.select).toHaveBeenCalledWith('passId, activeStamps, activePoints, stampsEnabled, pointsEnabled, nextExpiryAt');
+    } finally {
+      from.mockRestore();
+    }
+  });
+});
 
 describe('customersService - deletion (Ley 19.628)', () => {
   beforeEach(() => {

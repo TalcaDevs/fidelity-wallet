@@ -40,7 +40,7 @@ function sample(config: CardConfig) {
   const pointsTarget = pointsRewards[0] ? Math.max(1, pointsRewards[0].target) : 100;
   const pointsBalance = Math.floor(pointsTarget * 0.4);
   
-  const allRewards = [...config.rewards].sort((a, b) => a.target - b.target);
+  const allRewards = config.rewards.filter((reward) => (reward.currency ?? config.type) === 'POINTS' ? config.pointsEnabled : config.stampsEnabled).sort((a, b) => a.target - b.target);
   const mainReward = allRewards[0] ?? { name: 'Tu premio', target: config.type === 'POINTS' ? 100 : 10, currency: config.type };
   const mainCurrency = mainReward.currency || (config.type === 'POINTS' ? 'POINTS' : 'STAMPS');
   

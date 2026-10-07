@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   CARD_NAME_MAX,
   CARD_REWARDS_MAX,
+  CARD_REWARDS_STORAGE_MAX,
   CARD_VALIDITY_DAYS_MAX,
   POINTS_TARGET_MAX,
   REWARD_NAME_MAX,
@@ -11,6 +12,7 @@ import {
   WELCOME_STAMPS_MAX,
   balanceUnit,
   type CardValidityType,
+  type CardType,
   type FieldMode,
   type RegistrationField,
 } from '@fidelity/shared';
@@ -64,14 +66,18 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
   if (!config || !saved) return null;
 
   const isPoints = config.type === 'POINTS';
-  const unit = balanceUnit(config.type);
-  const targetMax = isPoints ? POINTS_TARGET_MAX : STAMPS_TARGET_MAX;
+
   const { pesosPerPoint } = saved.points;
   const { validity, registration } = config;
+  const rewardLimit = saved.rewardLimit ?? CARD_REWARDS_MAX;
+  const activeCurrency = (currency: CardType) => currency === 'POINTS' ? config.pointsEnabled : config.stampsEnabled;
+  const activeRewards = config.rewards.filter((reward) => activeCurrency(reward.currency ?? config.type)).length;
+  const canAddReward = activeRewards < rewardLimit && config.rewards.length < CARD_REWARDS_STORAGE_MAX;
+  const newRewardCurrency = config.stampsEnabled ? 'STAMPS' : 'POINTS';
   const contactHidden = (field: RegistrationField) =>
     (field === 'phone' && registration.email === 'HIDDEN') || (field === 'email' && registration.phone === 'HIDDEN');
 
-  const setReward = (index: number, patch: { name?: string; target?: number }) =>
+  const setReward = (index: number, patch: { name?: string; target?: number; currency?: CardType }) =>
     update({ rewards: config.rewards.map((r, i) => (i === index ? { ...r, ...patch } : r)) });
 
   return (
@@ -89,9 +95,9 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
 
       <Section
         title="Recompensas"
-        description={`Crea una o varias recompensas, cada una con los ${unit} que cuesta. El saldo sirve para cualquiera: el cliente elige en caja.`}
+        description="Cada recompensa tiene un costo en sellos o puntos. Conserva los premios de modalidades desactivadas para volver a ofrecerlos cuando las reactives."
       >
-        {isPoints && (
+        {config.pointsEnabled && (
           <p className="mb-4 rounded-2xl bg-panel-accent/5 border border-panel-accent/20 px-4 py-3 text-sm text-panel-text">
             Cada compra da <strong>1 punto cada ${clp.format(pesosPerPoint)}</strong>. Puedes cambiar ese valor en{' '}
             <Link to={ROUTES.settings} className="font-bold text-panel-accent underline underline-offset-2">
@@ -101,7 +107,12 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
           </p>
         )}
         <ul className="space-y-3">
-          {config.rewards.map((reward, i) => (
+          {config.rewards.map((reward, i) => {
+            const currency = reward.currency ?? config.type;
+            const rewardPoints = currency === 'POINTS';
+            const unit = balanceUnit(currency);
+            const enabled = rewardPoints ? config.pointsEnabled : config.stampsEnabled;
+            return (
             <li key={reward.id ?? `new-${i}`} className="rounded-2xl border border-panel-border p-4">
               <div className="flex gap-3 items-start">
                 <input
@@ -115,6 +126,8 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
                 <button
                   type="button"
                   aria-label={`Quitar la recompensa ${i + 1}`}
+                  disabled={!enabled && !!reward.id}
+                  title={!enabled && reward.id ? 'Reactiva la modalidad para quitar este premio.' : undefined}
                   onClick={() => update({ rewards: config.rewards.filter((_, j) => j !== i) })}
                   className="shrink-0 p-3 rounded-xl text-panel-muted hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
                 >
@@ -123,32 +136,53 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
                   </svg>
                 </button>
               </div>
+              {!enabled && <p className={HINT}>Oculta para los clientes mientras esta modalidad está desactivada.</p>}
               <div className="flex flex-wrap items-center gap-3 mt-3">
+                <label className="text-sm text-panel-muted">
+                  Moneda
+                  <select
+                    aria-label={`Moneda de la recompensa ${i + 1}`}
+                    value={currency}
+                    onChange={(e) => setReward(i, { currency: e.target.value as CardType })}
+                    className={`${INPUT} w-auto mt-1`}
+                  >
+                    <option value="STAMPS" disabled={!enabled && currency !== 'STAMPS' && config.stampsEnabled && activeRewards >= rewardLimit}>Sellos</option>
+                    <option value="POINTS" disabled={currency !== 'POINTS' && (!saved.points.enabled || (!enabled && config.pointsEnabled && activeRewards >= rewardLimit))}>Puntos</option>
+                  </select>
+                </label>
                 <span className="text-sm text-panel-muted">A los</span>
                 <NumberStepper
                   label={`${unit} de la recompensa ${i + 1}`}
                   value={reward.target}
                   min={1}
-                  max={targetMax}
-                  step={isPoints ? 10 : 1}
+                  max={rewardPoints ? POINTS_TARGET_MAX : STAMPS_TARGET_MAX}
+                  step={rewardPoints ? 10 : 1}
                   onChange={(target) => setReward(i, { target })}
                 />
                 <span className="text-sm text-panel-muted">{unit}</span>
-                {isPoints && (
+                {rewardPoints && (
                   <span className="text-xs text-panel-muted">≈ ${clp.format(reward.target * pesosPerPoint)} en compras</span>
                 )}
               </div>
             </li>
-          ))}
+          );
+          })}
         </ul>
         <button
           type="button"
-          disabled={config.rewards.length >= CARD_REWARDS_MAX}
-          onClick={() => update({ rewards: [...config.rewards, { name: '', target: isPoints ? 100 : 10 }] })}
+          disabled={!canAddReward}
+          onClick={() => {
+            if (!canAddReward) return;
+            update({ rewards: [...config.rewards, { name: '', target: newRewardCurrency === 'STAMPS' ? 10 : 100, currency: newRewardCurrency }] });
+          }}
           className={`${GHOST_BUTTON} mt-3`}
         >
           + Agregar recompensa
         </button>
+        <p className={HINT}>{activeRewards} de {rewardLimit} recompensas activas. Las recompensas ocultas se conservan sin ocupar este cupo.</p>
+        {saved.rewardPlanLimit !== undefined && saved.rewardPlanLimit < rewardLimit && (
+          <p className={HINT}>Tu plan permite {saved.rewardPlanLimit} recompensas activas. Tus recompensas existentes se conservan aunque superen ese cupo.</p>
+        )}
         {saved.rewards.length > 0 && (
           <p className={HINT}>Si quitas una recompensa que ya se canjeó, se desactiva pero su historial se conserva.</p>
         )}
@@ -156,25 +190,32 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
 
       <Section title="Reglas">
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-panel-soft px-4 py-3">
-            <div>
-              <p className="text-sm font-bold text-panel-text">
-                {isPoints ? 'Puntos de bienvenida' : 'Sellos de bienvenida'}
-              </p>
-              <p className="text-xs text-panel-muted">
-                Los recibe el cliente al obtener la tarjeta por primera vez.
-              </p>
-            </div>
-            <NumberStepper
-              label={isPoints ? 'Puntos de bienvenida' : 'Sellos de bienvenida'}
-              value={config.welcomeBalance}
-              min={0}
-              max={isPoints ? WELCOME_POINTS_MAX : WELCOME_STAMPS_MAX}
-              step={isPoints ? 10 : 1}
-              onChange={(welcomeBalance) => update({ welcomeBalance })}
-            />
-          </div>
-          {!isPoints && (
+          {(['STAMPS', 'POINTS'] as const).map((currency) => {
+            const points = currency === 'POINTS';
+            const enabled = points ? config.pointsEnabled : config.stampsEnabled;
+            const label = points ? 'Puntos de bienvenida' : 'Sellos de bienvenida';
+            const value = points
+              ? (config.welcomePoints ?? (isPoints ? config.welcomeBalance : 0))
+              : (config.welcomeStamps ?? (!isPoints ? config.welcomeBalance : 0));
+            return <div key={currency} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-panel-soft px-4 py-3">
+              <div>
+                <p className="text-sm font-bold text-panel-text">{label}</p>
+                <p className="text-xs text-panel-muted">{enabled ? 'Los recibe el cliente al obtener la tarjeta por primera vez.' : 'Conservados; no se entregan mientras esta modalidad está desactivada.'}</p>
+              </div>
+              <NumberStepper
+                label={label}
+                value={value}
+                min={0}
+                max={points ? WELCOME_POINTS_MAX : WELCOME_STAMPS_MAX}
+                step={points ? 10 : 1}
+                onChange={(next) => update({
+                  ...(points ? { welcomePoints: next } : { welcomeStamps: next }),
+                  ...(config.type === currency ? { welcomeBalance: next } : {}),
+                })}
+              />
+            </div>;
+          })}
+          {config.stampsEnabled && (
             <Toggle
               label="Límite de 1 sello por día"
               description="El cajero suma a lo más un sello por cliente al día. Tú, como dueño, puedes sumar más indicando el motivo."
@@ -182,14 +223,14 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
               onChange={(dailyStampLimit) => update({ dailyStampLimit })}
             />
           )}
-          {isPoints && (
+          {config.pointsEnabled && (
             <p className="rounded-2xl bg-panel-soft px-4 py-3 text-sm text-panel-muted">
-              Con puntos el cajero siempre ingresa el monto y adjunta la foto de la boleta. Así el monto queda respaldado.
+              Cuando una compra suma puntos, el cajero ingresa el monto y adjunta la foto de la boleta.
             </p>
           )}
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-panel-soft px-4 py-3">
             <label htmlFor={`${ids}-balance-validity`} className="text-sm font-bold text-panel-text">
-              Vigencia de cada {balanceUnit(config.type, 1)}
+              Vigencia de los sellos y puntos entregados
               <span className="block text-xs font-normal text-panel-muted">
                 Lo ya entregado no cambia si después modificas este plazo.
               </span>

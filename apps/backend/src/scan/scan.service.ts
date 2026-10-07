@@ -20,6 +20,7 @@ import {
 import type { Customer, LoyaltyProgram, Pass, Promotion, Scan, Stamp } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { MerchantRole, ScanMethod, ScanType } from '@prisma/client';
+import { enabledCurrencies, readCardBalance } from '../cards/card-balance.js';
 import { passExpiresAt, toCardView, type CardView } from '../cards/card-program.js';
 import {
   assertLocationOperational,
@@ -109,6 +110,7 @@ interface ResolvedTarget {
 /** Lo que puede acompañar una carga de sellos, venga del escáner o del panel. */
 interface StampInput {
   stampCount?: number;
+  currency?: 'STAMPS' | 'POINTS';
   reason?: string;
   purchaseAmount?: number;
   note?: string;
@@ -117,6 +119,7 @@ interface StampInput {
 interface StampOptions {
   stampCount: number;
   pointsEarned: number;
+  source: StampSource;
   isOwner: boolean;
   reason?: string;
   purchaseAmount?: number;
@@ -221,11 +224,11 @@ export class ScanService {
     const pass = await this.resolvePass(dto, program);
     const now = new Date();
     this.assertCardValid(card, pass, now);
-    const activePromotions = await this.findActivePromotions(program.id);
+    const activePromotions = await this.findActivePromotions(program.id, card);
     const featured = activePromotions[0];
     const method: ScanMethod = dto.passToken ? ScanMethod.QR : ScanMethod.MANUAL;
 
-    const { activeStamps, activePoints, nextExpiryAt } = await this.readBalance(this.prisma, pass.id, now);
+    const { activeStamps, activePoints, nextExpiryAt } = await readCardBalance(this.prisma, pass.id, card, now);
     const { latestStamp, latestPoints } = await this.findLatestScans(this.prisma, pass.id);
     const stampBlock = this.cooldownUntil(card, latestStamp, null, now);
     const pointsBlock = this.cooldownUntil(card, null, latestPoints, now);
@@ -247,18 +250,19 @@ export class ScanService {
       customer: toCashierCustomer(pass.customer) ?? {},
       activeStamps,
       activePoints,
-      targetStamps: featured.targetStamps,
-      rewardName: featured.rewardName,
+      targetStamps: featured?.targetStamps ?? 0,
+      rewardName: featured?.rewardName ?? '',
       rewardUnlocked: availablePromotions.some((p) => p.canRedeem),
       availablePromotions,
       nextExpiryAt,
       nextStampAvailableAt: stampBlock?.until ?? null,
-      canStamp: isOwner || stampBlock === null,
-      maxStampsPerLoad: isOwner && card.type === 'STAMPS' ? this.ownerMaxStamps : 1,
+      canStamp: card.stampsEnabled && (isOwner || stampBlock === null),
+      maxStampsPerLoad: isOwner && card.stampsEnabled ? this.ownerMaxStamps : 1,
       reasonRequired: isOwner && stampBlock !== null,
       nextPointsAvailableAt: pointsBlock?.until ?? null,
-      canAddPoints: isOwner || pointsBlock === null,
+      canAddPoints: card.pointsEnabled && (isOwner || pointsBlock === null),
       pointsReasonRequired: isOwner && pointsBlock !== null,
+      rewardCurrency: featured?.currency,
       cardType: card.type,
       stampsEnabled: card.stampsEnabled,
       pointsEnabled: card.pointsEnabled,
@@ -298,7 +302,7 @@ export class ScanService {
 
     // Los sellos son un saldo único del pase: cualquier sello vigente sirve para cualquier
     // promoción activa. La más reciente es la "de referencia" (la que muestran landing y pase).
-    const activePromotions = await this.findActivePromotions(program.id);
+    const activePromotions = await this.findActivePromotions(program.id, brandCard.card);
     const maskedCustomer = toCashierCustomer(pass.customer);
 
     if (dto.action === ScanActionType.STAMP) {
@@ -393,7 +397,7 @@ export class ScanService {
     this.assertCardValid(brandCard.card, pass, new Date());
 
     const context: ScanContext = { merchant, ...brandCard };
-    const activePromotions = await this.findActivePromotions(program.id);
+    const activePromotions = await this.findActivePromotions(program.id, brandCard.card);
     const options = await this.buildStampOptions(dto, true, context, pass.id, receiptFile, 'PANEL');
     const result = await this.executeStampAction(
       pass,
@@ -414,6 +418,9 @@ export class ScanService {
       scanId: result.scanId!,
       stampsAdded: result.stampsAdded ?? options.stampCount,
       activeStamps: result.activeStamps,
+      pointsAdded: result.pointsAdded ?? options.pointsEarned,
+      activePoints: result.activePoints,
+      currency: dto.currency ?? (brandCard.card.stampsEnabled ? 'STAMPS' : 'POINTS'),
       rewardUnlocked: result.rewardUnlocked,
     };
   }
@@ -425,7 +432,7 @@ export class ScanService {
     }
     const card = toCardView(program);
     const brand =
-      card.type === 'POINTS'
+      card.pointsEnabled
         ? await this.prisma.brand.findUnique({ where: { id: brandId }, select: { pesosPerPoint: true } })
         : null;
     return { program, card, pesosPerPoint: brand?.pesosPerPoint ?? DEFAULT_PESOS_PER_POINT };
@@ -441,9 +448,9 @@ export class ScanService {
     }
   }
 
-  private async findActivePromotions(programId: string): Promise<Promotion[]> {
-    const activePromotions = await this.prisma.promotion.findMany({
-      where: { programId, isActive: true },
+  private async findActivePromotions(programId: string, card: CardView, db: Tx = this.prisma): Promise<Promotion[]> {
+    const activePromotions = await db.promotion.findMany({
+      where: { programId, isActive: true, currency: { in: enabledCurrencies(card) } },
       orderBy: { createdAt: 'desc' },
     });
     if (activePromotions.length === 0) {
@@ -467,13 +474,22 @@ export class ScanService {
     receiptFile: UploadedImage | undefined,
     source: StampSource,
   ): Promise<StampOptions> {
-    const stampCount = context.card.stampsEnabled ? this.stampsToAdd(dto, isOwner) : 0;
-    const pointsEarned = context.card.pointsEnabled 
-        ? this.pointsToAdd(dto, isOwner, context.pesosPerPoint, receiptFile, source, context.card.stampsEnabled) 
-        : 0;
-
+    const { card } = context;
+    const panelCurrency = source === 'PANEL'
+      ? dto.currency ?? (card.stampsEnabled && !card.pointsEnabled ? 'STAMPS' : !card.stampsEnabled && card.pointsEnabled ? 'POINTS' : undefined)
+      : undefined;
+    if (source === 'PANEL' && !panelCurrency) {
+      throw new BadRequestException('Selecciona si deseas cargar sellos o puntos');
+    }
+    if (panelCurrency && !enabledCurrencies(card).includes(panelCurrency)) {
+      throw new BadRequestException('La modalidad seleccionada no está habilitada en esta tarjeta');
+    }
+    const stampCount = card.stampsEnabled && panelCurrency !== 'POINTS' ? this.stampsToAdd(dto, isOwner) : 0;
+    const pointsEarned = card.pointsEnabled && panelCurrency !== 'STAMPS'
+      ? this.pointsToAdd(dto, isOwner, context.pesosPerPoint, receiptFile, source, card.stampsEnabled)
+      : 0;
     if (stampCount === 0 && pointsEarned === 0) {
-      throw new BadRequestException('El programa no tiene sellos ni puntos habilitados.');
+      throw new BadRequestException('La operación debe agregar sellos o puntos');
     }
 
     const brandId = context.merchant.brandId;
@@ -483,6 +499,7 @@ export class ScanService {
     return {
       stampCount,
       pointsEarned,
+      source,
       isOwner,
       reason: isOwner ? dto.reason : undefined,
       purchaseAmount: dto.purchaseAmount,
@@ -514,7 +531,7 @@ export class ScanService {
     dto: StampInput,
     isOwner: boolean,
     pesosPerPoint: number,
-    receiptFile: UploadedImage | undefined,
+    receiptFile: UploadedImage | StampOptions['receipt'] | undefined,
     source: StampSource,
     stampsEnabled: boolean,
   ): number {
@@ -529,15 +546,15 @@ export class ScanService {
       if (stampsEnabled) return 0;
       throw new BadRequestException('Ingresa el monto de la compra: con él se calculan los puntos');
     }
-    if (!isOwner && !receiptFile) {
-      throw new BadRequestException('Adjunta la foto de la boleta: es obligatoria para sumar puntos');
-    }
     const points = pointsForAmount(dto.purchaseAmount, pesosPerPoint);
     if (points < 1) {
       if (stampsEnabled) return 0;
       throw new BadRequestException(
         `El monto no alcanza para un punto (1 punto cada $${clp.format(pesosPerPoint)})`,
       );
+    }
+    if (!isOwner && !receiptFile) {
+      throw new BadRequestException('Adjunta la foto de la boleta: es obligatoria para sumar puntos');
     }
     if (points > POINTS_PER_SCAN_MAX) throw new BadRequestException(tooMany);
     return points;
@@ -564,6 +581,7 @@ export class ScanService {
       );
     }
 
+    if (!activePromotions[0]) throw new BadRequestException('No hay premios disponibles para las modalidades habilitadas');
     return activePromotions[0];
   }
 
@@ -662,29 +680,6 @@ export class ScanService {
     return pass;
   }
 
-  /** Saldo del pase (todas las promociones) y su próximo vencimiento. */
-  private async readBalance(
-    db: Tx,
-    passId: string,
-    now: Date,
-  ): Promise<{ activeStamps: number; activePoints: number; nextExpiryAt: Date | null }> {
-    const [activeStampsAgg, activePointsAgg, nextExpiring] = await Promise.all([
-      db.stamp.aggregate({ _sum: { amount: true }, where: { ...activeStampsWhere(passId, now), currency: 'STAMPS' } }),
-      db.stamp.aggregate({ _sum: { amount: true }, where: { ...activeStampsWhere(passId, now), currency: 'POINTS' } }),
-      db.stamp.findFirst({
-        where: { passId, consumedAt: null, expiresAt: { gt: now } },
-        orderBy: { expiresAt: 'asc' },
-        select: { expiresAt: true },
-      }),
-    ]);
-    
-    return { 
-      activeStamps: activeStampsAgg._sum.amount ?? 0, 
-      activePoints: activePointsAgg._sum.amount ?? 0, 
-      nextExpiryAt: nextExpiring?.expiresAt ?? null 
-    };
-  }
-
   private async findLatestScans(db: Tx, passId: string): Promise<{ latestStamp: Scan | null; latestPoints: Scan | null }> {
     // El saldo de bienvenida no es una visita: no bloquea el primer sello en caja.
     const [latestStamp, latestPoints] = await Promise.all([
@@ -780,7 +775,7 @@ export class ScanService {
 
   private stampInTransaction(
     pass: PassWithRelations,
-    { merchant, program, card }: ScanContext,
+    { merchant, program: initialProgram, card: initialCard }: ScanContext,
     activePromotions: Promotion[],
     callerUserId: string,
     maskedCustomer: MaskedCustomerDto | undefined,
@@ -788,13 +783,40 @@ export class ScanService {
     options: StampOptions,
   ): Promise<ScanResultDto> {
     return this.prisma.$transaction(async (tx) => {
-      // Bloqueo pesimista de fila en Pass para serializar operaciones sobre el mismo pase
+      // El editor toma FOR UPDATE sobre el programa. El mismo orden de locks evita
+      // guardar una modalidad nueva mientras una operación usa su configuración anterior.
+      await tx.$queryRaw`SELECT id FROM "LoyaltyProgram" WHERE id = ${initialProgram.id}::uuid FOR SHARE`;
       await tx.$queryRaw`SELECT id FROM "Pass" WHERE id = ${pass.id}::uuid FOR UPDATE`;
+      const program = await tx.loyaltyProgram.findFirst({ where: { id: initialProgram.id, brandId: merchant.brandId, isActive: true } });
+      if (!program) throw new BadRequestException('La tarjeta ya no está activa');
+      const card = toCardView(program);
+      if (initialCard.stampsEnabled !== card.stampsEnabled || initialCard.pointsEnabled !== card.pointsEnabled) {
+        throw new BadRequestException('La configuración de la tarjeta cambió. Vuelve a validar al cliente');
+      }
+      activePromotions = await this.findActivePromotions(program.id, card, tx);
+      if (options.source === 'SCANNER' && card.pointsEnabled && options.purchaseAmount !== undefined) {
+        const brand = await tx.brand.findUnique({ where: { id: merchant.brandId }, select: { pesosPerPoint: true } });
+        options = {
+          ...options,
+          pointsEarned: this.pointsToAdd(
+            options,
+            options.isOwner,
+            brand?.pesosPerPoint ?? DEFAULT_PESOS_PER_POINT,
+            options.receipt ?? undefined,
+            'SCANNER',
+            card.stampsEnabled,
+          ),
+        };
+        if (options.stampCount === 0 && options.pointsEarned === 0) {
+          throw new BadRequestException('El monto ya no alcanza para un punto. Vuelve a validar al cliente');
+        }
+      }
 
       // "now" se toma DESPUÉS del lock: si se tomara antes, el que esperó el lock compararía
       // contra un sello creado "en el futuro" (diferencia negativa) y quedaría bloqueado aunque
       // el cooldown fuera 0.
       const now = new Date();
+      this.assertCardValid(card, pass, now);
       const expiresAt =
         program.stampValidityDays && program.stampValidityDays > 0
           ? new Date(now.getTime() + program.stampValidityDays * 24 * 60 * 60 * 1000)
@@ -905,7 +927,7 @@ export class ScanService {
       action: 'pass.stamps_added',
       entity: 'Pass',
       entityId: passId,
-      after: { scanId: scan.id, merchantId, method: scan.method, stampCount: options.stampCount, overridesCooldown },
+      after: { scanId: scan.id, merchantId, method: scan.method, stampCount: options.stampCount, pointsEarned: options.pointsEarned, overridesCooldown },
       reason: options.reason,
     });
   }
@@ -915,7 +937,7 @@ export class ScanService {
     { passId, card, promotions, customer, options, scan, now, block }: StampResponseContext,
   ): Promise<ScanResultDto> {
     const featured = promotions[0];
-    const { activeStamps, activePoints, nextExpiryAt } = await this.readBalance(tx, passId, now);
+    const { activeStamps, activePoints, nextExpiryAt } = await readCardBalance(tx, passId, card, now);
     const availablePromotions = toPromotionOptions(promotions, activeStamps, activePoints);
     const rewardUnlocked = availablePromotions.some((p) => p.canRedeem);
     const result = {
@@ -925,13 +947,16 @@ export class ScanService {
       passId,
       activeStamps,
       activePoints,
-      targetStamps: featured.targetStamps,
+      targetStamps: featured?.targetStamps ?? 0,
       rewardUnlocked,
-      rewardName: featured.rewardName,
+      rewardName: featured?.rewardName ?? '',
       availablePromotions,
       nextExpiryAt,
       scanId: scan.id,
       customer,
+      stampsEnabled: card.stampsEnabled,
+      pointsEnabled: card.pointsEnabled,
+      rewardCurrency: featured?.currency,
     };
     if (block) {
       return {
@@ -966,7 +991,7 @@ export class ScanService {
 
   private async executeRedeemAction(
     pass: PassWithRelations,
-    { merchant, program }: ScanContext,
+    { merchant, program: initialProgram }: ScanContext,
     promotion: Promotion,
     activePromotions: Promotion[],
     callerUserId: string,
@@ -974,9 +999,16 @@ export class ScanService {
     method: ScanMethod,
   ): Promise<ScanResultDto> {
     return this.prisma.$transaction(async (tx) => {
-      // Bloqueo pesimista de fila en Pass para serializar operaciones sobre el mismo pase
+      await tx.$queryRaw`SELECT id FROM "LoyaltyProgram" WHERE id = ${initialProgram.id}::uuid FOR SHARE`;
       await tx.$queryRaw`SELECT id FROM "Pass" WHERE id = ${pass.id}::uuid FOR UPDATE`;
+      const program = await tx.loyaltyProgram.findFirst({ where: { id: initialProgram.id, brandId: merchant.brandId, isActive: true } });
+      if (!program) throw new BadRequestException('La tarjeta ya no está activa');
+      const card = toCardView(program);
+      activePromotions = await this.findActivePromotions(program.id, card, tx);
+      promotion = this.resolveRedeemPromotion(activePromotions, promotion.id);
+      if (!enabledCurrencies(card).includes(promotion.currency)) throw new BadRequestException('La modalidad del premio no está habilitada');
       const now = new Date();
+      this.assertCardValid(card, pass, now);
 
       // Ventana anti-duplicado de 90 s (doble toque) POR PROMOCIÓN. Si fuera por pase, canjear
       // A y enseguida B respondería "ya canjeado" con los datos de B sin consumir sellos, y la
@@ -991,7 +1023,7 @@ export class ScanService {
       });
 
       if (latestRedeem && now.getTime() - latestRedeem.createdAt.getTime() < REDEEM_DUPLICATE_WINDOW_MS) {
-        const { activeStamps, activePoints, nextExpiryAt } = await this.readBalance(tx, pass.id, now);
+        const { activeStamps, activePoints, nextExpiryAt } = await readCardBalance(tx, pass.id, card, now);
         const availablePromotions = toPromotionOptions(activePromotions, activeStamps, activePoints);
 
         return {
@@ -1005,6 +1037,9 @@ export class ScanService {
           targetStamps: promotion.targetStamps,
           rewardUnlocked: availablePromotions.some((p) => p.canRedeem),
           rewardName: promotion.rewardName,
+          rewardCurrency: promotion.currency,
+          stampsEnabled: card.stampsEnabled,
+          pointsEnabled: card.pointsEnabled,
           availablePromotions,
           nextExpiryAt,
           scanId: latestRedeem.id,
@@ -1057,7 +1092,7 @@ export class ScanService {
         },
       });
 
-      const { stampsToUpdate, newStampsToCreate } = calculateFifoConsumption(activeStampsList, promotion.targetStamps);
+      const { stampsToUpdate, newStampsToCreate, partialConsumption } = calculateFifoConsumption(activeStampsList, promotion.targetStamps);
 
       const updateResult = await tx.stamp.updateMany({
         where: { id: { in: stampsToUpdate }, consumedAt: null },
@@ -1073,11 +1108,14 @@ export class ScanService {
         );
       }
 
+      if (partialConsumption) {
+        await tx.stamp.update({ where: { id: partialConsumption.id }, data: { amount: partialConsumption.amount } });
+      }
       if (newStampsToCreate.length > 0) {
         await tx.stamp.createMany({ data: newStampsToCreate });
       }
 
-      const { activeStamps, activePoints, nextExpiryAt } = await this.readBalance(tx, pass.id, now);
+      const { activeStamps, activePoints, nextExpiryAt } = await readCardBalance(tx, pass.id, card, now);
       const availablePromotions = toPromotionOptions(activePromotions, activeStamps, activePoints);
 
       await this.passesService.enqueuePassUpdate(pass.id, tx);
@@ -1106,6 +1144,9 @@ export class ScanService {
           targetStamps: promotion.targetStamps,
           rewardUnlocked: availablePromotions.some((p) => p.canRedeem),
           rewardName: promotion.rewardName,
+          rewardCurrency: promotion.currency,
+          stampsEnabled: card.stampsEnabled,
+          pointsEnabled: card.pointsEnabled,
           availablePromotions,
           nextExpiryAt,
           scanId: scan.id,
@@ -1120,8 +1161,9 @@ export class ScanService {
 export function calculateFifoConsumption(
   activeStampsList: Stamp[],
   targetStamps: number
-): { stampsToUpdate: string[]; newStampsToCreate: Prisma.StampCreateManyInput[] } {
+): { stampsToUpdate: string[]; newStampsToCreate: Prisma.StampCreateManyInput[]; partialConsumption?: { id: string; amount: number } } {
   let remainingToConsume = targetStamps;
+  let partialConsumption: { id: string; amount: number } | undefined;
   const stampsToUpdate: string[] = [];
   const newStampsToCreate: Prisma.StampCreateManyInput[] = [];
 
@@ -1134,6 +1176,7 @@ export function calculateFifoConsumption(
     } else {
       stampsToUpdate.push(stamp.id);
       const remainingAmount = stamp.amount - remainingToConsume;
+      partialConsumption = { id: stamp.id, amount: remainingToConsume };
       newStampsToCreate.push({
          passId: stamp.passId,
          merchantId: stamp.merchantId,
@@ -1143,12 +1186,12 @@ export function calculateFifoConsumption(
          createdByUserId: stamp.createdByUserId,
          earnedAt: stamp.earnedAt,
          expiresAt: stamp.expiresAt,
-         currency: stamp.currency as any,
+         currency: stamp.currency,
          amount: remainingAmount,
       });
       remainingToConsume = 0;
     }
   }
 
-  return { stampsToUpdate, newStampsToCreate };
+  return { stampsToUpdate, newStampsToCreate, partialConsumption };
 }

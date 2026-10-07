@@ -200,7 +200,7 @@ describe('datos del alta', () => {
   });
 
   describe('lo que pide la tarjeta', () => {
-    const merchantWith = (card: object) => async (url: string, init?: RequestInit) => {
+    const merchantWith = (card: object, promotions = [{ id: 'p1', name: 'Postre', targetStamps: 500, rewardName: 'Postre gratis', currency: 'POINTS' }]) => async (url: string, init?: RequestInit) => {
       if (url.includes('/api/merchants/by-slug/')) {
         return new Response(
           JSON.stringify({
@@ -208,7 +208,7 @@ describe('datos del alta', () => {
             name: 'Café Puntos',
             slug: 'test-merchant',
             stampValidityDays: null,
-            activePromotions: [{ id: 'p1', name: 'Postre', targetStamps: 500, rewardName: 'Postre gratis' }],
+            activePromotions: promotions,
             card: {
               type: 'POINTS',
               name: 'Club',
@@ -239,6 +239,30 @@ describe('datos del alta', () => {
       renderJoin();
       expect(await screen.findByText('Junta 500 puntos, llévate Postre gratis')).toBeInTheDocument();
       expect(screen.getByText(/te regalamos 50 puntos/i)).toBeInTheDocument();
+    });
+
+    it('announces both active welcome gifts and each reward currency on a dual card', async () => {
+      currentFetchHandler = merchantWith({ stampsEnabled: true, pointsEnabled: true, welcomeStamps: 2, welcomePoints: 50 }, [
+        { id: 's1', name: 'Café', targetStamps: 10, rewardName: 'Café gratis', currency: 'STAMPS' },
+        { id: 'p1', name: 'Postre', targetStamps: 500, rewardName: 'Postre gratis', currency: 'POINTS' },
+      ]);
+      renderJoin();
+      expect(await screen.findByText('Junta 10 sellos, llévate Café gratis')).toBeInTheDocument();
+      expect(screen.getByText(/te regalamos 2 sellos y 50 puntos/)).toBeInTheDocument();
+      expect(screen.getByText('500 puntos')).toBeInTheDocument();
+      expect(screen.getByText('Tus sellos y puntos también sirven para:')).toBeInTheDocument();
+    });
+
+    it('hides the disabled point welcome and point rewards from registration', async () => {
+      currentFetchHandler = merchantWith({ type: 'STAMPS', stampsEnabled: true, pointsEnabled: false, welcomeStamps: 2, welcomePoints: 50 }, [
+        { id: 'p1', name: 'Postre', targetStamps: 500, rewardName: 'Postre gratis', currency: 'POINTS' },
+        { id: 's1', name: 'Café', targetStamps: 10, rewardName: 'Café gratis', currency: 'STAMPS' },
+      ]);
+      renderJoin();
+      expect(await screen.findByText('Junta 10 sellos, llévate Café gratis')).toBeInTheDocument();
+      expect(screen.getByText(/te regalamos 2 sellos/)).toBeInTheDocument();
+      expect(screen.queryByText(/50 puntos/)).not.toBeInTheDocument();
+      expect(screen.queryByText('Postre gratis')).not.toBeInTheDocument();
     });
 
     it('hides what the brand does not ask for and requires what it does', async () => {

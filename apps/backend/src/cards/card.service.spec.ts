@@ -1,6 +1,7 @@
 import 'reflect-metadata';
-import { BadRequestException, ConflictException, ForbiddenException, Logger } from '@nestjs/common';
-import { DEFAULT_CARD_DESIGN, DEFAULT_CARD_DETAILS, DEFAULT_REGISTRATION } from '@fidelity/shared';
+import { BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { DEFAULT_CARD_DESIGN, DEFAULT_CARD_DETAILS, DEFAULT_REGISTRATION, type PlanId } from '@fidelity/shared';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import sharp from 'sharp';
@@ -57,12 +58,25 @@ const body = (overrides: Partial<SaveCardDto> = {}): SaveCardDto =>
     ...overrides,
   }) as SaveCardDto;
 
-function setup({ role = 'OWNER', pointsEnabled = false, activeBalance = false, redeemed = 0 } = {}) {
+const storedRewards = (count: number, currency: 'STAMPS' | 'POINTS' = 'STAMPS') =>
+  Array.from({ length: count }, (_, i) => ({
+    id: `c0000000-0000-4000-8000-${(i + (currency === 'POINTS' ? 100 : 0)).toString(16).padStart(12, '0')}`,
+    isActive: true,
+    currency,
+    rewardName: `Premio ${i + 1}`,
+    targetStamps: currency === 'POINTS' ? 500 : 5,
+  }));
+
+const rewardInputs = (rewards: ReturnType<typeof storedRewards>) =>
+  rewards.map((reward) => ({ id: reward.id, name: reward.rewardName, target: reward.targetStamps, currency: reward.currency }));
+
+function setup({ role = 'OWNER', pointsEnabled = false, activeBalance = false, redeemed = 0, planId = 'TRIAL' as PlanId, env = {} as Record<string, unknown> } = {}) {
   const prisma = {
+    $queryRaw: vi.fn().mockResolvedValue([]),
     brandMember: { findUnique: vi.fn().mockResolvedValue({ role }) },
     brand: {
       findUnique: vi.fn().mockResolvedValue({ status: 'ACTIVE' }),
-      findUniqueOrThrow: vi.fn().mockResolvedValue({ name: 'Café Demo', pointsEnabled, pesosPerPoint: 1000 }),
+      findUniqueOrThrow: vi.fn().mockResolvedValue({ name: 'Café Demo', pointsEnabled, pesosPerPoint: 1000, planId }),
     },
     loyaltyProgram: {
       findFirst: vi.fn().mockResolvedValue(program()),
@@ -70,8 +84,8 @@ function setup({ role = 'OWNER', pointsEnabled = false, activeBalance = false, r
     },
     promotion: {
       findMany: vi.fn().mockResolvedValue([
-        { id: rewardA, isActive: true, rewardName: 'Café', targetStamps: 10 },
-        { id: rewardB, isActive: true, rewardName: 'Almuerzo', targetStamps: 20 },
+        { id: rewardA, isActive: true, currency: 'STAMPS', rewardName: 'Café', targetStamps: 10 },
+        { id: rewardB, isActive: true, currency: 'STAMPS', rewardName: 'Almuerzo', targetStamps: 20 },
       ]),
       update: vi.fn(),
       create: vi.fn(),
@@ -96,6 +110,7 @@ function setup({ role = 'OWNER', pointsEnabled = false, activeBalance = false, r
     prisma as unknown as PrismaService,
     passes as unknown as PassesService,
     storage as unknown as CardAssetsStorageService,
+    Object.assign(new ConfigService(env), { skipProcessEnv: true }),
   );
   return { prisma, passes, storage, service };
 }
@@ -111,7 +126,7 @@ describe('CardService', () => {
       type: 'STAMPS',
       designVersion: 4,
       points: { enabled: false, pesosPerPoint: 1000 },
-      typeLocked: true,
+      typeLocked: false,
       customers: 42,
       locations: 2,
       rewards: [
@@ -187,12 +202,26 @@ describe('CardService', () => {
       await expect(setup({ pointsEnabled: true }).service.save(brandId, userId, points)).resolves.toBeDefined();
     });
 
-    it('does not switch between stamps and points while customers have balance', async () => {
+    it('switches between stamps and points with existing balance without touching the ledger or hidden rewards', async () => {
       const { service, prisma } = setup({ pointsEnabled: true, activeBalance: true });
-      await expect(
-        service.save(brandId, userId, body({ type: 'POINTS', stampsEnabled: false, pointsEnabled: true, rewards: [{ name: 'Postre', target: 500 }] })),
-      ).rejects.toBeInstanceOf(ConflictException);
-      expect(prisma.$transaction).not.toHaveBeenCalled();
+      await expect(service.save(brandId, userId, body({ type: 'POINTS', stampsEnabled: false, pointsEnabled: true, rewards: [{ name: 'Postre', target: 500 }] }))).resolves.toBeDefined();
+      expect(prisma.loyaltyProgram.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ stampsEnabled: false, pointsEnabled: true }) }));
+      expect(prisma.stamp.findFirst).not.toHaveBeenCalled();
+      expect(prisma.promotion.delete).not.toHaveBeenCalled();
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps independent welcome amounts when one modality is hidden', async () => {
+      const { service, prisma } = setup({ pointsEnabled: true });
+      await service.save(brandId, userId, body({ welcomeStamps: 2, welcomePoints: 50 }));
+      expect(prisma.loyaltyProgram.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ welcomeStamps: 2, welcomePoints: 50, welcomeBalance: 2 }) }));
+    });
+
+    it('preserves hidden welcome amounts omitted by an older editor', async () => {
+      const { service, prisma } = setup({ pointsEnabled: true });
+      prisma.loyaltyProgram.findFirst.mockResolvedValue(program({ welcomeStamps: 2, welcomePoints: 50 }));
+      await service.save(brandId, userId, body());
+      expect(prisma.loyaltyProgram.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ welcomeStamps: 1, welcomePoints: 50 }) }));
     });
 
     it('only accepts images uploaded to the brand folder', async () => {
@@ -287,6 +316,80 @@ describe('CardService', () => {
     const meta = await sharp(stored).metadata();
     expect([meta.width, meta.height, meta.format]).toEqual([660, 660, 'png']);
     expect(url).toBe(`${bucket}/${path}`);
+  });
+
+  describe('cupo de recompensas', () => {
+    it('expone el límite configurado y uso activo al editor', async () => {
+      const { service } = setup({ env: { CARD_REWARDS_LIMIT_TRIAL: 7 } });
+      expect(await service.get(brandId, userId)).toMatchObject({ rewardPlanLimit: 7, rewardLimit: 7, rewardUsage: 2 });
+    });
+
+    it('falla al construir el servicio ante una variable inválida de cualquier plan', () => {
+      expect(() => setup({ env: { CARD_REWARDS_LIMIT_BUSINESS: 21 } })).toThrow('CARD_REWARDS_LIMIT_BUSINESS');
+    });
+
+    it('impide superar el cupo del plan y respeta un override del entorno', async () => {
+      const rewards = Array.from({ length: 4 }, (_, i) => ({ name: `Premio ${i + 1}`, target: 5 }));
+      const limited = setup();
+      await expect(limited.service.save(brandId, userId, body({ rewards }))).rejects.toMatchObject({ response: { code: 'PLAN_LIMIT', resource: 'rewards', limit: 3 } });
+      expect(limited.prisma.loyaltyProgram.update).not.toHaveBeenCalled();
+      await expect(setup({ env: { CARD_REWARDS_LIMIT_TRIAL: 4 } }).service.save(brandId, userId, body({ rewards }))).resolves.toBeDefined();
+    });
+
+    it('permite mantener o reducir cinco existentes sobre cupo tres, pero no crecer', async () => {
+      const { service, prisma } = setup();
+      const existing = storedRewards(5);
+      prisma.promotion.findMany.mockResolvedValue(existing);
+      expect(await service.get(brandId, userId)).toMatchObject({ rewardPlanLimit: 3, rewardLimit: 5, rewardUsage: 5 });
+      await expect(service.save(brandId, userId, body({ rewards: rewardInputs(existing) }))).resolves.toBeDefined();
+      await expect(service.save(brandId, userId, body({ rewards: [...rewardInputs(existing), { name: 'Nuevo', target: 5 }] }))).rejects.toMatchObject({ response: { code: 'PLAN_LIMIT', resource: 'rewards', limit: 5 } });
+      await expect(service.save(brandId, userId, body({ rewards: rewardInputs(existing.slice(0, 4)) }))).resolves.toBeDefined();
+      prisma.promotion.findMany.mockResolvedValue(existing.slice(0, 4));
+      expect(await service.get(brandId, userId)).toMatchObject({ rewardLimit: 4, rewardUsage: 4 });
+      await expect(service.save(brandId, userId, body({ rewards: rewardInputs(existing) }))).rejects.toMatchObject({ response: { code: 'PLAN_LIMIT', resource: 'rewards', limit: 4 } });
+    });
+
+    it('las recompensas ocultas no ocupan cupo y se preservan al guardar', async () => {
+      const { service, prisma } = setup({ pointsEnabled: true });
+      const stamps = storedRewards(3);
+      const points = storedRewards(5, 'POINTS');
+      prisma.promotion.findMany.mockResolvedValue([...stamps, ...points]);
+      expect(await service.get(brandId, userId)).toMatchObject({ rewardLimit: 3, rewardUsage: 3 });
+      await expect(service.save(brandId, userId, body({ rewards: rewardInputs(stamps) }))).resolves.toBeDefined();
+      expect(prisma.promotion.delete).not.toHaveBeenCalled();
+    });
+
+    it('activar ambas modalidades suma sus recompensas contra un solo cupo', async () => {
+      const { service, prisma } = setup({ planId: 'PRO', pointsEnabled: true });
+      const stamps = storedRewards(3);
+      const points = storedRewards(3, 'POINTS');
+      prisma.promotion.findMany.mockResolvedValue([...stamps, ...points]);
+      await expect(service.save(brandId, userId, body({ pointsEnabled: true, rewards: rewardInputs([...stamps, ...points]) }))).rejects.toMatchObject({ response: { code: 'PLAN_LIMIT', resource: 'rewards', limit: 5 } });
+      await expect(service.save(brandId, userId, body({ type: 'POINTS', stampsEnabled: false, pointsEnabled: true, rewards: rewardInputs([...stamps, ...points]) }))).resolves.toBeDefined();
+    });
+
+    it('reevalúa una bajada de plan realizada antes del lock', async () => {
+      const { service, prisma } = setup({ planId: 'PRO' });
+      prisma.$transaction.mockImplementationOnce(async (callback) => {
+        prisma.brand.findUniqueOrThrow.mockResolvedValue({ name: 'Café Demo', pointsEnabled: false, pesosPerPoint: 1000, planId: 'TRIAL' });
+        return callback(prisma);
+      });
+      await expect(service.save(brandId, userId, body({ rewards: Array.from({ length: 4 }, (_, i) => ({ name: `Premio ${i}`, target: 5 })) }))).rejects.toMatchObject({ response: { code: 'PLAN_LIMIT', resource: 'rewards', limit: 3 } });
+      expect(prisma.loyaltyProgram.update).not.toHaveBeenCalled();
+    });
+
+    it('cuenta el uso de la modalidad releída bajo lock, no el snapshot inicial', async () => {
+      const { service, prisma } = setup({ pointsEnabled: true });
+      const stamps = storedRewards(5);
+      const points = storedRewards(3, 'POINTS');
+      prisma.promotion.findMany.mockResolvedValue([...stamps, ...points]);
+      prisma.$transaction.mockImplementationOnce(async (callback) => {
+        prisma.loyaltyProgram.findFirst.mockResolvedValue(program({ type: 'POINTS', stampsEnabled: false, pointsEnabled: true }));
+        return callback(prisma);
+      });
+      await expect(service.save(brandId, userId, body({ rewards: rewardInputs(stamps.slice(0, 4)) }))).rejects.toMatchObject({ response: { code: 'PLAN_LIMIT', resource: 'rewards', limit: 3 } });
+      expect(prisma.loyaltyProgram.update).not.toHaveBeenCalled();
+    });
   });
 
   it('rejects a file that is not an image', async () => {

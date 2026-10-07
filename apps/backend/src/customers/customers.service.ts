@@ -9,6 +9,7 @@ import {
 import { CUSTOMER_NAME_MAX, isValidBirthday, type RegistrationConfig } from '@fidelity/shared';
 import { Prisma, ScanMethod, ScanType, type Customer } from '@prisma/client';
 import { toCardView, type CardView } from '../cards/card-program.js';
+import { enabledCurrencies } from '../cards/card-balance.js';
 import {
   findBrandProgram,
   isLocationOperational,
@@ -167,9 +168,15 @@ export class CustomersService {
           throw new NotFoundException('El comercio especificado no existe');
         }
 
+        // Orden compartido con configuración y límites: marca antes de programa.
+        // La bienvenida usa la configuración vigente después de esperar estos locks.
+        await tx.$queryRaw`SELECT id FROM "Brand" WHERE id = ${merchant.brandId}::uuid FOR UPDATE`;
         const program = await findBrandProgram(tx, merchant.brandId);
+        if (program) {
+          await tx.$queryRaw`SELECT id FROM "LoyaltyProgram" WHERE id = ${program.id}::uuid FOR SHARE`;
+        }
         const activePromotion = program?.isActive
-          ? await tx.promotion.findFirst({ where: { programId: program.id, isActive: true } })
+          ? await tx.promotion.findFirst({ where: { programId: program.id, isActive: true, currency: { in: enabledCurrencies(toCardView(program)) } } })
           : null;
 
         if (!program || !activePromotion) {
@@ -346,7 +353,9 @@ export class CustomersService {
     merchantId: string,
     brandId: string,
   ): Promise<void> {
-    if (card.welcomeBalance <= 0) return;
+    const stamps = card.stampsEnabled ? card.welcomeStamps : 0;
+    const points = card.pointsEnabled ? card.welcomePoints : 0;
+    if (stamps <= 0 && points <= 0) return;
     const now = new Date();
     const expiresAt = card.stampValidityDays
       ? new Date(now.getTime() + card.stampValidityDays * 24 * 60 * 60 * 1000)
@@ -359,11 +368,16 @@ export class CustomersService {
         programId: card.programId,
         type: ScanType.STAMP_ADDED,
         method: ScanMethod.WELCOME,
-        stampCount: card.welcomeBalance,
+        stampCount: stamps,
+        pointsEarned: points,
       },
     });
     await tx.stamp.createMany({
-      data: Array.from({ length: card.welcomeBalance }, () => ({
+      data: [
+        ...(stamps > 0 ? [{ currency: 'STAMPS' as const, amount: stamps }] : []),
+        ...(points > 0 ? [{ currency: 'POINTS' as const, amount: points }] : []),
+      ].map((balance) => ({
+        ...balance,
         passId,
         merchantId,
         brandId,

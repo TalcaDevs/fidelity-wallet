@@ -69,7 +69,7 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
   
   // Validaciones de Sellos
   const stampsReasonNeeded = hasStamps && (validation.reasonRequired || (isOwnerLoad && activeStampCount > 1));
-  const pointsReasonNeeded = hasPoints && validation.pointsReasonRequired;
+  const pointsReasonNeeded = hasPoints && !!amount && validation.canAddPoints && validation.pointsReasonRequired;
   // Si cualquiera lo requiere, pedimos motivo
   const needsReason = stampsReasonNeeded || pointsReasonNeeded;
   
@@ -81,25 +81,24 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
 
   // Validaciones de Puntos
   const amountValue = amount ? Number(amount) : undefined;
-  const points = hasPoints && amountValue !== undefined ? pointsForAmount(amountValue, validation.pesosPerPoint) : 0;
+  const points = hasPoints && validation.canAddPoints && amountValue !== undefined ? pointsForAmount(amountValue, validation.pesosPerPoint) : 0;
   
   let amountProblem: string | null = null;
   if (hasPoints && validation.canAddPoints) {
     if (amountValue !== undefined && amountValue > PURCHASE_AMOUNT_MAX) {
       amountProblem = 'El monto es demasiado alto';
-    } else if (validation.amountRequired && amountValue === undefined && !hasStamps) {
+    } else if (validation.amountRequired && amountValue === undefined && activeStampCount === 0) {
       amountProblem = 'Ingresa el monto de la compra';
-    } else if (amountValue !== undefined && points < 1) {
+    } else if (amountValue !== undefined && points < 1 && activeStampCount === 0) {
       amountProblem = `El monto no alcanza para un punto (1 punto cada $${clp.format(validation.pesosPerPoint)})`;
     }
   }
 
-  // La foto de la boleta solo es obligatoria para sumar sellos (si el local lo exige)
-  const receiptIsRequired = hasStamps && validation.receiptRequired && validation.canStamp && activeStampCount > 0;
+  const receiptIsRequired = validation.receiptRequired && points > 0;
   const receiptMissing = receiptIsRequired && !receipt ? 'Adjunta la foto de la boleta' : null;
 
-  // Progreso (mostramos sellos preferentemente, o puntos si solo hay puntos)
-  const primaryBalance = hasStamps ? validation.stampsCount : validation.pointsCount;
+  const rewardCurrency = validation.rewardCurrency ?? (hasStamps ? 'STAMPS' : 'POINTS');
+  const primaryBalance = rewardCurrency === 'POINTS' ? validation.pointsCount : validation.stampsCount;
   const progress = Math.min(100, Math.round((primaryBalance / Math.max(1, validation.targetStamps)) * 100));
 
   const handleReceipt = async (file: File | undefined) => {
@@ -120,7 +119,7 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
     // Si la tarjeta es solo puntos pero no ingresó monto, no podemos sumar nada
     if (!hasStamps && hasPoints && amountValue === undefined) return;
     // En dual, si no ingresa monto ni suma sellos, no hace nada
-    if (hasStamps && hasPoints && activeStampCount === 0 && amountValue === undefined) return;
+    if (activeStampCount === 0 && points === 0) return;
 
     onAddStamp({
       ...(amountValue !== undefined ? { purchaseAmount: amountValue } : {}),
@@ -152,8 +151,12 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
           </div>
 
           <div className="mt-5">
+            <div className="flex flex-wrap gap-3 mb-3 text-sm font-bold">
+              {hasStamps && <span>{validation.stampsCount} {balanceUnit('STAMPS', validation.stampsCount)} vigentes</span>}
+              {hasPoints && <span>{clp.format(validation.pointsCount)} {balanceUnit('POINTS', validation.pointsCount)} vigentes</span>}
+            </div>
             <div className="flex items-baseline justify-between mb-2">
-              <span className="text-panel-muted text-sm font-bold">Progreso a recompensa</span>
+              <span className="text-panel-muted text-sm font-bold">Progreso a recompensa ({balanceUnit(rewardCurrency)})</span>
               <span className="text-2xl font-extrabold">
                 {primaryBalance} <span className="text-panel-muted text-lg">/ {validation.targetStamps}</span>
               </span>
@@ -229,7 +232,7 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
             <div>
               <label htmlFor={`${ids}-amount`} className="block text-sm font-bold text-panel-muted mb-2 px-1">
                 Monto de la compra{' '}
-                {!validation.amountRequired && <span className="font-medium text-panel-muted">(opcional)</span>}
+                {(!validation.amountRequired || activeStampCount > 0) && <span className="font-medium text-panel-muted">(opcional)</span>}
               </label>
               <div className="flex items-center bg-panel-soft border-2 border-panel-border focus-within:border-panel-accent rounded-2xl">
                 <span aria-hidden="true" className="pl-4 pr-2 text-lg font-bold text-panel-muted">$</span>

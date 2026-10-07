@@ -150,6 +150,32 @@ describe('ScanValidation', () => {
     expect(added).toEqual([expect.objectContaining({ stampCount: 1, reason: 'Segunda compra' })]);
   });
 
+  it('registers a dual stamp without an amount or receipt while points are cooling down', () => {
+    const { added } = setup({ pointsEnabled: true, receiptRequired: true, amountRequired: true, canAddPoints: false, pointsReasonRequired: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar operación' }));
+    expect(added).toEqual([{ note: undefined, receipt: undefined, stampCount: 1 }]);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('uses the reward currency for dual progress and requires a receipt only after entering points', () => {
+    const { added } = setup({ pointsEnabled: true, pointsCount: 80, targetStamps: 100, rewardCurrency: 'POINTS', receiptRequired: true });
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '80');
+    expect(screen.getByText('3 sellos vigentes')).toBeInTheDocument();
+    expect(screen.getByText('80 puntos vigentes')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Monto de la compra/), { target: { value: '5000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar operación' }));
+    expect(added).toEqual([]);
+    expect(screen.getByRole('alert')).toHaveTextContent('Adjunta la foto de la boleta');
+  });
+
+  it('allows a dual stamp when the amount does not reach one point', () => {
+    const { added } = setup({ pointsEnabled: true, receiptRequired: true });
+    fireEvent.change(screen.getByLabelText(/Monto de la compra/), { target: { value: '900' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar operación' }));
+    expect(added).toEqual([{ purchaseAmount: 900, note: undefined, receipt: undefined, stampCount: 1 }]);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   describe('tarjeta de puntos', () => {
     const points = { cardType: 'POINTS' as const, stampsEnabled: false, pointsEnabled: true, amountRequired: true, receiptRequired: true, pointsCount: 40, targetStamps: 100 };
 
@@ -207,14 +233,13 @@ describe('ScanValidation', () => {
       expect(screen.getByRole('button', { name: 'Sumar 12 puntos' })).toBeInTheDocument();
     });
 
-    it('does NOT ask the STAFF for the receipt photo when summing points', async () => {
+    it('requires the STAFF receipt photo when summing points', async () => {
       const { added } = setup(points);
       fireEvent.change(screen.getByLabelText(/Monto de la compra/), { target: { value: '5000' } });
       fireEvent.click(screen.getByRole('button', { name: 'Sumar 5 puntos' }));
 
-      // Se agrega directamente sin alertar sobre la boleta
-      expect(screen.queryByRole('alert')).toBeNull();
-      expect(added).toEqual([expect.objectContaining({ purchaseAmount: 5000, stampCount: 0 })]);
+      expect(screen.getByRole('alert')).toHaveTextContent('Adjunta la foto de la boleta');
+      expect(added).toEqual([]);
     });
 
     it('rejects an amount below one point', () => {

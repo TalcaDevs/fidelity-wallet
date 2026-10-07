@@ -1,4 +1,4 @@
-import type { PublicCardDto } from '@fidelity/shared';
+import type { CardType, PublicCardDto } from '@fidelity/shared';
 import { supabase } from '../lib/supabase';
 import { apiUrl } from '../lib/api';
 import { extractApiError } from '../lib/apiError';
@@ -14,10 +14,11 @@ export interface MerchantWithPromo {
     name: string;
     targetStamps: number;
     rewardName: string;
+    currency?: CardType;
   }[];
 }
 
-type ApiPromotion = { id: string; name?: string; targetStamps: number; rewardName: string };
+type ApiPromotion = { id: string; name?: string; targetStamps: number; rewardName: string; currency?: CardType };
 
 /** Contrato de GET /api/merchants/by-slug/:slug (PublicMerchantDto del backend). */
 interface PublicMerchantResponse {
@@ -72,11 +73,17 @@ export async function getMerchantWithActivePromo(merchantName: string): Promise<
     name: data.name,
     stampValidityDays: data.stampValidityDays,
     card: data.card ?? null,
-    Promotion: promotions.map((p) => ({
+    Promotion: promotions.filter((p) => {
+      const currency = p.currency ?? data.card?.type ?? 'STAMPS';
+      return currency === 'POINTS'
+        ? (data.card?.pointsEnabled ?? data.card?.type === 'POINTS')
+        : (data.card?.stampsEnabled ?? data.card?.type !== 'POINTS');
+    }).map((p) => ({
       id: p.id,
       name: p.name || 'Promoción Activa',
       targetStamps: p.targetStamps,
-      rewardName: p.rewardName
+      rewardName: p.rewardName,
+      currency: p.currency ?? data.card?.type ?? 'STAMPS',
     }))
   };
 }

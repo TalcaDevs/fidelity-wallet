@@ -72,7 +72,7 @@ export function StaffTab({ staff }: StaffTabProps) {
       <div data-panel-reveal className="bg-panel-surface p-8 rounded-2xl border border-panel-border shadow-sm">
         <h3 className="text-xl font-bold text-panel-text mb-2">Actividad de Equipo</h3>
         <p className="text-xs text-panel-muted mb-6">
-          Desglose de sellos, canjes y proporción de uso de búsqueda manual por miembro del equipo.
+          Desglose de cargas, canjes y proporción de uso de búsqueda manual por miembro del equipo.
         </p>
 
         {staff.staff.length === 0 ? (
@@ -86,7 +86,7 @@ export function StaffTab({ staff }: StaffTabProps) {
                 <tr className="border-b border-panel-border text-panel-muted text-xs">
                   <th className="pb-3 font-semibold">Miembro del Equipo</th>
                   <th className="pb-3 font-semibold text-center">Rol</th>
-                  <th className="pb-3 font-semibold text-center">Sellos Otorgados</th>
+                  <th className="pb-3 font-semibold text-center">Cargas Registradas</th>
                   <th className="pb-3 font-semibold text-center">Canjes Procesados</th>
                   <th className="pb-3 font-semibold text-center">% Búsqueda Manual</th>
                   <th className="pb-3 font-semibold text-right">Observaciones</th>

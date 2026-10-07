@@ -182,9 +182,6 @@ export class InternalBrandsService {
       where: { id: brandId },
     });
     if (!current) throw new NotFoundException('La marca no existe');
-    if (dto.pointsEnabled === false && current.pointsEnabled) {
-      await assertPointsCanBeDisabled(this.prisma, brandId);
-    }
 
     const { reason, trialEndsAt, ...fields } = dto;
     const changes = {
@@ -194,9 +191,11 @@ export class InternalBrandsService {
     const diff = diffFields(current, changes);
     if (!diff) return this.get(brandId);
 
-    await this.prisma.$transaction([
-      this.prisma.brand.update({ where: { id: brandId }, data: changes }),
-      recordAudit(this.prisma, {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Brand" WHERE id = ${brandId}::uuid FOR UPDATE`;
+      if (dto.pointsEnabled === false) await assertPointsCanBeDisabled(tx, brandId);
+      await tx.brand.update({ where: { id: brandId }, data: changes });
+      await recordAudit(tx, {
         actorUserId,
         actorType: 'PLATFORM',
         action:
@@ -208,8 +207,8 @@ export class InternalBrandsService {
         before: diff.before as Prisma.InputJsonObject,
         after: diff.after as Prisma.InputJsonObject,
         reason,
-      }),
-    ]);
+      });
+    });
     return this.get(brandId);
   }
 

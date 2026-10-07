@@ -111,6 +111,7 @@ describe('CustomerDetail', () => {
       brandId: 'b-1',
       merchantId: 'loc-2',
       stampCount: 2,
+      currency: 'STAMPS',
       reason: 'Compró sin su tarjeta',
       purchaseAmount: 9900,
       note: undefined,
@@ -118,6 +119,26 @@ describe('CustomerDetail', () => {
     });
     expect(notifySuccess).toHaveBeenCalledWith('Sumamos 2 sellos. Ahora tiene 5. Ya puede canjear un premio.');
     await waitFor(() => expect(historySpy).toHaveBeenCalledTimes(2));
+  });
+
+  it('chooses one currency in a dual card and displays independent balances', async () => {
+    const data = history();
+    data.stampsEnabled = true;
+    data.pointsEnabled = true;
+    data.maxPointsPerLoad = 10000;
+    data.customer.activePoints = 120;
+    vi.spyOn(customersService, 'getCustomerHistory').mockResolvedValue(data);
+    const add = vi.spyOn(customersService, 'addStampsFromPanel').mockResolvedValue({ scanId: 's-2', stampsAdded: 0, activeStamps: 3, pointsAdded: 20, activePoints: 140, currency: 'POINTS', rewardUnlocked: false });
+    renderDetail();
+    fireEvent.click(await screen.findByRole('button', { name: 'Sumar sellos o puntos' }));
+    expect(screen.getByText('Sellos vigentes')).toBeInTheDocument();
+    expect(screen.getByText('Puntos vigentes')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Modalidad a sumar'), { target: { value: 'POINTS' } });
+    fireEvent.change(screen.getByLabelText('Puntos a sumar'), { target: { value: '20' } });
+    fireEvent.change(screen.getByLabelText('Motivo'), { target: { value: 'Compensación por reclamo' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sumar 20 puntos' }));
+    await waitFor(() => expect(add).toHaveBeenCalledWith('c-1', expect.objectContaining({ currency: 'POINTS', stampCount: 20 })));
+    expect(notifySuccess).toHaveBeenCalledWith('Sumamos 20 puntos. Ahora tiene 140.');
   });
 
   it('keeps the dialog open and shows the API error', async () => {

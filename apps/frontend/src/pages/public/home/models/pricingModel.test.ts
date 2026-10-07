@@ -49,6 +49,7 @@ describe("pricing recommendations", () => {
       "Hasta 2 locales",
       "Hasta 3 colaboradores",
       "Clientes ilimitados",
+      "Hasta 3 recompensas activas",
       "Tarjetas digitales en Wallet",
     ]);
   });

@@ -172,7 +172,8 @@ describe('Scan flow', () => {
       cardType: 'POINTS',
       stampsEnabled: false,
       pointsEnabled: true,
-      stampsCount: 90,
+      stampsCount: 0,
+      pointsCount: 90,
       targetStamps: 100,
       amountRequired: true,
       receiptRequired,
@@ -181,7 +182,8 @@ describe('Scan flow', () => {
       ok: true,
       customerLabel: 'María',
       pointsCount: 102,
-      stampsAdded: 12,
+      stampsAdded: 0,
+      pointsAdded: 12,
       targetStamps: 100,
       rewardUnlocked: true,
       availablePromotions: [{ id: 'promo-1', name: 'Café', rewardName: 'Café gratis', targetStamps: 100, canRedeem: true, currency: 'POINTS' }],
@@ -201,6 +203,13 @@ describe('Scan flow', () => {
     expect(screen.getAllByRole('alert')[0]).toHaveTextContent(/monto de la compra/i);
 
     fireEvent.change(screen.getByLabelText(/monto de la compra/i), { target: { value: '12500' } });
+    const receipt = role === 'STAFF' ? new File(['jpeg'], 'boleta.jpg', { type: 'image/jpeg' }) : undefined;
+    if (receipt) {
+      vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:receipt');
+      vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+      fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [receipt] } });
+      await screen.findByAltText('Foto de la boleta');
+    }
     fireEvent.click(screen.getByRole('button', { name: 'Sumar 12 puntos' }));
 
     expect(await screen.findByRole('heading', { name: '¡12 puntos agregados!' })).toBeInTheDocument();
@@ -209,7 +218,7 @@ describe('Scan flow', () => {
       merchantId: 'm-1',
       action: 'STAMP',
       target: { validationToken: 'token-1' },
-      extras: { purchaseAmount: 12500, note: undefined, receipt: undefined, stampCount: 0 },
+      extras: { purchaseAmount: 12500, note: undefined, receipt, stampCount: 0 },
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Canjear premio' }));

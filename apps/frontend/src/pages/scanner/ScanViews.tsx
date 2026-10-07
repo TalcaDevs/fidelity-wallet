@@ -16,11 +16,14 @@ export function ScanLoading() {
 }
 
 export function ScanSuccess({ result, cardType = 'STAMPS', onReset, onRedeem }: { result: ScanResult, cardType?: CardType, onReset: () => void, onRedeem?: () => void }) {
-  const added = result.stampsAdded ?? 1;
-  const isPoints = cardType === 'POINTS';
-  const title = isPoints
-    ? `¡${clp.format(added)} ${balanceUnit('POINTS', added)} ${added === 1 ? 'agregado' : 'agregados'}!`
-    : added > 1 ? `¡${added} sellos agregados!` : '¡Sello agregado!';
+  const stampsEnabled = result.stampsEnabled ?? cardType !== 'POINTS';
+  const pointsEnabled = result.pointsEnabled ?? cardType === 'POINTS';
+  const stampsAdded = result.stampsAdded ?? (stampsEnabled ? 1 : 0);
+  const pointsAdded = result.pointsAdded ?? 0;
+  const title = stampsAdded > 0 && pointsAdded > 0
+    ? `¡${stampsAdded} ${balanceUnit('STAMPS', stampsAdded)} y ${clp.format(pointsAdded)} ${balanceUnit('POINTS', pointsAdded)} agregados!`
+    : pointsAdded > 0 ? `¡${clp.format(pointsAdded)} ${balanceUnit('POINTS', pointsAdded)} ${pointsAdded === 1 ? 'agregado' : 'agregados'}!`
+    : stampsAdded > 1 ? `¡${stampsAdded} sellos agregados!` : '¡Sello agregado!';
   return (
     <div data-scan-entry className="flex-1 min-h-0 flex flex-col items-center overflow-y-auto py-5 px-2 sm:px-6 text-center [&>*]:shrink-0 [&>:first-child]:mt-auto [&>:last-child]:mb-auto">
       <div className="w-20 h-20 shrink-0 bg-emerald-500 rounded-full flex items-center justify-center shadow-[0_0_60px_rgba(16,185,129,0.3)] mb-5">
@@ -32,10 +35,8 @@ export function ScanSuccess({ result, cardType = 'STAMPS', onReset, onRedeem }: 
       <p className="text-panel-muted text-xl font-medium mb-5">Cliente {result.customerLabel}</p>
 
       <div className="bg-panel-surface border border-panel-border rounded-3xl p-6 w-full max-w-sm mb-6">
-        <p className="text-panel-muted font-bold uppercase tracking-widest text-sm mb-2">{isPoints ? 'Puntos' : 'Sellos'} acumulados</p>
-        <div className="text-5xl font-extrabold">
-          {clp.format(result.stampsCount ?? 0)} <span className="text-panel-muted text-3xl">/ {clp.format(result.targetStamps ?? 0)}</span>
-        </div>
+        {stampsEnabled && <div><p className="text-panel-muted font-bold uppercase tracking-widest text-sm mb-2">Sellos acumulados</p><p className="text-4xl font-extrabold">{clp.format(result.stampsCount ?? 0)}</p></div>}
+        {pointsEnabled && <div className={stampsEnabled ? 'mt-4' : ''}><p className="text-panel-muted font-bold uppercase tracking-widest text-sm mb-2">Puntos acumulados</p><p className="text-4xl font-extrabold">{clp.format(result.pointsCount ?? 0)}</p></div>}
       </div>
 
       {onRedeem && (
@@ -75,15 +76,15 @@ export function ScanAlreadyScanned({ result, onReset }: { result?: ScanResult | 
  * promoción activa, así que el cliente elige cuál canjear, o ninguna, y sigue juntando.
  */
 export function ScanReward({ result, cardType = 'STAMPS', onReset, onRedeem }: { result: ScanResult, cardType?: CardType, onReset: () => void, onRedeem?: (promotionId?: string) => void }) {
-  const unit = balanceUnit(cardType);
-  const promotions = result.availablePromotions ?? [];
+  const stampsEnabled = result.stampsEnabled ?? cardType !== 'POINTS';
+  const pointsEnabled = result.pointsEnabled ?? cardType === 'POINTS';
+  const promotions = (result.availablePromotions ?? []).filter((p) => (p.currency ?? cardType) === 'POINTS' ? pointsEnabled : stampsEnabled);
   const redeemable = promotions.filter((p) => p.canRedeem);
   // Con una sola opción canjeable no hay nada que elegir.
   const [selectedId, setSelectedId] = useState<string | undefined>(
     redeemable.length === 1 ? redeemable[0].id : undefined,
   );
   const selected = promotions.find((p) => p.id === selectedId);
-  const currentBalance = cardType === 'POINTS' ? (result.pointsCount ?? 0) : (result.stampsCount ?? 0);
 
   return (
     <div data-scan-entry className="flex-1 min-h-0 flex flex-col items-center overflow-y-auto py-5 px-2 sm:px-6 text-center [&>*]:shrink-0 [&>:first-child]:mt-auto [&>:last-child]:mb-auto">
@@ -102,7 +103,11 @@ export function ScanReward({ result, cardType = 'STAMPS', onReset, onRedeem }: {
       )}
       <p className="text-panel-muted text-lg font-medium mb-6">
         {result.customerLabel && <>Cliente {result.customerLabel} &middot; </>}
-        <span className="font-extrabold text-panel-text">{clp.format(currentBalance)} {unit}</span>
+        <span className="font-extrabold text-panel-text">
+          {stampsEnabled && `${clp.format(result.stampsCount ?? 0)} sellos`}
+          {stampsEnabled && pointsEnabled && ' · '}
+          {pointsEnabled && `${clp.format(result.pointsCount ?? 0)} puntos`}
+        </span>
       </p>
 
       {promotions.length > 0 ? (
@@ -130,8 +135,8 @@ export function ScanReward({ result, cardType = 'STAMPS', onReset, onRedeem }: {
                   <span className="block text-sm text-panel-muted">{p.name}</span>
                 </span>
                 {(() => {
-                  const pUnit = p.currency === 'POINTS' ? 'Puntos' : 'Sellos';
-                  const pBalance = p.currency === 'POINTS' ? (result.pointsCount ?? 0) : (result.stampsCount ?? 0);
+                  const pUnit = (p.currency ?? cardType) === 'POINTS' ? 'Puntos' : 'Sellos';
+                  const pBalance = (p.currency ?? cardType) === 'POINTS' ? (result.pointsCount ?? 0) : (result.stampsCount ?? 0);
                   return (
                     <span className={`shrink-0 text-sm font-extrabold ${p.canRedeem ? 'text-panel-gold' : 'text-panel-muted'}`}>
                       {p.canRedeem ? `${clp.format(p.targetStamps)} ${pUnit}` : `Faltan ${clp.format(p.targetStamps - pBalance)}`}

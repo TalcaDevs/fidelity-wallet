@@ -39,6 +39,12 @@ describe('scanService', () => {
     expect(result).toMatchObject({ ok: true, customerLabel: 'María', hasName: true, stampsCount: 2 });
   });
 
+  it('preserves point quantities, enabled modalities and the reward currency from the API', async () => {
+    authenticatedFetch.mockResolvedValue(okJson({ passId: 'p', activeStamps: 3, activePoints: 125, stampsAdded: 1, pointsAdded: 25, stampsEnabled: true, pointsEnabled: true, rewardCurrency: 'POINTS', targetStamps: 100, rewardUnlocked: true, rewardName: 'Café', alreadyScanned: false }));
+    const result = await processScan({ merchantId: 'm-1', action: 'STAMP', target: { validationToken: 't' }, extras: { purchaseAmount: 12500 } });
+    expect(result).toMatchObject({ stampsCount: 3, pointsCount: 125, stampsAdded: 1, pointsAdded: 25, stampsEnabled: true, pointsEnabled: true, rewardCurrency: 'POINTS' });
+  });
+
   it('sends JSON without a photo', async () => {
     authenticatedFetch.mockResolvedValue(okJson({ passId: 'p', activeStamps: 3, targetStamps: 5, rewardUnlocked: false, rewardName: 'Café', alreadyScanned: false }));
 

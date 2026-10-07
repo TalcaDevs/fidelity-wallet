@@ -363,6 +363,76 @@ describe('ScanService: reglas de la tarjeta', () => {
     });
   });
 
+  describe('modalidades y saldo conservado', () => {
+    it('uses the configured points rate on a dual card', async () => {
+      program.pointsEnabled = true;
+      role = 'OWNER';
+      vi.mocked(prisma.brand.findUnique).mockResolvedValue({ status: 'ACTIVE', pesosPerPoint: 500 } as any);
+      const result = await stamp({ purchaseAmount: 2_500 });
+      expect(result).toMatchObject({ stampsAdded: 1, pointsAdded: 5, stampsEnabled: true, pointsEnabled: true });
+      expect(createdRows().map((row) => [row.currency, row.amount])).toEqual([['STAMPS', 1], ['POINTS', 5]]);
+    });
+
+    it.each(['STAMPS', 'POINTS'] as const)('panel adds only the explicitly selected currency %s', async (currency) => {
+      program.pointsEnabled = true;
+      role = 'OWNER';
+      const result = await service.addStampsFromPanel('c-1', { brandId, stampCount: 3, currency, reason: 'Correccion de saldo' }, userId);
+      expect(createdRows()).toHaveLength(1);
+      expect(createdRows()[0]).toMatchObject({ currency, amount: 3 });
+      expect(result).toMatchObject({ currency, stampsAdded: currency === 'STAMPS' ? 3 : 0, pointsAdded: currency === 'POINTS' ? 3 : 0 });
+    });
+
+    it('rejects ambiguous panel adjustments on a dual card', async () => {
+      program.pointsEnabled = true;
+      role = 'OWNER';
+      await expect(service.addStampsFromPanel('c-1', { brandId, stampCount: 3, reason: 'Correccion de saldo' }, userId)).rejects.toThrow('Selecciona');
+      expect(prisma.scan.create).not.toHaveBeenCalled();
+    });
+
+    it('hides disabled points and recovers the prior balance on reactivation', async () => {
+      let result = await service.validate({ passToken: 'qr-token', merchantId }, userId);
+      expect(result).toMatchObject({ activeStamps: 12, activePoints: 0, canAddPoints: false });
+      expect(prisma.stamp.findFirst).toHaveBeenLastCalledWith(expect.objectContaining({ where: expect.objectContaining({ currency: { in: ['STAMPS'] } }) }));
+      program.pointsEnabled = true;
+      result = await service.validate({ passToken: 'qr-token', merchantId }, userId);
+      expect(result).toMatchObject({ activeStamps: 12, activePoints: 12, canAddPoints: true });
+      expect(prisma.stamp.createMany).not.toHaveBeenCalled();
+      expect(prisma.stamp.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('does not require a receipt for a dual purchase that earns no points', async () => {
+      program.pointsEnabled = true;
+      const result = await stamp({ purchaseAmount: 500 });
+      expect(result).toMatchObject({ stampsAdded: 1, pointsAdded: 0 });
+    });
+
+    it('rejects a purchase if points are disabled before it acquires the transaction lock', async () => {
+      program.pointsEnabled = true;
+      role = 'OWNER';
+      vi.mocked(prisma.$queryRaw).mockImplementation((async () => {
+        program = { ...program, pointsEnabled: false };
+        return [];
+      }) as PrismaService['$queryRaw']);
+      await expect(stamp({ purchaseAmount: 2_500 })).rejects.toThrow('Vuelve a validar');
+      expect(prisma.scan.create).not.toHaveBeenCalled();
+      expect(prisma.stamp.createMany).not.toHaveBeenCalled();
+    });
+
+    it('rejects a redemption when its reward modality is disabled under the lock', async () => {
+      program.pointsEnabled = true;
+      role = 'OWNER';
+      const pointsReward = { ...promotion, currency: 'POINTS' };
+      vi.mocked(prisma.promotion.findMany).mockResolvedValue([pointsReward] as any);
+      vi.mocked(prisma.$queryRaw).mockImplementation((async () => {
+        program = { ...program, pointsEnabled: false };
+        return [];
+      }) as PrismaService['$queryRaw']);
+      await expect(service.processScan({ passToken: 'qr-token', merchantId, action: ScanActionType.REDEEM, promotionId: pointsReward.id }, userId)).rejects.toThrow('modalidad del premio');
+      expect(prisma.scan.create).not.toHaveBeenCalled();
+      expect(prisma.stamp.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
   describe('vigencia de la tarjeta', () => {
     it('rejects a card that expired after its fixed term', async () => {
       program = { ...program, cardValidity: 'AFTER_JOIN', cardValidityDays: 30 };

@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ForbiddenException,
   NotFoundException,
   UnauthorizedException,
@@ -62,6 +61,7 @@ describe('PassesService', () => {
     programId: mockProgramId,
     targetStamps: 5,
     rewardName: 'Café',
+    currency: 'STAMPS' as 'STAMPS' | 'POINTS',
     isActive: true,
     ...overrides,
   });
@@ -169,6 +169,34 @@ describe('PassesService', () => {
     vi.restoreAllMocks();
   });
 
+  it('Wallet hides disabled balances and rewards, and restores current points after reactivation', async () => {
+    const program = {
+      id: mockProgramId,
+      brandId: mockMerchantId,
+      type: 'STAMPS',
+      isActive: true,
+      stampsEnabled: true,
+      pointsEnabled: false,
+      name: 'Tarjeta',
+      brand: { name: 'Marca' },
+    };
+    const rewards = [createMockPromotion({ currency: 'STAMPS' }), createMockPromotion({ id: 'points-reward', currency: 'POINTS', targetStamps: 50, rewardName: 'Premio de puntos' })];
+    vi.mocked(prisma.loyaltyProgram.findUnique).mockResolvedValue(program as any);
+    vi.mocked(prisma.pass.findUnique).mockResolvedValue(createMockPass() as any);
+    vi.mocked(prisma.stamp.aggregate).mockImplementation((async (args: any) => ({ _sum: { amount: args.where.currency === 'POINTS' ? 80 : 3 } })) as any);
+    vi.mocked(prisma.promotion.findMany).mockImplementation((async (args: any) => rewards.filter((reward) => args.where.currency.in.includes(reward.currency))) as any);
+
+    await service.getApplePassBuffer('token-abc');
+    expect(applePassService.generatePassBuffer).toHaveBeenLastCalledWith(expect.objectContaining({ activeStamps: 3, activePoints: 0, rewardCurrency: 'STAMPS' }));
+    program.stampsEnabled = false;
+    program.pointsEnabled = true;
+    await service.getApplePassBuffer('token-abc');
+    expect(applePassService.generatePassBuffer).toHaveBeenLastCalledWith(expect.objectContaining({ activeStamps: 0, activePoints: 80, rewardCurrency: 'POINTS', rewardName: 'Premio de puntos' }));
+    program.stampsEnabled = true;
+    await service.getApplePassBuffer('token-abc');
+    expect(applePassService.generatePassBuffer).toHaveBeenLastCalledWith(expect.objectContaining({ activeStamps: 3, activePoints: 80 }));
+  });
+
   describe('generatePass', () => {
     it('should throw UnauthorizedException if callerUserId is missing or empty', async () => {
       await expect(
@@ -241,21 +269,13 @@ describe('PassesService', () => {
       ).rejects.toThrow(ForbiddenException);
     });
 
-    it('should throw BadRequestException if merchant has no active promotion', async () => {
+    it('emits the pass without a reward when there are no enabled promotions', async () => {
       vi.spyOn(prisma.brandMember, 'findUnique').mockResolvedValue(ownerMembership as any);
       vi.spyOn(prisma.customer, 'findUnique').mockResolvedValue({ id: mockCustomerId } as any);
-      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue({ id: mockPassId } as any);
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(createMockPass() as any);
       vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(null);
-
-      await expect(
-        service.generatePass(
-          {
-            customerId: mockCustomerId,
-            merchantId: mockMerchantId,
-          },
-          mockUserId,
-        ),
-      ).rejects.toThrow(BadRequestException);
+      const result = await service.generatePass({ customerId: mockCustomerId, merchantId: mockMerchantId }, mockUserId);
+      expect(result).toMatchObject({ targetStamps: 0, rewardName: 'Sin premios configurados' });
     });
 
     it('should create new pass and return Apple and Google Wallet URLs', async () => {
@@ -438,11 +458,11 @@ describe('PassesService', () => {
   });
 
   describe('getApplePassBuffer', () => {
-    it('should throw BadRequestException if no active promotion', async () => {
+    it('keeps Apple Wallet available when all rewards are hidden', async () => {
       vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(createMockPass() as any);
       vi.spyOn(prisma.promotion, 'findFirst').mockResolvedValue(null);
-
-      await expect(service.getApplePassBuffer('token-abc')).rejects.toThrow(BadRequestException);
+      await expect(service.getApplePassBuffer('token-abc')).resolves.toBeInstanceOf(Buffer);
+      expect(applePassService.generatePassBuffer).toHaveBeenCalledWith(expect.objectContaining({ targetStamps: 0 }));
     });
 
     it('should return Apple pass buffer when valid pass and promotion exist', async () => {
@@ -640,6 +660,8 @@ describe('PassesService', () => {
         stampValidityDays: null,
         isActive: true,
         welcomeBalance: 0,
+        welcomeStamps: 0,
+        welcomePoints: 0,
         dailyStampLimit: true,
         cardValidity: 'UNLIMITED',
         cardExpiresAt: null,

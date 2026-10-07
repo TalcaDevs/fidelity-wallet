@@ -80,17 +80,99 @@ describe('CardEditor', () => {
     expect(screen.getByText(/no están habilitados/)).toBeInTheDocument();
   });
 
-  it('switches to points and proposes equivalent rewards', async () => {
-    vi.spyOn(cardService, 'getCard').mockResolvedValue(card({ points: { enabled: true, pesosPerPoint: 500 } }));
+  it('preserves rewards and independent welcome amounts when switching an existing card', async () => {
+    vi.spyOn(cardService, 'getCard').mockResolvedValue(card({ typeLocked: true, welcomeBalance: 2, welcomeStamps: 2, welcomePoints: 30, points: { enabled: true, pesosPerPoint: 500 } }));
     renderEditor();
 
     fireEvent.click(await screen.findByRole('switch', { name: /Puntos por compra/ }));
     fireEvent.click(screen.getByRole('switch', { name: /Sellos \/ Visitas/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Continuar →' }));
 
-    expect(screen.getByLabelText('puntos de la recompensa 1')).toHaveValue('100');
+    expect(screen.getByLabelText('sellos de la recompensa 1')).toHaveValue('10');
+    expect(screen.getByLabelText('Moneda de la recompensa 1')).toHaveValue('STAMPS');
+    expect(screen.getByText(/Oculta para los clientes/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Sellos de bienvenida')).toHaveValue('2');
+    expect(screen.getByLabelText('Puntos de bienvenida')).toHaveValue('30');
     expect(screen.getByText(/1 punto cada \$500/)).toBeInTheDocument();
     expect(screen.queryByRole('switch', { name: /1 sello por día/ })).not.toBeInTheDocument();
+  });
+
+  it('saves both currencies without converting hidden rewards or welcome balances', async () => {
+    const saved = card({ typeLocked: true, stampsEnabled: true, pointsEnabled: true, welcomeBalance: 2, welcomeStamps: 2, welcomePoints: 30, points: { enabled: true, pesosPerPoint: 500 }, rewards: [{ id: 'r-1', name: 'Café', target: 10, currency: 'STAMPS' }, { id: 'r-2', name: 'Almuerzo', target: 100, currency: 'POINTS' }] });
+    vi.spyOn(cardService, 'getCard').mockResolvedValue(saved);
+    const save = vi.spyOn(cardService, 'saveCard').mockImplementation(async (_id, config) => card(config));
+    renderEditor();
+    fireEvent.click(await screen.findByRole('switch', { name: /Sellos \/ Visitas/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar →' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(save.mock.calls[0][1]).toMatchObject({ type: 'POINTS', stampsEnabled: false, pointsEnabled: true, welcomeStamps: 2, welcomePoints: 30, rewards: saved.rewards });
+    fireEvent.click(screen.getByRole('button', { name: 'Tipo' }));
+    fireEvent.click(screen.getByRole('switch', { name: /Sellos \/ Visitas/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar →' }));
+    expect(screen.queryByText(/Oculta para los clientes/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('sellos de la recompensa 1')).toHaveValue('10');
+    expect(screen.getByLabelText('puntos de la recompensa 2')).toHaveValue('100');
+  });
+
+  it('adds a point reward when switching a card that already has five stamp rewards', async () => {
+    const rewards = Array.from({ length: 5 }, (_, i) => ({ id: `r-${i}`, name: `Premio ${i + 1}`, target: 10, currency: 'STAMPS' as const }));
+    vi.spyOn(cardService, 'getCard').mockResolvedValue(card({ typeLocked: true, rewards, rewardLimit: 3, points: { enabled: true, pesosPerPoint: 1000 } }));
+    const save = vi.spyOn(cardService, 'saveCard').mockImplementation(async (_id, config) => card(config));
+    renderEditor();
+    fireEvent.click(await screen.findByRole('switch', { name: /Puntos por compra/ }));
+    fireEvent.click(screen.getByRole('switch', { name: /Sellos \/ Visitas/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar →' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ Agregar recompensa' }));
+    expect(screen.getByLabelText('Moneda de la recompensa 6')).toHaveValue('POINTS');
+    expect(screen.getByRole('option', { name: 'Sellos', selected: false })).not.toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Nombre de la recompensa 6'), { target: { value: 'Postre' } });
+    fireEvent.click(screen.getByRole('button', { name: '+ Agregar recompensa' }));
+    fireEvent.change(screen.getByLabelText('Nombre de la recompensa 7'), { target: { value: 'Almuerzo' } });
+    fireEvent.click(screen.getByRole('button', { name: '+ Agregar recompensa' }));
+    fireEvent.change(screen.getByLabelText('Nombre de la recompensa 8'), { target: { value: 'Desayuno' } });
+    expect(screen.getByRole('button', { name: '+ Agregar recompensa' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(save.mock.calls[0][1].rewards).toEqual([...rewards, ...['Postre', 'Almuerzo', 'Desayuno'].map((name) => ({ name, target: 100, currency: 'POINTS' }))]);
+  });
+
+  it.each([3, 10, undefined])('uses the API reward limit %s with a compatible fallback', async (limit) => {
+    const expectedLimit = limit ?? 5;
+    const rewards = Array.from({ length: 3 }, (_, i) => ({ id: `r-${i}`, name: `Premio ${i + 1}`, target: 10, currency: 'STAMPS' as const }));
+    vi.spyOn(cardService, 'getCard').mockResolvedValue(card({ rewards, rewardLimit: limit }));
+    renderEditor();
+    fireEvent.click(await screen.findByRole('button', { name: 'Continuar →' }));
+    expect(screen.getByText(`${rewards.length} de ${expectedLimit} recompensas activas. Las recompensas ocultas se conservan sin ocupar este cupo.`)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '+ Agregar recompensa' })).toHaveProperty('disabled', expectedLimit === 3);
+  });
+
+  it('rejects activating hidden rewards beyond the API quota and blocks transferring another hidden reward into it', async () => {
+    const rewards = [
+      ...Array.from({ length: 3 }, (_, i) => ({ id: `s-${i}`, name: `Sello ${i + 1}`, target: 10, currency: 'STAMPS' as const })),
+      { id: 'p-1', name: 'Punto', target: 100, currency: 'POINTS' as const },
+    ];
+    vi.spyOn(cardService, 'getCard').mockResolvedValue(card({ rewards, rewardLimit: 3, points: { enabled: true, pesosPerPoint: 1000 } }));
+    const save = vi.spyOn(cardService, 'saveCard');
+    renderEditor();
+    fireEvent.click(await screen.findByRole('button', { name: 'Continuar →' }));
+    expect(screen.getByRole('option', { name: 'Sellos', selected: false })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Tipo' }));
+    fireEvent.click(screen.getByRole('switch', { name: /Puntos por compra/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar →' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/3 recompensas/);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('explains the configured plan quota while preserving a larger existing active quota', async () => {
+    const rewards = Array.from({ length: 5 }, (_, i) => ({ id: `r-${i}`, name: `Premio ${i + 1}`, target: 10, currency: 'STAMPS' as const }));
+    vi.spyOn(cardService, 'getCard').mockResolvedValue(card({ rewards, rewardLimit: 5, rewardPlanLimit: 3 }));
+    renderEditor();
+    fireEvent.click(await screen.findByRole('button', { name: 'Continuar →' }));
+    expect(screen.getByText(/Tu plan permite 3 recompensas activas/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '+ Agregar recompensa' })).toBeDisabled();
+    expect(screen.getByLabelText('Nombre de la recompensa 5')).toHaveValue('Premio 5');
   });
 
   it('shows every problem instead of saving an invalid card', async () => {
