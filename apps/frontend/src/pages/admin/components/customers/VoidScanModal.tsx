@@ -151,7 +151,11 @@ export function VoidScanModal({
           </div>
         </div>
 
-        {error && <ErrorAlert message={error} />}
+        {error && (
+          <div role="alert" aria-live="assertive">
+            <ErrorAlert message={error} />
+          </div>
+        )}
 
         <div className="flex justify-end gap-3 pt-2">
           <button

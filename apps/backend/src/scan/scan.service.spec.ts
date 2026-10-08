@@ -1460,6 +1460,28 @@ describe('ScanService', () => {
       expect(passesService.notifyPassUpdate).toHaveBeenCalledWith(mockPassId);
     });
 
+    it('successfully voids scan even if the brand has zero active promotions (decoupled from promotions)', async () => {
+      // Si la marca desactiva o no tiene promociones, voidScan no debe fallar con 'El comercio no tiene una promoción activa válida'
+      vi.mocked(prisma.promotion.findMany).mockResolvedValue([]);
+
+      const result = await service.voidScan(customerId, scanId, voidDto, ownerUserId);
+
+      expect(result).toEqual({
+        scanId,
+        voidedAt: expect.any(String),
+        activeStamps: 3,
+        activePoints: 0,
+        stampsDeducted: 2,
+        pointsDeducted: 0,
+      });
+
+      // Comprobar que se ejecutó el bloqueo pesimista de Pass FOR UPDATE y LoyaltyProgram FOR SHARE
+      expect(prisma.$queryRaw).toHaveBeenCalledWith(
+        expect.arrayContaining([expect.stringContaining('SELECT id FROM "Pass"')]),
+        expect.anything(),
+      );
+    });
+
     it('allows a new stamp load immediately after voiding the previous scan without cooldown block', async () => {
       // Si el último scan fue anulado (voidedAt no es null), findLatestScans lo ignora y devuelve null.
       vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);

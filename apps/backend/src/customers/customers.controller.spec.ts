@@ -11,6 +11,7 @@ import type { CreateCustomerDto } from './dto/create-customer.dto.js';
 describe('CustomersController (Security & Protection)', () => {
   let controller: CustomersController;
   let customersService: Partial<CustomersService>;
+  let scanService: Pick<ScanService, 'addStampsFromPanel' | 'voidScan'>;
 
   const customerId = '11111111-1111-4111-a111-111111111111';
   const merchantId = '22222222-2222-4222-a222-222222222222';
@@ -23,10 +24,15 @@ describe('CustomersController (Security & Protection)', () => {
       deleteCustomerGlobal: vi.fn(),
     };
 
+    scanService = {
+      addStampsFromPanel: vi.fn(),
+      voidScan: vi.fn(),
+    };
+
     controller = new CustomersController(
       customersService as CustomersService,
       { forOwner: vi.fn() } as unknown as CustomerHistoryService,
-      { addStampsFromPanel: vi.fn(), voidScan: vi.fn() } as unknown as ScanService,
+      scanService as unknown as ScanService,
     );
   });
 
@@ -209,7 +215,7 @@ describe('CustomersController (Security & Protection)', () => {
         pointsDeducted: 0,
       };
 
-      vi.spyOn((controller as any).scanService, 'voidScan').mockResolvedValue(mockResult);
+      vi.mocked(scanService.voidScan).mockResolvedValue(mockResult);
 
       const result = await controller.voidScan(
         customerId,
@@ -219,7 +225,7 @@ describe('CustomersController (Security & Protection)', () => {
       );
 
       expect(result).toEqual(mockResult);
-      expect((controller as any).scanService.voidScan).toHaveBeenCalledWith(
+      expect(scanService.voidScan).toHaveBeenCalledWith(
         customerId,
         scanId,
         dto,

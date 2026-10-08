@@ -448,8 +448,8 @@ export class ScanService {
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
-      // Bloqueo pesimista del contexto para serializar con canjes y otras operaciones concurrentes sobre este pase
-      const { card } = await this.lockCurrentContext(tx, pass.id, program.id, dto.brandId);
+      // Bloqueo pesimista del contexto (FOR UPDATE en Pass, FOR SHARE en LoyaltyProgram) sin exigir promociones activas
+      const { card } = await this.lockPassContext(tx, pass.id, program.id, dto.brandId);
       const now = new Date();
 
       // Releer el scan dentro de la transacción con bloqueo para evitar carreras de anulación concurrente
@@ -886,13 +886,19 @@ export class ScanService {
     return result;
   }
 
-  /** Programa antes que pase: el editor espera a caja y ambas operaciones releen el mismo contexto. */
-  private async lockCurrentContext(tx: Tx, passId: string, programId: string, brandId: string) {
+  /** Bloquea programa (SHARE) y pase (UPDATE) garantizando orden determinista y consistencia sin exigir promociones. */
+  private async lockPassContext(tx: Tx, passId: string, programId: string, brandId: string) {
     await tx.$queryRaw`SELECT id FROM "LoyaltyProgram" WHERE id = ${programId}::uuid FOR SHARE`;
     await tx.$queryRaw`SELECT id FROM "Pass" WHERE id = ${passId}::uuid FOR UPDATE`;
     const program = await tx.loyaltyProgram.findFirst({ where: { id: programId, brandId, isActive: true } });
     if (!program) throw new BadRequestException('La tarjeta ya no está activa');
     const card = toCardView(program);
+    return { program, card };
+  }
+
+  /** Programa antes que pase: el editor espera a caja y ambas operaciones releen el mismo contexto y promociones activas. */
+  private async lockCurrentContext(tx: Tx, passId: string, programId: string, brandId: string) {
+    const { program, card } = await this.lockPassContext(tx, passId, programId, brandId);
     const promotions = await this.findActivePromotions(program.id, card, tx);
     return { program, card, promotions };
   }

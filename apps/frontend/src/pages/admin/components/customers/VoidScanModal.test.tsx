@@ -179,9 +179,8 @@ describe('VoidScanModal Component', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar anulación' }));
 
-    expect(
-      await screen.findByText('Los sellos ya fueron utilizados en un canje'),
-    ).toBeInTheDocument();
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Los sellos ya fueron utilizados en un canje');
     expect(onVoided).not.toHaveBeenCalled();
   });
 
