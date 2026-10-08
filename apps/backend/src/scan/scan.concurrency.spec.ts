@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { ScanType } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PassesService } from '../passes/passes.service.js';
@@ -86,6 +86,12 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
         stampValidityDays: 30,
         dailyStampLimit: false,
         isActive: true,
+      }),
+    },
+    brand: {
+      findUnique: vi.fn().mockResolvedValue({
+        id: mockMerchantId,
+        status: 'ACTIVE',
       }),
     },
   });
@@ -350,5 +356,194 @@ describe('ScanService Concurrency & Pessimistic Locking (FOR UPDATE)', () => {
 
     expect(stampCreates).toHaveLength(1);
     expect([a.alreadyScanned, b.alreadyScanned].sort()).toEqual([false, true]);
+  });
+
+  it('prevents duplicate voiding when two voidScan requests for the same scan run concurrently', async () => {
+    let isRowLocked = false;
+    let voidedTimestamp: Date | null = null;
+    const auditLogsCreated: string[] = [];
+
+    const ownerUserId = 'u0000000-0000-0000-0000-000000000088';
+    const customerId = 'c0000000-0000-0000-0000-000000000001';
+    const scanId = 's0000000-0000-0000-0000-000000000001';
+
+    const createTx = () => ({
+      ...accessMocks(),
+      promotion: { findMany: vi.fn().mockResolvedValue([mockPromotion]) },
+      $queryRaw: vi.fn(async (chunks: TemplateStringsArray) => {
+        if (chunks.join('').includes('"LoyaltyProgram"')) return [];
+        while (isRowLocked) {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+        isRowLocked = true;
+        return [];
+      }),
+      scan: {
+        findUnique: vi.fn(async () => ({
+          id: scanId,
+          passId: mockPassId,
+          brandId: mockMerchantId,
+          type: ScanType.STAMP_ADDED,
+          stampCount: 1,
+          pointsEarned: 0,
+          voidedAt: voidedTimestamp,
+        })),
+        update: vi.fn(async ({ data }) => {
+          voidedTimestamp = data.voidedAt;
+          return { id: scanId, voidedAt: voidedTimestamp };
+        }),
+      },
+      stamp: {
+        count: vi.fn().mockResolvedValue(0),
+        deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+        aggregate: vi.fn().mockResolvedValue({ _sum: { amount: 0 } }),
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+      auditLog: {
+        create: vi.fn(async ({ data }) => {
+          auditLogsCreated.push(data.action);
+          return { id: 'audit-1' };
+        }),
+      },
+    });
+
+    prisma = {
+      ...accessMocks(),
+      brandMember: {
+        findUnique: vi.fn().mockResolvedValue({
+          userId: ownerUserId,
+          brandId: mockMerchantId,
+          merchantId: mockMerchantId,
+          role: 'OWNER',
+        }),
+      },
+      loyaltyProgram: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: mockProgramId,
+          brandId: mockMerchantId,
+          stampValidityDays: 30,
+          dailyStampLimit: false,
+          isActive: true,
+        }),
+      },
+      pass: {
+        findUnique: vi.fn().mockResolvedValue(mockPass as any),
+      },
+      promotion: {
+        findMany: vi.fn().mockResolvedValue([mockPromotion as any]),
+      },
+      $transaction: vi.fn(async (cb) => {
+        const tx = createTx();
+        try {
+          return await cb(tx);
+        } finally {
+          isRowLocked = false;
+        }
+      }),
+    } as unknown as PrismaService;
+
+    service = makeService(prisma, passesService);
+    const voidDto = { brandId: mockMerchantId, reason: 'Carga duplicada por error' };
+
+    const results = await Promise.allSettled([
+      service.voidScan(customerId, scanId, voidDto, ownerUserId),
+      service.voidScan(customerId, scanId, voidDto, ownerUserId),
+    ]);
+
+    const successes = results.filter((r) => r.status === 'fulfilled');
+    const rejections = results.filter((r) => r.status === 'rejected');
+
+    expect(successes).toHaveLength(1);
+    expect(rejections).toHaveLength(1);
+    expect((rejections[0] as PromiseRejectedResult).reason).toBeInstanceOf(ConflictException);
+    expect(auditLogsCreated).toHaveLength(1);
+  });
+
+  it('rejects voidScan with ConflictException if a concurrent redemption already consumed the stamps', async () => {
+    let isRowLocked = false;
+    let stampsConsumed = false;
+
+    const ownerUserId = 'u0000000-0000-0000-0000-000000000088';
+    const customerId = 'c0000000-0000-0000-0000-000000000001';
+    const scanId = 's0000000-0000-0000-0000-000000000001';
+
+    const createTx = () => ({
+      ...accessMocks(),
+      promotion: { findMany: vi.fn().mockResolvedValue([mockPromotion]) },
+      $queryRaw: vi.fn(async (chunks: TemplateStringsArray) => {
+        if (chunks.join('').includes('"LoyaltyProgram"')) return [];
+        while (isRowLocked) {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+        isRowLocked = true;
+        return [];
+      }),
+      scan: {
+        findUnique: vi.fn(async () => ({
+          id: scanId,
+          passId: mockPassId,
+          brandId: mockMerchantId,
+          type: ScanType.STAMP_ADDED,
+          stampCount: 1,
+          pointsEarned: 0,
+          voidedAt: null,
+        })),
+        update: vi.fn(),
+      },
+      stamp: {
+        count: vi.fn(async () => (stampsConsumed ? 1 : 0)),
+        deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+        aggregate: vi.fn().mockResolvedValue({ _sum: { amount: 0 } }),
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+      auditLog: {
+        create: vi.fn(),
+      },
+    });
+
+    prisma = {
+      ...accessMocks(),
+      brandMember: {
+        findUnique: vi.fn().mockResolvedValue({
+          userId: ownerUserId,
+          brandId: mockMerchantId,
+          merchantId: mockMerchantId,
+          role: 'OWNER',
+        }),
+      },
+      loyaltyProgram: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: mockProgramId,
+          brandId: mockMerchantId,
+          stampValidityDays: 30,
+          dailyStampLimit: false,
+          isActive: true,
+        }),
+      },
+      pass: {
+        findUnique: vi.fn().mockResolvedValue(mockPass as any),
+      },
+      promotion: {
+        findMany: vi.fn().mockResolvedValue([mockPromotion as any]),
+      },
+      $transaction: vi.fn(async (cb) => {
+        const tx = createTx();
+        try {
+          return await cb(tx);
+        } finally {
+          isRowLocked = false;
+        }
+      }),
+    } as unknown as PrismaService;
+
+    service = makeService(prisma, passesService);
+    const voidDto = { brandId: mockMerchantId, reason: 'Error en caja' };
+
+    // Simular que el canje gana el lock y consume los sellos antes de que voidScan los verifique
+    stampsConsumed = true;
+
+    await expect(
+      service.voidScan(customerId, scanId, voidDto, ownerUserId),
+    ).rejects.toThrow(ConflictException);
   });
 });

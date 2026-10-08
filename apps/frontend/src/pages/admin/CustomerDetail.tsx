@@ -41,10 +41,11 @@ export function CustomerDetail({ brandId }: { brandId: string | null }) {
 
   const handleVoided = (result: VoidScanResultDto) => {
     setScanToVoid(null);
-    const unitText =
-      result.pointsDeducted > 0
-        ? `${result.pointsDeducted} ${balanceUnit('POINTS', result.pointsDeducted)}`
-        : `${result.stampsDeducted} ${balanceUnit('STAMPS', result.stampsDeducted)}`;
+    const parts = [
+      result.stampsDeducted > 0 ? `${result.stampsDeducted} ${balanceUnit('STAMPS', result.stampsDeducted)}` : '',
+      result.pointsDeducted > 0 ? `${result.pointsDeducted} ${balanceUnit('POINTS', result.pointsDeducted)}` : '',
+    ].filter(Boolean);
+    const unitText = parts.join(' y ') || 'la carga';
     notifySuccess(`Carga anulada exitosamente. Se descontaron ${unitText}.`);
     reload();
   };

@@ -74,9 +74,16 @@ export function VoidScanModal({
     }
   };
 
+  const modalTitle =
+    entry.stamps > 0 && (entry.points ?? 0) > 0
+      ? 'Anular carga de sellos y puntos'
+      : (entry.points ?? 0) > 0
+        ? 'Anular carga de puntos'
+        : 'Anular carga de sellos';
+
   return (
     <Modal
-      title="Anular carga de sellos"
+      title={modalTitle}
       description={`Anula la carga realizada a ${customerName}. Esta acción descuenta el saldo y queda auditada.`}
       onClose={onClose}
     >

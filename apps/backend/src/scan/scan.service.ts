@@ -447,25 +447,27 @@ export class ScanService {
       throw new NotFoundException('El cliente no tiene una tarjeta en esta marca');
     }
 
-    const scan = await this.prisma.scan.findUnique({
-      where: { id: scanId },
-    });
-    if (!scan || scan.passId !== pass.id || scan.brandId !== dto.brandId) {
-      throw new NotFoundException('Carga no encontrada para este cliente');
-    }
-
-    if (scan.type !== ScanType.STAMP_ADDED) {
-      throw new BadRequestException('Solo se pueden anular cargas de sellos o puntos, no canjes de recompensas');
-    }
-
-    if (scan.voidedAt) {
-      throw new ConflictException('Esta carga ya fue anulada previamente');
-    }
-
-    const now = new Date();
-    const card = toCardView(program);
-
     const result = await this.prisma.$transaction(async (tx) => {
+      // Bloqueo pesimista del contexto para serializar con canjes y otras operaciones concurrentes sobre este pase
+      const { card } = await this.lockCurrentContext(tx, pass.id, program.id, dto.brandId);
+      const now = new Date();
+
+      // Releer el scan dentro de la transacción con bloqueo para evitar carreras de anulación concurrente
+      const scan = await tx.scan.findUnique({
+        where: { id: scanId },
+      });
+      if (!scan || scan.passId !== pass.id || scan.brandId !== dto.brandId) {
+        throw new NotFoundException('Carga no encontrada para este cliente');
+      }
+
+      if (scan.type !== ScanType.STAMP_ADDED) {
+        throw new BadRequestException('Solo se pueden anular cargas de sellos o puntos, no canjes de recompensas');
+      }
+
+      if (scan.voidedAt) {
+        throw new ConflictException('Esta carga ya fue anulada previamente');
+      }
+
       // 1. ¿Algún sello/punto de esta carga ya fue consumido en un canje posterior?
       const consumedStampsCount = await tx.stamp.count({
         where: { sourceScanId: scan.id, consumedAt: { not: null } },
@@ -514,6 +516,9 @@ export class ScanService {
       // 5. Recalcular saldo final
       const newBalance = await readCardBalance(tx, pass.id, card, now);
 
+      // 6. Encolar actualización durable en la billetera antes del commit
+      await this.passesService.enqueuePassUpdate(pass.id, tx);
+
       return {
         scanId: scan.id,
         voidedAt: now.toISOString(),
@@ -524,7 +529,7 @@ export class ScanService {
       };
     });
 
-    // 7. Notificar a Google Wallet / Apple Pass
+    // 7. Notificar a Google Wallet / Apple Pass tras el commit
     void this.passesService
       .notifyPassUpdate(pass.id)
       .catch((err) =>
@@ -791,13 +796,14 @@ export class ScanService {
 
   private async findLatestScans(db: Tx, passId: string): Promise<{ latestStamp: Scan | null; latestPoints: Scan | null }> {
     // El saldo de bienvenida no es una visita: no bloquea el primer sello en caja.
+    // Las cargas anuladas tampoco bloquean nuevas cargas ni activan cooldown (§5).
     const [latestStamp, latestPoints] = await Promise.all([
       db.scan.findFirst({
-        where: { passId, type: ScanType.STAMP_ADDED, method: { not: ScanMethod.WELCOME }, stampCount: { gt: 0 } },
+        where: { passId, type: ScanType.STAMP_ADDED, method: { not: ScanMethod.WELCOME }, stampCount: { gt: 0 }, voidedAt: null },
         orderBy: { createdAt: 'desc' },
       }),
       db.scan.findFirst({
-        where: { passId, type: ScanType.STAMP_ADDED, method: { not: ScanMethod.WELCOME }, pointsEarned: { gt: 0 } },
+        where: { passId, type: ScanType.STAMP_ADDED, method: { not: ScanMethod.WELCOME }, pointsEarned: { gt: 0 }, voidedAt: null },
         orderBy: { createdAt: 'desc' },
       }),
     ]);

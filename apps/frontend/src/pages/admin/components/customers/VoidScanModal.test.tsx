@@ -52,6 +52,50 @@ describe('VoidScanModal Component', () => {
     expect(screen.getByText('“Mesa 5”')).toBeInTheDocument();
   });
 
+  it('adapts modal title to "Anular carga de puntos" for points-only entries', () => {
+    const pointsEntry: PurchaseHistoryEntryDto = {
+      ...mockEntry,
+      stamps: 0,
+      points: 150,
+    };
+
+    render(
+      <VoidScanModal
+        brandId={brandId}
+        customerId={customerId}
+        customerName={customerName}
+        entry={pointsEntry}
+        onClose={onClose}
+        onVoided={onVoided}
+      />,
+    );
+
+    expect(screen.getByText('Anular carga de puntos')).toBeInTheDocument();
+    expect(screen.getByText('150 puntos')).toBeInTheDocument();
+  });
+
+  it('adapts modal title to "Anular carga de sellos y puntos" for dual entries', () => {
+    const dualEntry: PurchaseHistoryEntryDto = {
+      ...mockEntry,
+      stamps: 1,
+      points: 200,
+    };
+
+    render(
+      <VoidScanModal
+        brandId={brandId}
+        customerId={customerId}
+        customerName={customerName}
+        entry={dualEntry}
+        onClose={onClose}
+        onVoided={onVoided}
+      />,
+    );
+
+    expect(screen.getByText('Anular carga de sellos y puntos')).toBeInTheDocument();
+    expect(screen.getByText('1 sello y 200 puntos')).toBeInTheDocument();
+  });
+
   it('validates minimum 5 characters for the reason', async () => {
     render(
       <VoidScanModal
