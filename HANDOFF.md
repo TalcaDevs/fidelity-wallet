@@ -144,10 +144,10 @@
 - ⚪ Pase web `/pase/:passToken` para quien no usa billetera.
 
 **Caja y panel**
-- 🟠 Anular un sello mal dado: solo el `OWNER`, con motivo y `AuditLog` (backend y UI).
-- 🟡 Elegir el local en `/scan` cuando un `OWNER` tiene varios (hoy usa el más antiguo).
+- 🟠 ~~Anular un sello mal dado: solo el `OWNER`, con motivo y `AuditLog` (backend y UI)~~ (Completado).
+- 🟡 ~~Elegir el local en `/scan` cuando un `OWNER` tiene varios (hoy usa el más antiguo)~~ (Completado en PR anterior).
 - 🟡 Probar en dispositivos reales: la sesión del cajero varias horas abierta en una tablet, y la elección de premio con 3 o más recompensas.
-- ⚪ Mostrarle al cajero el próximo vencimiento del saldo (el backend ya devuelve `nextExpiryAt`).
+- ⚪ ~~Mostrarle al cajero el próximo vencimiento del saldo (el backend ya devuelve `nextExpiryAt`)~~ (Completado en PR anterior).
 - ⚪ Otros tipos de tarjeta: cashback, cupón, tarjeta de regalo y membresía (ver §6).
 
 **Reportes**
