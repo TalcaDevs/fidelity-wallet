@@ -61,7 +61,7 @@ export const CATALOG_PLANS: readonly Plan[] = [
     priceUsdMonthly: 0,
     priceUsdMonthlyAnnual: null,
     trialDays: TRIAL_DAYS,
-    limits: { programs: 1, locations: 1, teamUsers: 1, customers: 100, rewards: 3 },
+    limits: { programs: 1, locations: 1, teamUsers: 1, customers: 25, rewards: 3 },
     features: {
       walletPasses: true,
       pushNotifications: false,

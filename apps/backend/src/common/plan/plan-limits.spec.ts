@@ -74,10 +74,23 @@ describe('assertPlanAllows', () => {
     expect(db.pass.count).not.toHaveBeenCalled();
   });
 
+  it('limits TRIAL plan to 25 customers', async () => {
+    const atLimit = dbWith('TRIAL', { customers: 25 });
+    const err = await reject(assertPlanAllows(atLimit, 'b-1', 'customers'));
+    expect(err?.message).toBe(
+      'Tu plan Prueba gratis permite 25 clientes. Sube de plan para agregar más.',
+    );
+
+    const underLimit = dbWith('TRIAL', { customers: 24 });
+    await expect(
+      assertPlanAllows(underLimit, 'b-1', 'customers'),
+    ).resolves.toBeUndefined();
+  });
+
   it('can hide the plan from end customers', async () => {
     const err = await reject(
       assertPlanAllows(
-        dbWith('TRIAL', { customers: 100 }),
+        dbWith('TRIAL', { customers: 25 }),
         'b-1',
         'customers',
         { publicMessage: 'No disponible' },

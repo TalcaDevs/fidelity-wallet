@@ -19,4 +19,9 @@ describe('plans catalog', () => {
   it('provides increasing reward allowances across paid plans', () => {
     expect(CATALOG_PLANS.map((plan) => plan.limits.rewards)).toEqual([3, 3, 5, 10]);
   });
+
+  it('limits trial to 25 customers', () => {
+    const trial = getPlan('TRIAL');
+    expect(trial.limits.customers).toBe(25);
+  });
 });
