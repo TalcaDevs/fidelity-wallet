@@ -144,6 +144,7 @@ describe('PassesService', () => {
     googleWalletService = {
       generateSaveUrl: vi.fn(() => 'https://pay.google.com/gp/v/save/mock-jwt'),
       updateLoyaltyObject: vi.fn().mockResolvedValue({ success: true }),
+      deactivateLoyaltyObject: vi.fn().mockResolvedValue({ success: true }),
       upsertLoyaltyClass: vi.fn<GoogleWalletService['upsertLoyaltyClass']>()
         .mockResolvedValue(undefined),
     } as unknown as GoogleWalletService;
@@ -682,6 +683,28 @@ describe('PassesService', () => {
     it('never throws: it runs in the background after saving', async () => {
       vi.spyOn(prisma.loyaltyProgram, 'findUnique').mockRejectedValue(new Error('db down'));
       await expect(service.publishCard(mockProgramId)).resolves.toBeUndefined();
+    });
+  });
+
+  describe('deactivatePass', () => {
+    it('calls googleWalletService.deactivateLoyaltyObject with passId', async () => {
+      await service.deactivatePass(mockPassId);
+      expect(googleWalletService.deactivateLoyaltyObject).toHaveBeenCalledWith(mockPassId);
+    });
+
+    it('does not throw when googleWalletService returns an error result', async () => {
+      vi.mocked(googleWalletService.deactivateLoyaltyObject).mockResolvedValue({
+        success: false,
+        error: 'Network timeout',
+      });
+      await expect(service.deactivatePass(mockPassId)).resolves.not.toThrow();
+    });
+
+    it('does not throw when googleWalletService rejects with an exception', async () => {
+      vi.mocked(googleWalletService.deactivateLoyaltyObject).mockRejectedValue(
+        new Error('Google API fatal crash'),
+      );
+      await expect(service.deactivatePass(mockPassId)).resolves.not.toThrow();
     });
   });
 });

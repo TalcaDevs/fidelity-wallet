@@ -1,7 +1,6 @@
 import { randomBytes } from 'crypto';
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -304,6 +303,27 @@ export class PassesService {
     const result = await this.googleWalletService.updateLoyaltyObject(passData);
     if (result && !result.success && !result.notFound) {
       throw new Error(result.error ?? 'Google Wallet update failed');
+    }
+  }
+
+  /**
+   * Invalida un pase en Google Wallet (state: INACTIVE) tras la eliminación
+   * de un cliente o de su pase (Ley 19.628). La operación no es bloqueante
+   * para la transacción principal de base de datos en caso de fallo externo.
+   */
+  public async deactivatePass(passId: string): Promise<void> {
+    try {
+      const result = await this.googleWalletService.deactivateLoyaltyObject(passId);
+      if (result && !result.success && !result.notFound) {
+        this.logger.warn(
+          `[PassesService] Fallo no fatal al desactivar pase ${passId} en Google Wallet: ${result.error}`,
+        );
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `[PassesService] Error al desactivar pase ${passId} en Google Wallet: ${msg}`,
+      );
     }
   }
 

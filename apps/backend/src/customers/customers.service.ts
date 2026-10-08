@@ -308,13 +308,14 @@ export class CustomersService {
       throw new NotFoundException('Cliente o pase no encontrado en este comercio');
     }
 
+    const passId = pass.id;
     let customerCompletelyDeleted = false;
 
     await this.prisma.$transaction(async (tx) => {
       // Eliminar pase (la cascada en BD elimina Scans y Stamps)
       await tx.pass.delete({
         where: {
-          id: pass.id,
+          id: passId,
         },
       });
 
@@ -331,6 +332,9 @@ export class CustomersService {
       }
     });
 
+    // Inactivar el pase en Google Wallet (state: INACTIVE)
+    await this.passesService.deactivatePass(passId);
+
     return {
       success: true,
       message: 'Datos y pase del cliente eliminados exitosamente de este comercio',
@@ -346,15 +350,25 @@ export class CustomersService {
   async deleteCustomerGlobal(customerId: string): Promise<DeleteCustomerResponseDto> {
     const customer = await this.prisma.customer.findUnique({
       where: { id: customerId },
+      include: {
+        passes: { select: { id: true } },
+      },
     });
 
     if (!customer) {
       throw new NotFoundException('Cliente no encontrado');
     }
 
+    const passIds = customer.passes.map((p) => p.id);
+
     await this.prisma.customer.delete({
       where: { id: customerId },
     });
+
+    // Inactivar todos los pases del cliente en Google Wallet
+    await Promise.allSettled(
+      passIds.map((passId) => this.passesService.deactivatePass(passId)),
+    );
 
     return {
       success: true,

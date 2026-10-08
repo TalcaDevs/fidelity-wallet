@@ -106,6 +106,62 @@ export class GoogleWalletService {
   }
 
   /**
+   * Invalida un pase en Google Wallet marcando su estado como INACTIVE.
+   * La tarjeta pasa a la sección de archivados/vencidos y el código QR queda inhabilitado.
+   * Si el usuario nunca guardó el pase (404), se considera un éxito sin acción pendiente.
+   */
+  public async deactivateLoyaltyObject(passId: string): Promise<UpdateLoyaltyObjectResult> {
+    const accessToken = await this.liveAccessToken(`deactivate pass ${passId}`);
+    if (!accessToken) {
+      if (this.isMockAllowed()) {
+        return { success: true };
+      }
+      return {
+        success: false,
+        error: !this.hasCredentials()
+          ? 'Las credenciales de Google Wallet no están configuradas'
+          : 'Could not obtain OAuth2 token for Google Wallet',
+      };
+    }
+
+    try {
+      const resourceId = this.resolveResourceId(passId);
+      const res = await this.walletRequest(
+        'PATCH',
+        `/loyaltyObject/${resourceId}`,
+        { state: 'INACTIVE' },
+        accessToken,
+      );
+
+      if (res.ok) {
+        this.logger.log(
+          `[Google Wallet API] Successfully deactivated loyaltyObject for pass ${passId} (state: INACTIVE)`,
+        );
+        return { success: true };
+      }
+
+      if (res.status === 404) {
+        this.logger.debug(
+          `[Google Wallet API] LoyaltyObject not found (404) for pass ${passId}. User had not saved it to wallet.`,
+        );
+        return { success: true, notFound: true };
+      }
+
+      const errBody = await res.text().catch(() => '');
+      this.logger.warn(
+        `[Google Wallet API] Failed to deactivate pass ${passId} (${res.status}): ${errBody}`,
+      );
+      return { success: false, error: `Google Wallet API error (${res.status}): ${errBody}` };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `[Google Wallet API] Error deactivating loyaltyObject for pass ${passId}: ${msg}`,
+      );
+      return { success: false, error: msg };
+    }
+  }
+
+  /**
    * Publica el diseño de la tarjeta en su clase. Google la aplica a todos los pases ya guardados.
    * La clase se crea sola con el primer pase (va en el JWT); si aún no existe, se inserta.
    */

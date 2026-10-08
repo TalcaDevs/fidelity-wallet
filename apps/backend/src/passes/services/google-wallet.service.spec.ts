@@ -434,4 +434,61 @@ describe('GoogleWalletService', () => {
       expect(insert[1].method).toBe('POST');
     });
   });
+
+  describe('deactivateLoyaltyObject', () => {
+    it('patches loyaltyObject with state INACTIVE', async () => {
+      const mockFetch = stubWalletApi({ ok: true, status: 200 });
+      const res = await service.deactivateLoyaltyObject('pass-uuid-999');
+
+      expect(res.success).toBe(true);
+      const calls = walletCalls(mockFetch);
+      expect(calls).toHaveLength(1);
+      expect(calls[0][0]).toBe(
+        'https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/1122334455667788990.pass-uuid-999',
+      );
+      expect(calls[0][1].method).toBe('PATCH');
+      expect(JSON.parse(calls[0][1].body)).toEqual({ state: 'INACTIVE' });
+    });
+
+    it('handles 404 gracefully when user has not saved pass yet', async () => {
+      stubWalletApi({ ok: false, status: 404, text: async () => '{"error":{"message":"Object not found"}}' });
+      const res = await service.deactivateLoyaltyObject('pass-uuid-999');
+
+      expect(res.success).toBe(true);
+      expect(res.notFound).toBe(true);
+    });
+
+    it('handles Google 500 error gracefully without throwing', async () => {
+      stubWalletApi({ ok: false, status: 500, text: async () => 'Internal Google Server Error' });
+      const res = await service.deactivateLoyaltyObject('pass-uuid-999');
+
+      expect(res.success).toBe(false);
+      expect(res.error).toContain('Google Wallet API error (500)');
+    });
+
+    it('skips network call and returns success when credentials are missing and ALLOW_MOCK_PASSES is true', async () => {
+      vi.spyOn(configService, 'get').mockImplementation((key: string) => {
+        if (key === 'ALLOW_MOCK_PASSES') return 'true';
+        return undefined;
+      });
+
+      const mockFetch = vi.fn();
+      vi.stubGlobal('fetch', mockFetch);
+
+      const res = await service.deactivateLoyaltyObject('pass-uuid-999');
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(res.success).toBe(true);
+    });
+
+    it('returns success: false with error when credentials are missing and ALLOW_MOCK_PASSES is false', async () => {
+      vi.spyOn(configService, 'get').mockImplementation((key: string) => {
+        if (key === 'ALLOW_MOCK_PASSES') return 'false';
+        return undefined;
+      });
+
+      const res = await service.deactivateLoyaltyObject('pass-uuid-999');
+      expect(res.success).toBe(false);
+      expect(res.error).toBe('Las credenciales de Google Wallet no están configuradas');
+    });
+  });
 });

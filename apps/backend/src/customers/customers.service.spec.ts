@@ -89,6 +89,7 @@ describe('CustomersService', () => {
         googleWalletUrl: '/api/passes/p-1/google',
       }),
       notifyPassUpdate: vi.fn(),
+      deactivatePass: vi.fn().mockResolvedValue(undefined),
     };
 
     service = new CustomersService(
@@ -663,6 +664,7 @@ describe('CustomersService', () => {
 
       expect(prismaMock.pass.delete).toHaveBeenCalledWith({ where: { id: 'p-1' } });
       expect(prismaMock.customer.delete).not.toHaveBeenCalled();
+      expect(passesServiceMock.deactivatePass).toHaveBeenCalledWith('p-1');
       expect(result.success).toBe(true);
       expect(result.customerCompletelyDeleted).toBe(false);
     });
@@ -677,6 +679,7 @@ describe('CustomersService', () => {
 
       expect(prismaMock.pass.delete).toHaveBeenCalledWith({ where: { id: 'p-1' } });
       expect(prismaMock.customer.delete).toHaveBeenCalledWith({ where: { id: 'c-1' } });
+      expect(passesServiceMock.deactivatePass).toHaveBeenCalledWith('p-1');
       expect(result.success).toBe(true);
       expect(result.customerCompletelyDeleted).toBe(true);
     });
@@ -688,14 +691,17 @@ describe('CustomersService', () => {
       await expect(service.deleteCustomerGlobal('c-nonexistent')).rejects.toThrow('Cliente no encontrado');
     });
 
-    it('deletes customer completely', async () => {
+    it('deletes customer completely and deactivates all customer passes in Google Wallet', async () => {
       prismaMock.customer.findUnique.mockResolvedValue({
         id: 'c-1',
+        passes: [{ id: 'p-1' }, { id: 'p-2' }],
       });
 
       const result = await service.deleteCustomerGlobal('c-1');
 
       expect(prismaMock.customer.delete).toHaveBeenCalledWith({ where: { id: 'c-1' } });
+      expect(passesServiceMock.deactivatePass).toHaveBeenCalledWith('p-1');
+      expect(passesServiceMock.deactivatePass).toHaveBeenCalledWith('p-2');
       expect(result.success).toBe(true);
       expect(result.customerCompletelyDeleted).toBe(true);
     });
