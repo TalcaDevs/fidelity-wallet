@@ -30,6 +30,9 @@ export function getPlanBenefits(plan: Plan) {
       : `Hasta ${plan.limits.customers} clientes`,
     `Hasta ${plan.limits.rewards} recompensas activas`,
     "Tarjetas digitales en Wallet",
+    ...(plan.features.pushNotificationsEnabled
+      ? ["Notificaciones push y por ubicación"]
+      : []),
     ...(plan.features.advancedMetrics
       ? ["Métricas para conocer a tus clientes"]
       : []),

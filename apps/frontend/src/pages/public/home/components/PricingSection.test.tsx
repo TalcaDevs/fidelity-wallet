@@ -16,12 +16,16 @@ describe("PricingSection", () => {
         card.getByLabelText(`$ ${plan.priceClpMonthly.toLocaleString('es-CL')} por mes`),
       ).toBeInTheDocument();
       expect(
-        card.getByText(`Hasta ${plan.limits.locations} locales`),
+        card.getByText(`Hasta ${plan.limits.locations} local${plan.limits.locations === 1 ? "" : "es"}`),
       ).toBeInTheDocument();
       expect(
         card.getByText(`Hasta ${plan.limits.teamUsers} colaboradores`),
       ).toBeInTheDocument();
-      expect(card.getByText("Clientes ilimitados")).toBeInTheDocument();
+      if (plan.limits.customers) {
+        expect(card.getByText(`Hasta ${plan.limits.customers} clientes`)).toBeInTheDocument();
+      } else {
+        expect(card.getByText("Clientes ilimitados")).toBeInTheDocument();
+      }
       expect(
         card.getByRole("link", { name: `Consultar por el plan ${plan.name}` }),
       ).toHaveAttribute("href", "#contacto");
