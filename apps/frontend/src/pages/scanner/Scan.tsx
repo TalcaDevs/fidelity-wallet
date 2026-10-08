@@ -253,29 +253,32 @@ export function Scan({
           <div className="flex min-w-0 items-center gap-3">
             <span aria-hidden="true" className="grid h-10 w-10 shrink-0 -rotate-6 place-items-center rounded-xl bg-panel-primary text-white"><WalletIcon className="h-5 w-5" /></span>
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h1 className="font-extrabold leading-tight tracking-tight">Escáner<span className="text-panel-gold">.</span></h1>
-                {role === 'OWNER' && locations.length > 1 && (
-                  <select
-                    aria-label="Seleccionar sucursal"
-                    value={merchantId}
-                    onChange={(e) => handleLocationChange(e.target.value)}
-                    className="text-xs font-bold rounded-lg px-2 py-1 bg-panel-soft border border-panel-border text-panel-text focus:outline-none focus:border-panel-accent cursor-pointer"
-                  >
-                    {locations.map((loc) => (
-                      <option key={loc.id} value={loc.id}>
-                        {loc.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
+              <h1 className="font-extrabold leading-tight tracking-tight">Escáner<span className="text-panel-gold">.</span></h1>
               <p className="max-w-[260px] truncate text-xs text-panel-muted font-medium">
                 {activeLocation?.name ? `${activeLocation.name} · ` : ''}{session?.user.email}
               </p>
             </div>
           </div>
           <nav aria-label="Herramientas del escáner" className="flex items-center gap-2">
+            {role === 'OWNER' && locations.length > 1 && (
+              <div className="relative inline-flex items-center">
+                <select
+                  aria-label="Seleccionar sucursal"
+                  value={merchantId}
+                  onChange={(e) => handleLocationChange(e.target.value)}
+                  className={`${SCAN_SECONDARY} appearance-none pr-8 cursor-pointer focus:outline-none focus:border-panel-accent`}
+                >
+                  {locations.map((loc) => (
+                    <option key={loc.id} value={loc.id} className="bg-panel-surface text-panel-text">
+                      {loc.name}
+                    </option>
+                  ))}
+                </select>
+                <span aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-panel-muted text-[10px]">
+                  ▼
+                </span>
+              </div>
+            )}
             {state === 'camera' ? (
               <button onClick={() => { resumeAudio(); setState('manual'); }} className={SCAN_SECONDARY}>Manual</button>
             ) : state === 'manual' ? (
