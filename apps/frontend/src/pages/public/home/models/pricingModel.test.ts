@@ -9,9 +9,9 @@ import {
 describe("pricing recommendations", () => {
   it("chooses the lowest priced plan that accommodates both limits regardless of catalog order", () => {
     const shuffled = [...PAID_PLANS].reverse();
-    expect(recommendPlan(shuffled, 2, 3)?.id).toBe("STARTER");
-    expect(recommendPlan(shuffled, 2, 4)?.id).toBe("PRO");
-    expect(recommendPlan(shuffled, 9, 3)?.id).toBe("BUSINESS");
+    expect(recommendPlan(shuffled, 1, 3)?.id).toBe("STARTER");
+    expect(recommendPlan(shuffled, 1, 4)?.id).toBe("PRO");
+    expect(recommendPlan(shuffled, 6, 3)?.id).toBe("BUSINESS");
     expect(shuffled.map((plan) => plan.id)).toEqual(
       [...PAID_PLANS].reverse().map((plan) => plan.id),
     );
@@ -30,9 +30,9 @@ describe("pricing recommendations", () => {
         "locations",
       ),
     ).toEqual([
-      { value: 2, label: "1 a 2" },
-      { value: 8, label: "3 a 8" },
-      { value: 15, label: "9 a 15" },
+      { value: 1, label: "1" },
+      { value: 5, label: "2 a 5" },
+      { value: 15, label: "6 a 15" },
     ]);
   });
 
@@ -46,11 +46,12 @@ describe("pricing recommendations", () => {
       },
     };
     expect(getPlanBenefits(plan)).toEqual([
-      "Hasta 2 locales",
+      "Hasta 1 local",
       "Hasta 3 colaboradores",
-      "Clientes ilimitados",
+      "Hasta 200 clientes",
       "Hasta 3 recompensas activas",
       "Tarjetas digitales en Wallet",
+      "Notificaciones push y por ubicación",
     ]);
   });
 });

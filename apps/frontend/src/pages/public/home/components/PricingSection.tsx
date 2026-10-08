@@ -299,7 +299,7 @@ export function PricingSection({ motionPaused = false }: PricingSectionProps) {
       `}
             >
               <strong className="text-[25px] font-[750] tracking-[-0.05em] leading-[1.2] max-[600.001px]:text-[23px]">
-                USD {TRIAL_PLAN.priceUsdMonthly}
+                $ {TRIAL_PLAN.priceClpMonthly.toLocaleString('es-CL')}
               </strong>
               <span className="[color:var(--fw-muted)] text-[9px]">
                 durante la prueba
@@ -389,7 +389,7 @@ export function PricingSection({ motionPaused = false }: PricingSectionProps) {
         max-[600.001px]:text-[10px]
       `}
         >
-          Precios referenciales en USD, sujetos a confirmación. La modalidad
+          Precios referenciales en CLP, sujetos a confirmación. La modalidad
           anual considera el pago del año completo. Conversemos para confirmar
           tu plan, las funciones disponibles y las condiciones de contratación.
         </p>

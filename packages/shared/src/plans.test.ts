@@ -8,12 +8,17 @@ describe('plans catalog', () => {
 
   it('only the trial is free and has trial days', () => {
     const trial = getPlan('TRIAL');
-    expect(trial.priceUsdMonthly).toBe(0);
+    expect(trial.priceClpMonthly).toBe(0);
     expect(trial.trialDays).toBe(TRIAL_DAYS);
     for (const plan of CATALOG_PLANS.filter((p) => p.id !== 'TRIAL')) {
-      expect(plan.priceUsdMonthlyAnnual).toBeLessThan(plan.priceUsdMonthly);
-      expect(plan.limits.customers).toBeNull();
+      expect(plan.priceClpMonthlyAnnual!).toBeLessThan(plan.priceClpMonthly);
     }
+  });
+
+  it('unlimited customers only for Pro and Business', () => {
+    expect(getPlan('STARTER').limits.customers).toBe(200);
+    expect(getPlan('PRO').limits.customers).toBeNull();
+    expect(getPlan('BUSINESS').limits.customers).toBeNull();
   });
 
   it('provides increasing reward allowances across paid plans', () => {

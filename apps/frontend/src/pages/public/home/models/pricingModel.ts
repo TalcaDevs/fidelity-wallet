@@ -30,6 +30,9 @@ export function getPlanBenefits(plan: Plan) {
       : `Hasta ${plan.limits.customers} clientes`,
     `Hasta ${plan.limits.rewards} recompensas activas`,
     "Tarjetas digitales en Wallet",
+    ...(plan.features.pushNotifications
+      ? ["Notificaciones push y por ubicación"]
+      : []),
     ...(plan.features.advancedMetrics
       ? ["Métricas para conocer a tus clientes"]
       : []),
@@ -43,7 +46,7 @@ export function recommendPlan(
   teamUsers: number,
 ) {
   return [...plans]
-    .sort((a, b) => a.priceUsdMonthly - b.priceUsdMonthly)
+    .sort((a, b) => a.priceClpMonthly - b.priceClpMonthly)
     .find(
       (plan) =>
         plan.limits.locations >= locations &&
