@@ -600,7 +600,7 @@ export class ScanService {
         throw new NotFoundException('El cliente ya no tiene una tarjeta en este comercio');
       }
       if (pass.programId !== program.id) {
-        throw new ForbiddenException('El pase no pertenece a este comercio');
+        throw new ForbiddenException('Esta tarjeta no pertenece a este comercio');
       }
       return { pass, method: claims.method };
     }
@@ -626,11 +626,11 @@ export class ScanService {
       });
 
       if (!pass) {
-        throw new NotFoundException('No se encontró un pase para el token proporcionado');
+        throw new NotFoundException('Esta tarjeta no existe o ya no está activa');
       }
 
       if (pass.programId !== program.id) {
-        throw new ForbiddenException('El pase no pertenece a este comercio');
+        throw new ForbiddenException('Esta tarjeta no pertenece a este comercio');
       }
 
       return pass;
