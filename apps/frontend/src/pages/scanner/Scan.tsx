@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { QRCam } from './QRCam';
 import { ManualFallback } from './ManualFallback';
@@ -16,6 +16,7 @@ import {
   type ScanValidation as Validation,
   type StampExtras,
 } from '../../services/scanService';
+import { listBrandLocations, type LocationOption } from '../../services/locationsService';
 import { IdentifierValue } from '../../components/ui/IdentifierInput';
 import { ROUTES } from '../../components/routing/routePaths';
 import type { MerchantRole } from '../../hooks/useMembership';
@@ -45,9 +46,38 @@ const rewardFromValidation = (v: Validation): ScanResult => ({
   rewardUnlocked: v.rewardUnlocked,
   rewardName: v.rewardName,
   availablePromotions: v.availablePromotions,
+  nextExpiryAt: v.nextExpiryAt,
 });
 
-export function Scan({ merchantId, session, role }: { merchantId: string, session: Session, role: MerchantRole | null }) {
+function getStoredLocation(key: string | null): string | null {
+  if (!key) return null;
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function setStoredLocation(key: string | null, value: string): void {
+  if (!key) return;
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Modo privado o sin permisos de almacenamiento
+  }
+}
+
+export function Scan({
+  merchantId: initialMerchantId,
+  session,
+  role,
+  brandId,
+}: {
+  merchantId: string;
+  session: Session;
+  role: MerchantRole | null;
+  brandId?: string | null;
+}) {
   const { isDarkMode, toggleDarkMode } = useTheme();
   const { triggerFeedback, resumeAudio } = useScanFeedback();
   const signOut = useSignOut();
@@ -57,6 +87,61 @@ export function Scan({ merchantId, session, role }: { merchantId: string, sessio
   const [validation, setValidation] = useState<Validation | null>(null);
   // Desde dónde se abrió el canje: "seguir juntando" vuelve a la validación si aún no se selló.
   const [rewardFrom, setRewardFrom] = useState<'validation' | 'stamped'>('stamped');
+
+  const storageKey = brandId ? `fidelity_scanner_merchant_${brandId}` : null;
+  const [selectedMerchantId, setSelectedMerchantId] = useState<string>(() => {
+    if (role === 'OWNER' && storageKey) {
+      const cached = getStoredLocation(storageKey);
+      if (cached) return cached;
+    }
+    return initialMerchantId;
+  });
+  const [locations, setLocations] = useState<LocationOption[]>([]);
+
+  const merchantId = role === 'OWNER' ? selectedMerchantId : initialMerchantId;
+
+  useEffect(() => {
+    if (!brandId) return;
+    let cancelled = false;
+    listBrandLocations(brandId)
+      .then((data) => {
+        if (cancelled) return;
+        const active = data.filter((l) => l.isActive);
+        setLocations(active);
+        if (role === 'OWNER') {
+          setSelectedMerchantId((current) => {
+            if (active.length > 0 && !active.some((l) => l.id === current)) {
+              const fallback = active.some((l) => l.id === initialMerchantId)
+                ? initialMerchantId
+                : active[0].id;
+              setStoredLocation(storageKey, fallback);
+              return fallback;
+            }
+            return current;
+          });
+        }
+      })
+      .catch((err) => {
+        console.error('Error al cargar sucursales:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [brandId, role, initialMerchantId, storageKey]);
+
+  const activeLocation = locations.find((l) => l.id === merchantId);
+
+  const resetScanner = useCallback(() => {
+    setResult(null);
+    setValidation(null);
+    setState('camera');
+  }, []);
+
+  const handleLocationChange = (newMerchantId: string) => {
+    setSelectedMerchantId(newMerchantId);
+    setStoredLocation(storageKey, newMerchantId);
+    resetScanner();
+  };
   
   const isOnline = useOnlineStatus();
   const [isSessionExpired, setIsSessionExpired] = useState(false);
@@ -149,12 +234,6 @@ export function Scan({ merchantId, session, role }: { merchantId: string, sessio
     void handleLookup({ customer });
   }, [handleLookup, resumeAudio]);
 
-  const resetScanner = () => {
-    setResult(null);
-    setValidation(null);
-    setState('camera');
-  };
-
   const leaveReward = () => {
     if (rewardFrom === 'validation' && validation) {
       setState('validation');
@@ -174,8 +253,26 @@ export function Scan({ merchantId, session, role }: { merchantId: string, sessio
           <div className="flex min-w-0 items-center gap-3">
             <span aria-hidden="true" className="grid h-10 w-10 shrink-0 -rotate-6 place-items-center rounded-xl bg-panel-primary text-white"><WalletIcon className="h-5 w-5" /></span>
             <div className="min-w-0">
-              <h1 className="font-extrabold leading-tight tracking-tight">Escáner<span className="text-panel-gold">.</span></h1>
-              <p className="max-w-[220px] truncate text-xs text-panel-muted font-medium">{session?.user.email}</p>
+              <div className="flex items-center gap-2">
+                <h1 className="font-extrabold leading-tight tracking-tight">Escáner<span className="text-panel-gold">.</span></h1>
+                {role === 'OWNER' && locations.length > 1 && (
+                  <select
+                    aria-label="Seleccionar sucursal"
+                    value={merchantId}
+                    onChange={(e) => handleLocationChange(e.target.value)}
+                    className="text-xs font-bold rounded-lg px-2 py-1 bg-panel-soft border border-panel-border text-panel-text focus:outline-none focus:border-panel-accent cursor-pointer"
+                  >
+                    {locations.map((loc) => (
+                      <option key={loc.id} value={loc.id}>
+                        {loc.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <p className="max-w-[260px] truncate text-xs text-panel-muted font-medium">
+                {activeLocation?.name ? `${activeLocation.name} · ` : ''}{session?.user.email}
+              </p>
             </div>
           </div>
           <nav aria-label="Herramientas del escáner" className="flex items-center gap-2">

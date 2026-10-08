@@ -30,6 +30,7 @@ export interface ScanResult {
   alreadyScanned?: boolean;
   // Los sellos son un saldo único: el cliente elige en caja cuál de estas canjear.
   availablePromotions?: PromotionOption[];
+  nextExpiryAt?: string | null;
   // Mensaje del backend; en un sello bloqueado dice cuántos minutos faltan.
   message?: string;
   error?: string;
@@ -65,6 +66,7 @@ export interface ScanValidation {
   pesosPerPoint: number;
   amountRequired: boolean;
   receiptRequired: boolean;
+  nextExpiryAt?: string | null;
 }
 
 export type ValidationResult =
@@ -116,6 +118,7 @@ const mockValidate = (): Promise<ValidationResult> => {
     pesosPerPoint: 1000,
     amountRequired: false,
     receiptRequired: false,
+    nextExpiryAt: null,
   });
 };
 
@@ -144,6 +147,7 @@ interface ScanApiResponse {
   availablePromotions?: PromotionOption[];
   message?: string;
   customer?: CustomerApi;
+  nextExpiryAt?: string | Date | null;
 }
 
 /** Contrato de POST /api/scan/validate (ScanValidationDto del backend). */
@@ -172,6 +176,7 @@ interface ValidationApiResponse {
   pesosPerPoint?: number;
   amountRequired?: boolean;
   receiptRequired?: boolean;
+  nextExpiryAt?: string | Date | null;
 }
 
 /** A quién se busca: el QR del pase o, en el ingreso manual, el RUT, teléfono o correo. */
@@ -253,6 +258,7 @@ export const validateScan = async (params: { merchantId: string; target: LookupT
       pesosPerPoint: data.pesosPerPoint ?? 1000,
       amountRequired: data.amountRequired ?? false,
       receiptRequired: data.receiptRequired ?? false,
+      nextExpiryAt: data.nextExpiryAt ? String(data.nextExpiryAt) : null,
     };
   } catch {
     return { ok: false, error: 'Error de red o de servidor' };
@@ -317,7 +323,8 @@ export const processScan = async (params: ScanParams): Promise<ScanResult> => {
       rewardName: data.rewardName,
       alreadyScanned: data.alreadyScanned,
       availablePromotions: data.availablePromotions ?? [],
-      message: data.message
+      nextExpiryAt: data.nextExpiryAt ? String(data.nextExpiryAt) : null,
+      message: data.message,
     };
   } catch {
     return { ok: false, error: 'Error de red o de servidor' };

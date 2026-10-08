@@ -9,6 +9,7 @@ import {
   pointsForAmount,
 } from '@fidelity/shared';
 import { useFilePreview } from '../../hooks/useFilePreview';
+import { formatStampExpiry } from '../../lib/stampExpiry';
 import { prepareReceiptPhoto } from '../../lib/receiptPhoto';
 import type { ScanValidation as Validation, StampExtras } from '../../services/scanService';
 
@@ -82,6 +83,7 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
   // Validaciones de Puntos
   const amountValue = amount ? Number(amount) : undefined;
   const points = hasPoints && validation.canAddPoints && amountValue !== undefined ? pointsForAmount(amountValue, validation.pesosPerPoint) : 0;
+  const expiryLabel = formatStampExpiry(validation.nextExpiryAt, new Date());
   
   let amountProblem: string | null = null;
   if (hasPoints && validation.canAddPoints) {
@@ -151,9 +153,17 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
           </div>
 
           <div className="mt-5">
-            <div className="flex flex-wrap gap-3 mb-3 text-sm font-bold">
+            <div className="flex flex-wrap items-center gap-3 mb-3 text-sm font-bold">
               {hasStamps && <span>{validation.stampsCount} {balanceUnit('STAMPS', validation.stampsCount)} vigentes</span>}
               {hasPoints && <span>{clp.format(validation.pointsCount)} {balanceUnit('POINTS', validation.pointsCount)} vigentes</span>}
+              {expiryLabel && (
+                <span
+                  data-testid="expiry-badge"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30"
+                >
+                  <span aria-hidden="true">⏳</span> {expiryLabel}
+                </span>
+              )}
             </div>
             <div className="flex items-baseline justify-between mb-2">
               <span className="text-panel-muted text-sm font-bold">Progreso a recompensa ({balanceUnit(rewardCurrency)})</span>

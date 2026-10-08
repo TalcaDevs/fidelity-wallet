@@ -68,7 +68,7 @@ export default function App() {
               path={ROUTES.scan}
               element={
                 session && membership.merchantId ? (
-                  <Scan merchantId={membership.merchantId} session={session} role={membership.role} />
+                  <Scan merchantId={membership.merchantId} session={session} role={membership.role} brandId={membership.brandId} />
                 ) : (
                   <AccessDenied reason="Tu usuario no tiene un local activo asignado." />
                 )

@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import { Scan } from '../Scan';
+import { listBrandLocations } from '../../../services/locationsService';
 
 vi.mock('../QRCam', () => ({
   QRCam: ({ isActive }: { isActive: boolean }) => (
@@ -10,6 +11,10 @@ vi.mock('../QRCam', () => ({
       Camara QR activa
     </div>
   ),
+}));
+
+vi.mock('../../../services/locationsService', () => ({
+  listBrandLocations: vi.fn(),
 }));
 
 vi.mock('../../../hooks/useOnlineStatus', () => ({
@@ -32,16 +37,31 @@ const mockSession = {
   user: { id: 'user-cajero', email: 'cajero@test.com' },
 } as unknown as Session;
 
-function renderScan(role: 'STAFF' | 'OWNER' = 'STAFF') {
+function renderScan(role: 'STAFF' | 'OWNER' = 'STAFF', brandId?: string | null, merchantId = 'merchant-123') {
   return render(
     <MemoryRouter>
-      <Scan merchantId="merchant-123" session={mockSession} role={role} />
+      <Scan merchantId={merchantId} session={mockSession} role={role} brandId={brandId} />
     </MemoryRouter>,
   );
 }
 
 describe('Scan component', () => {
+  let store: Record<string, string> = {};
+
   beforeEach(() => {
+    store = {};
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn((key: string) => store[key] ?? null),
+      setItem: vi.fn((key: string, val: string) => {
+        store[key] = String(val);
+      }),
+      removeItem: vi.fn((key: string) => {
+        delete store[key];
+      }),
+      clear: vi.fn(() => {
+        store = {};
+      }),
+    });
     vi.clearAllMocks();
   });
 
@@ -106,5 +126,60 @@ describe('Scan component', () => {
 
     renderScan('OWNER');
     expect(screen.getByRole('link', { name: 'Panel' })).toBeInTheDocument();
+  });
+
+  describe('selector de sucursales', () => {
+    const mockLocations = [
+      { id: 'loc-1', name: 'Sucursal Centro', isActive: true },
+      { id: 'loc-2', name: 'Sucursal Oriente', isActive: true },
+    ];
+
+    it('muestra el selector de sucursales si el rol es OWNER y hay múltiples sucursales activas', async () => {
+      vi.mocked(listBrandLocations).mockResolvedValueOnce(mockLocations);
+
+      renderScan('OWNER', 'brand-test', 'loc-1');
+
+      const select = await screen.findByRole('combobox', { name: /seleccionar sucursal/i });
+      expect(select).toBeInTheDocument();
+      expect(select).toHaveValue('loc-1');
+      expect(screen.getByText(/Sucursal Centro · cajero@test.com/i)).toBeInTheDocument();
+
+      fireEvent.change(select, { target: { value: 'loc-2' } });
+
+      expect(select).toHaveValue('loc-2');
+      expect(screen.getByText(/Sucursal Oriente · cajero@test.com/i)).toBeInTheDocument();
+      expect(localStorage.getItem('fidelity_scanner_merchant_brand-test')).toBe('loc-2');
+    });
+
+    it('no muestra el selector si el rol es STAFF pero muestra el nombre de sucursal en el subtexto', async () => {
+      vi.mocked(listBrandLocations).mockResolvedValueOnce(mockLocations);
+
+      renderScan('STAFF', 'brand-test', 'loc-1');
+
+      expect(screen.queryByRole('combobox', { name: /seleccionar sucursal/i })).not.toBeInTheDocument();
+      expect(await screen.findByText(/Sucursal Centro · cajero@test.com/i)).toBeInTheDocument();
+    });
+
+    it('no muestra el selector si el rol es OWNER pero solo hay una sucursal activa', async () => {
+      vi.mocked(listBrandLocations).mockResolvedValueOnce([
+        { id: 'loc-1', name: 'Casa Matriz', isActive: true },
+      ]);
+
+      renderScan('OWNER', 'brand-test', 'loc-1');
+
+      expect(screen.queryByRole('combobox', { name: /seleccionar sucursal/i })).not.toBeInTheDocument();
+      expect(await screen.findByText(/Casa Matriz · cajero@test.com/i)).toBeInTheDocument();
+    });
+
+    it('inicializa el merchantId desde localStorage si está guardado previamente para OWNER', async () => {
+      localStorage.setItem('fidelity_scanner_merchant_brand-test', 'loc-2');
+      vi.mocked(listBrandLocations).mockResolvedValueOnce(mockLocations);
+
+      renderScan('OWNER', 'brand-test', 'loc-1');
+
+      const select = await screen.findByRole('combobox', { name: /seleccionar sucursal/i });
+      expect(select).toHaveValue('loc-2');
+      expect(screen.getByText(/Sucursal Oriente · cajero@test.com/i)).toBeInTheDocument();
+    });
   });
 });
