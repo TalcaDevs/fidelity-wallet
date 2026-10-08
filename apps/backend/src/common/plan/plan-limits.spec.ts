@@ -55,7 +55,7 @@ describe('assertPlanAllows', () => {
   });
 
   it('counts only active locations and STAFF (the OWNER does not use a seat)', async () => {
-    const db = dbWith('STARTER', { locations: 1 });
+    const db = dbWith('STARTER', { locations: 0 });
     await assertPlanAllows(db, 'b-1', 'locations');
     await assertPlanAllows(db, 'b-1', 'teamUsers');
     expect(db.merchant.count).toHaveBeenCalledWith({

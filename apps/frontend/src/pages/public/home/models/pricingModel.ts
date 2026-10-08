@@ -43,7 +43,7 @@ export function recommendPlan(
   teamUsers: number,
 ) {
   return [...plans]
-    .sort((a, b) => a.priceUsdMonthly - b.priceUsdMonthly)
+    .sort((a, b) => a.priceClpMonthly - b.priceClpMonthly)
     .find(
       (plan) =>
         plan.limits.locations >= locations &&

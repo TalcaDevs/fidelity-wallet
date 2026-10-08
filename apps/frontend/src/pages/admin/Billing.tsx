@@ -28,8 +28,8 @@ const USAGE_ROWS: { key: keyof PlanUsage; label: string }[] = [
 ];
 
 const SIMULATED_INVOICES = [
-  { id: 'SIM-002', date: '2026-09-01T12:00:00Z', plan: 'Prueba gratis', amountUsd: 0, status: 'Pagada' },
-  { id: 'SIM-001', date: '2026-08-01T12:00:00Z', plan: 'Prueba gratis', amountUsd: 0, status: 'Pagada' },
+  { id: 'SIM-002', date: '2026-09-01T12:00:00Z', plan: 'Prueba gratis', amountClp: 0, status: 'Pagada' },
+  { id: 'SIM-001', date: '2026-08-01T12:00:00Z', plan: 'Prueba gratis', amountClp: 0, status: 'Pagada' },
 ];
 
 const SOON = 'Próximamente';
@@ -70,19 +70,21 @@ function UsageBar({ label, used, limit }: { label: string; used: number; limit: 
 }
 
 function PlanCard({ plan, isAnnual, isCurrent }: { plan: Plan; isAnnual: boolean; isCurrent: boolean }) {
-  const price = isAnnual && plan.priceUsdMonthlyAnnual !== null ? plan.priceUsdMonthlyAnnual : plan.priceUsdMonthly;
+  const price = isAnnual && plan.priceClpMonthlyAnnual !== null ? plan.priceClpMonthlyAnnual : plan.priceClpMonthly;
   return (
     <div className={`bg-panel-surface rounded-2xl p-6 border flex flex-col ${plan.highlighted ? 'border-panel-accent shadow-xl shadow-brand-blue/10' : 'border-panel-border '}`}>
       <div className="flex items-center justify-between gap-2 mb-1">
         <h3 className="text-xl font-black text-panel-text">{plan.name}</h3>
         {plan.highlighted && <span className="text-[10px] font-bold uppercase tracking-wider bg-panel-accent/10 text-panel-accent px-2 py-0.5 rounded-md">{plan.tagline}</span>}
       </div>
-      {!plan.highlighted && <p className="text-sm text-panel-muted mb-1">{plan.tagline}</p>}
+      <p className={`text-sm mb-1 ${plan.highlighted ? 'opacity-0 select-none' : 'text-panel-muted'}`} aria-hidden={plan.highlighted}>
+        {plan.tagline}
+      </p>
       <div className="my-4">
-        <span className="text-4xl font-black text-panel-text">USD {price}</span>
+        <span className="text-4xl font-black text-panel-text">$ {price.toLocaleString('es-CL')}</span>
         <span className="text-panel-muted font-medium text-sm"> /mes</span>
-        {isAnnual && plan.priceUsdMonthlyAnnual !== null && (
-          <p className="text-xs text-panel-muted mt-1">Facturado anualmente (USD {plan.priceUsdMonthlyAnnual * 12} al año)</p>
+        {isAnnual && plan.priceClpMonthlyAnnual !== null && (
+          <p className="text-xs text-panel-muted mt-1">Facturado anualmente ($ {(plan.priceClpMonthlyAnnual * 12).toLocaleString('es-CL')} al año)</p>
         )}
       </div>
       <ul className="space-y-3 mb-6 flex-1 text-sm text-panel-muted font-medium">
@@ -156,7 +158,7 @@ export function Billing({ brandId }: { brandId: string | null }) {
         <div className="text-center mb-8">
           <h2 className="text-2xl font-black text-panel-text mb-3">Planes</h2>
           <p className="text-panel-muted max-w-2xl mx-auto mb-6">
-            Cada programa de lealtad es una tarjeta distinta en tu panel. El límite es de programas activos; tus clientes son ilimitados desde el plan Inicial.
+            Cada programa de lealtad es una tarjeta distinta en tu panel. El límite es de programas activos; tus clientes son ilimitados desde el plan Pro.
           </p>
           <div className="inline-flex items-center p-1.5 bg-panel-soft rounded-2xl" role="group" aria-label="Ciclo de facturación">
             {[false, true].map((annual) => (
@@ -198,7 +200,7 @@ export function Billing({ brandId }: { brandId: string | null }) {
                 <tr key={invoice.id}>
                   <td className="py-4 pl-4 text-panel-text font-medium">{formatDate(invoice.date)}</td>
                   <td className="py-4 text-panel-muted font-bold">{invoice.plan}</td>
-                  <td className="py-4 text-panel-muted">USD {invoice.amountUsd}</td>
+                  <td className="py-4 text-panel-muted">$ {invoice.amountClp.toLocaleString('es-CL')}</td>
                   <td className="py-4">
                     <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400">{invoice.status}</span>
                   </td>

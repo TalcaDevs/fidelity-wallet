@@ -8,9 +8,9 @@ export interface Plan {
   name: string;
   tagline: string;
   highlighted?: boolean;
-  priceUsdMonthly: number;
+  priceClpMonthly: number;
   /** Precio mensual cuando se paga el año completo. */
-  priceUsdMonthlyAnnual: number | null;
+  priceClpMonthlyAnnual: number | null;
   trialDays?: number;
   /** customers: null = ilimitado. teamUsers cuenta solo STAFF: el OWNER no ocupa cupo. */
   limits: { programs: number; locations: number; teamUsers: number; customers: number | null; rewards: number };
@@ -58,8 +58,8 @@ export const CATALOG_PLANS: readonly Plan[] = [
     id: 'TRIAL',
     name: 'Prueba gratis',
     tagline: '30 días, sin tarjeta',
-    priceUsdMonthly: 0,
-    priceUsdMonthlyAnnual: null,
+    priceClpMonthly: 0,
+    priceClpMonthlyAnnual: null,
     trialDays: TRIAL_DAYS,
     limits: { programs: 1, locations: 1, teamUsers: 1, customers: 100, rewards: 3 },
     features: {
@@ -74,9 +74,9 @@ export const CATALOG_PLANS: readonly Plan[] = [
     id: 'STARTER',
     name: 'Inicial',
     tagline: 'Para tu primer local',
-    priceUsdMonthly: 14,
-    priceUsdMonthlyAnnual: 11,
-    limits: { programs: 3, locations: 2, teamUsers: 3, customers: null, rewards: 3 },
+    priceClpMonthly: 12000,
+    priceClpMonthlyAnnual: 10000,
+    limits: { programs: 3, locations: 1, teamUsers: 3, customers: 200, rewards: 3 },
     features: PAID_FEATURES,
   },
   {
@@ -84,17 +84,17 @@ export const CATALOG_PLANS: readonly Plan[] = [
     name: 'Pro',
     tagline: 'Popular',
     highlighted: true,
-    priceUsdMonthly: 24,
-    priceUsdMonthlyAnnual: 19,
-    limits: { programs: 8, locations: 8, teamUsers: 15, customers: null, rewards: 5 },
+    priceClpMonthly: 25000,
+    priceClpMonthlyAnnual: 20000,
+    limits: { programs: 8, locations: 5, teamUsers: 15, customers: null, rewards: 5 },
     features: PAID_FEATURES,
   },
   {
     id: 'BUSINESS',
     name: 'Negocio',
     tagline: 'Para varias sucursales',
-    priceUsdMonthly: 39,
-    priceUsdMonthlyAnnual: 29,
+    priceClpMonthly: 40000,
+    priceClpMonthlyAnnual: 32000,
     limits: { programs: 15, locations: 15, teamUsers: 25, customers: null, rewards: 10 },
     features: PAID_FEATURES,
   },

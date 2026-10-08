@@ -4,8 +4,8 @@ import Check from "../../../../assets/home/plan-check.svg?react";
 import { PLAN_STORIES } from "../constants/pricing.constants.ts";
 import { getPlanBenefits } from "../models/pricingModel";
 export function PlanCard({ plan, annual, recommended }: PlanCardProps) {
-  const annualPrice = annual ? plan.priceUsdMonthlyAnnual : null;
-  const price = annualPrice ?? plan.priceUsdMonthly;
+  const annualPrice = annual ? plan.priceClpMonthlyAnnual : null;
+  const price = annualPrice ?? plan.priceClpMonthly;
   const story = PLAN_STORIES[plan.id] ?? {
     title: plan.tagline,
     description: plan.tagline,
@@ -71,11 +71,11 @@ export function PlanCard({ plan, annual, recommended }: PlanCardProps) {
         [align-items:baseline] mt-[28px] leading-[1] max-[800.001px]:[grid-column:1]
         max-[600.001px]:mt-[23px]
       `}
-        aria-label={`USD ${price} por mes`}
+        aria-label={`$ ${price.toLocaleString('es-CL')} por mes`}
       >
-        <span className="text-[12px] [color:var(--fw-muted)]">USD</span>
-        <strong className="text-[57px] font-[750] tracking-[-0.07em]">
-          {price}
+        <span className="text-[20px] font-[750] [color:var(--fw-muted)] mt-[6px] mr-1">$</span>
+        <strong className="text-[48px] font-[750] tracking-[-0.07em]">
+          {price.toLocaleString('es-CL')}
         </strong>
         <span className="text-[12px] [color:var(--fw-muted)]">/ mes</span>
       </div>
@@ -87,7 +87,7 @@ export function PlanCard({ plan, annual, recommended }: PlanCardProps) {
       >
         {annualPrice === null
           ? "Referencia con modalidad mensual"
-          : `USD ${annualPrice * 12} por año · pago anual`}
+          : `$ ${(annualPrice * 12).toLocaleString('es-CL')} por año · pago anual`}
       </p>
       <p className="fw-price-description">{story.description}</p>
       <a

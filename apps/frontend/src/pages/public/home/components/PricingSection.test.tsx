@@ -13,7 +13,7 @@ describe("PricingSection", () => {
     for (const plan of paidPlans) {
       const card = within(screen.getByRole("article", { name: plan.name }));
       expect(
-        card.getByLabelText(`USD ${plan.priceUsdMonthly} por mes`),
+        card.getByLabelText(`$ ${plan.priceClpMonthly.toLocaleString('es-CL')} por mes`),
       ).toBeInTheDocument();
       expect(
         card.getByText(`Hasta ${plan.limits.locations} locales`),
@@ -29,7 +29,7 @@ describe("PricingSection", () => {
     const free = within(
       screen.getByRole("article", { name: new RegExp(trial.name) }),
     );
-    expect(free.getByText(`USD ${trial.priceUsdMonthly}`)).toBeInTheDocument();
+    expect(free.getByText(`$ ${trial.priceClpMonthly.toLocaleString('es-CL')}`)).toBeInTheDocument();
     expect(free.getByRole("heading")).toHaveTextContent(
       `${trial.trialDays} días`,
     );
@@ -38,7 +38,7 @@ describe("PricingSection", () => {
     ).toBeInTheDocument();
     expect(free.getByText("durante la prueba")).toBeInTheDocument();
     expect(
-      screen.getByText(/Precios referenciales en USD/),
+      screen.getByText(/Precios referenciales en CLP/),
     ).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent(paidPlans[0].name);
     expect(screen.getByRole("status")).not.toHaveTextContent(trial.name);
@@ -54,18 +54,18 @@ describe("PricingSection", () => {
     );
     for (const plan of paidPlans) {
       const card = within(screen.getByRole("article", { name: plan.name }));
-      const annualRate = plan.priceUsdMonthlyAnnual!;
+      const annualRate = plan.priceClpMonthlyAnnual!;
       expect(
-        card.getByLabelText(`USD ${annualRate} por mes`),
+        card.getByLabelText(`$ ${annualRate.toLocaleString('es-CL')} por mes`),
       ).toBeInTheDocument();
       expect(
-        card.getByText(`USD ${annualRate * 12} por año · pago anual`),
+        card.getByText(`$ ${(annualRate * 12).toLocaleString('es-CL')} por año · pago anual`),
       ).toBeInTheDocument();
     }
     expect(
       within(
         screen.getByRole("article", { name: new RegExp(trial.name) }),
-      ).getByText(`USD ${trial.priceUsdMonthly}`),
+      ).getByText(`$ ${trial.priceClpMonthly.toLocaleString('es-CL')}`),
     ).toBeInTheDocument();
     expect(screen.queryByText(/\d+\s*%/)).not.toBeInTheDocument();
 

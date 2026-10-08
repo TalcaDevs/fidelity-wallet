@@ -127,7 +127,7 @@ function AccountEditor({ brand, onSaved }: { brand: InternalBrandDetailDto; onSa
         <label className="text-sm font-bold space-y-1">
           <span>Plan</span>
           <select value={planId} onChange={(e) => setPlanId(e.target.value as PlanId)} className={`${INPUT} w-full`}>
-            {CATALOG_PLANS.map((p) => <option key={p.id} value={p.id}>{p.name}{p.priceUsdMonthly ? ` · USD ${p.priceUsdMonthly}` : ''}</option>)}
+            {CATALOG_PLANS.map((p) => <option key={p.id} value={p.id}>{p.name}{p.priceClpMonthly ? ` · $ ${p.priceClpMonthly.toLocaleString('es-CL')}` : ''}</option>)}
           </select>
         </label>
         <label className="text-sm font-bold space-y-1">
