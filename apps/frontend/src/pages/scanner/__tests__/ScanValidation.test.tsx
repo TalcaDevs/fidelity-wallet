@@ -248,4 +248,21 @@ describe('ScanValidation', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('1 punto cada $1.000');
     });
   });
+
+  describe('stamp expiration badge', () => {
+    it('renders the expiry badge when nextExpiryAt is provided', () => {
+      const inThreeDays = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+      setup({ nextExpiryAt: inThreeDays });
+
+      const badge = screen.getByTestId('expiry-badge');
+      expect(badge).toBeInTheDocument();
+      expect(badge).toHaveTextContent(/vence en 3 días/i);
+    });
+
+    it('does not render the expiry badge when nextExpiryAt is null or undefined', () => {
+      setup({ nextExpiryAt: null });
+
+      expect(screen.queryByTestId('expiry-badge')).not.toBeInTheDocument();
+    });
+  });
 });
