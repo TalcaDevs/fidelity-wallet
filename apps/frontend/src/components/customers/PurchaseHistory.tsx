@@ -30,28 +30,49 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function EntryRow({ entry }: { entry: PurchaseHistoryEntryDto }) {
+function EntryRow({
+  entry,
+  onVoid,
+}: {
+  entry: PurchaseHistoryEntryDto;
+  onVoid?: (entry: PurchaseHistoryEntryDto) => void;
+}) {
   const isStamp = entry.type === 'STAMP_ADDED';
+  const isVoided = Boolean(entry.voidedAt);
   const quantities = [
     entry.stamps > 0 ? `${entry.stamps} ${balanceUnit('STAMPS', entry.stamps)}` : '',
     (entry.points ?? 0) > 0 ? `${entry.points} ${balanceUnit('POINTS', entry.points)}` : '',
   ].filter(Boolean).join(' y ');
+
+  const dotClass = isVoided
+    ? 'bg-rose-400'
+    : isStamp
+      ? 'bg-brand-blue'
+      : 'bg-green-500';
+
   return (
     <li className="p-4 sm:p-5 flex gap-4">
       <span
         aria-hidden="true"
-        className={`mt-1 w-2.5 h-2.5 shrink-0 rounded-full ${isStamp ? 'bg-brand-blue' : 'bg-green-500'}`}
+        className={`mt-1 w-2.5 h-2.5 shrink-0 rounded-full ${dotClass}`}
       />
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <p className="font-bold text-panel-text">
-            {isStamp
-              ? quantities || 'Carga'
-              : `Canje: ${entry.rewardName ?? 'premio'}`}
-            {entry.purchaseAmount !== null && (
-              <span className="ml-2 font-extrabold tabular-nums">{clp.format(entry.purchaseAmount)}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className={`font-bold ${isVoided ? 'line-through text-panel-muted' : 'text-panel-text'}`}>
+              {isStamp
+                ? quantities || 'Carga'
+                : `Canje: ${entry.rewardName ?? 'premio'}`}
+              {entry.purchaseAmount !== null && (
+                <span className="ml-2 font-extrabold tabular-nums">{clp.format(entry.purchaseAmount)}</span>
+              )}
+            </p>
+            {isVoided && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                Anulado
+              </span>
             )}
-          </p>
+          </div>
           <time dateTime={entry.createdAt} className="text-sm font-medium text-panel-muted">
             {formatDateTime(entry.createdAt)}
           </time>
@@ -64,18 +85,35 @@ function EntryRow({ entry }: { entry: PurchaseHistoryEntryDto }) {
           {!isStamp && <> · {quantities} usados</>}
         </p>
         {entry.note && <p className="mt-1 text-sm text-panel-text">“{entry.note}”</p>}
+        {isVoided && (
+          <div className="mt-2 p-2.5 rounded-xl bg-rose-500/5 border border-rose-500/20 text-xs text-rose-700 dark:text-rose-300">
+            <span className="font-bold">Motivo de anulación:</span> {entry.voidReason || 'Sin motivo especificado'}
+          </div>
+        )}
       </div>
-      {entry.receiptUrl && (
-        <a
-          href={entry.receiptUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="shrink-0 block w-16 h-16 rounded-xl overflow-hidden border border-panel-border"
-          title="Ver foto de la boleta"
-        >
-          <img src={entry.receiptUrl} alt="Foto de la boleta" className="w-full h-full object-cover" />
-        </a>
-      )}
+      <div className="shrink-0 flex items-center gap-2 self-start">
+        {onVoid && isStamp && !isVoided && (
+          <button
+            type="button"
+            onClick={() => onVoid(entry)}
+            className="px-3 py-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 hover:text-white hover:bg-rose-600 dark:hover:bg-rose-600 border border-rose-200 dark:border-rose-800/60 rounded-xl transition-all shadow-sm"
+            title="Anular esta carga"
+          >
+            Anular
+          </button>
+        )}
+        {entry.receiptUrl && (
+          <a
+            href={entry.receiptUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block w-16 h-16 rounded-xl overflow-hidden border border-panel-border shrink-0"
+            title="Ver foto de la boleta"
+          >
+            <img src={entry.receiptUrl} alt="Foto de la boleta" className="w-full h-full object-cover" />
+          </a>
+        )}
+      </div>
     </li>
   );
 }
@@ -84,10 +122,12 @@ function EntryRow({ entry }: { entry: PurchaseHistoryEntryDto }) {
 export function PurchaseHistory({
   data,
   onPage,
+  onVoid,
   className = '',
 }: {
   data: CustomerHistoryDto;
   onPage: (page: number) => void;
+  onVoid?: (entry: PurchaseHistoryEntryDto) => void;
   className?: string;
 }) {
   const { customer, totals, history } = data;
@@ -122,7 +162,9 @@ export function PurchaseHistory({
           <p className="p-5 text-panel-muted">Todavía no tiene {balanceUnit(data.cardType)} ni canjes.</p>
         ) : (
           <ol className="divide-y divide-panel-border">
-            {history.items.map((entry) => <EntryRow key={entry.id} entry={entry} />)}
+            {history.items.map((entry) => (
+              <EntryRow key={entry.id} entry={entry} onVoid={onVoid} />
+            ))}
           </ol>
         )}
         {pages > 1 && (

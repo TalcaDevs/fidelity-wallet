@@ -95,6 +95,9 @@ describe('ScanService', () => {
 
   beforeEach(() => {
     prisma = {
+      brand: {
+        findUnique: vi.fn().mockResolvedValue({ id: mockBrandId, status: 'ACTIVE' }),
+      },
       merchant: {
         findUnique: vi.fn().mockResolvedValue(mockLocation),
       },
@@ -118,6 +121,11 @@ describe('ScanService', () => {
       },
       scan: {
         findFirst: vi.fn(),
+        findUnique: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+      },
+      auditLog: {
         create: vi.fn(),
       },
       stamp: {
@@ -130,6 +138,7 @@ describe('ScanService', () => {
         findMany: vi.fn(),
         findFirst: vi.fn(),
         create: vi.fn(),
+        deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
         updateMany: vi.fn(async (args) => {
           return { count: args?.where?.id?.in?.length || 0 };
         }),
@@ -1211,6 +1220,158 @@ describe('ScanService', () => {
 
     it('rejects an empty customer object', async () => {
       expect(await errorsOf({ merchantId, action: 'STAMP', customer: {} })).toContain('customer');
+    });
+  });
+
+  describe('voidScan', () => {
+    const ownerUserId = 'u0000000-0000-0000-0000-000000000088';
+    const customerId = 'c0000000-0000-0000-0000-000000000001';
+    const scanId = 's0000000-0000-0000-0000-000000000001';
+    const voidDto = {
+      brandId: mockBrandId,
+      reason: 'Error en caja: se cargó doble sello por error',
+    };
+
+    const validScanToVoid = {
+      id: scanId,
+      passId: mockPassId,
+      brandId: mockBrandId,
+      type: ScanType.STAMP_ADDED,
+      stampCount: 2,
+      pointsEarned: 0,
+      voidedAt: null,
+    };
+
+    beforeEach(() => {
+      vi.mocked(prisma.brandMember.findUnique).mockResolvedValue({
+        userId: ownerUserId,
+        brandId: mockBrandId,
+        merchantId: mockMerchantId,
+        role: 'OWNER',
+      } as any);
+      vi.mocked(prisma.loyaltyProgram.findFirst).mockResolvedValue(mockProgram as any);
+      vi.mocked(prisma.pass.findUnique).mockResolvedValue(mockPass as any);
+      vi.mocked(prisma.scan.findUnique).mockResolvedValue(validScanToVoid as any);
+      vi.mocked(prisma.stamp.count).mockResolvedValue(0); // 0 sellos consumidos de este scan
+      vi.mocked(prisma.stamp.aggregate).mockResolvedValue({ _sum: { amount: 5 } } as any); // 5 sellos activos
+    });
+
+    it('rejects if caller is not an OWNER of the brand', async () => {
+      vi.mocked(prisma.brandMember.findUnique).mockResolvedValue({
+        userId: mockUserId,
+        brandId: mockBrandId,
+        merchantId: mockMerchantId,
+        role: 'STAFF',
+      } as any);
+
+      await expect(
+        service.voidScan(customerId, scanId, voidDto, mockUserId),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rejects if brand program or pass does not exist', async () => {
+      vi.mocked(prisma.pass.findUnique).mockResolvedValue(null);
+
+      await expect(
+        service.voidScan(customerId, scanId, voidDto, ownerUserId),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects if scan does not exist or belongs to another brand/pass', async () => {
+      vi.mocked(prisma.scan.findUnique).mockResolvedValue({
+        ...validScanToVoid,
+        brandId: 'other-brand',
+      } as any);
+
+      await expect(
+        service.voidScan(customerId, scanId, voidDto, ownerUserId),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects if scan is a redemption rather than a stamp addition', async () => {
+      vi.mocked(prisma.scan.findUnique).mockResolvedValue({
+        ...validScanToVoid,
+        type: ScanType.REWARD_REDEEMED,
+      } as any);
+
+      await expect(
+        service.voidScan(customerId, scanId, voidDto, ownerUserId),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects if scan was already voided previously', async () => {
+      vi.mocked(prisma.scan.findUnique).mockResolvedValue({
+        ...validScanToVoid,
+        voidedAt: new Date('2026-10-01'),
+      } as any);
+
+      await expect(
+        service.voidScan(customerId, scanId, voidDto, ownerUserId),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('rejects if stamps from this scan were already consumed in a redemption', async () => {
+      vi.mocked(prisma.stamp.count).mockResolvedValue(1); // 1 sello ya consumido
+
+      await expect(
+        service.voidScan(customerId, scanId, voidDto, ownerUserId),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('successfully voids scan even if stamps have expired, as long as they were not consumed', async () => {
+      vi.mocked(prisma.stamp.count).mockResolvedValue(0);
+      vi.mocked(prisma.stamp.aggregate).mockResolvedValue({ _sum: { amount: 0 } } as any);
+
+      const result = await service.voidScan(customerId, scanId, voidDto, ownerUserId);
+
+      expect(result).toMatchObject({
+        scanId,
+        stampsDeducted: 2,
+        pointsDeducted: 0,
+      });
+      expect(prisma.stamp.deleteMany).toHaveBeenCalledWith({
+        where: { sourceScanId: scanId, consumedAt: null },
+      });
+    });
+
+    it('successfully voids scan, deletes stamps, logs audit and notifies wallet', async () => {
+      const result = await service.voidScan(customerId, scanId, voidDto, ownerUserId);
+
+      expect(result).toMatchObject({
+        scanId,
+        stampsDeducted: 2,
+        pointsDeducted: 0,
+      });
+      expect(result.voidedAt).toBeDefined();
+
+      expect(prisma.scan.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: scanId },
+          data: expect.objectContaining({
+            voidReason: 'Error en caja: se cargó doble sello por error',
+            voidedByUserId: ownerUserId,
+          }),
+        }),
+      );
+
+      expect(prisma.stamp.deleteMany).toHaveBeenCalledWith({
+        where: { sourceScanId: scanId, consumedAt: null },
+      });
+
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            actorUserId: ownerUserId,
+            actorType: 'OWNER',
+            action: 'scan.void',
+            entity: 'Scan',
+            entityId: scanId,
+            reason: 'Error en caja: se cargó doble sello por error',
+          }),
+        }),
+      );
+
+      expect(passesService.notifyPassUpdate).toHaveBeenCalledWith(mockPassId);
     });
   });
 });

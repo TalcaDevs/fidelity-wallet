@@ -42,6 +42,7 @@ import { ConfigService } from '@nestjs/config';
 import { PassesService } from '../passes/passes.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { PanelStampsDto } from '../customers/dto/panel-stamps.dto.js';
+import type { VoidScanRequestDto, VoidScanResponseDto } from '../customers/dto/void-scan.dto.js';
 import {
   MaskedCustomerDto,
   PromotionOptionDto,
@@ -419,6 +420,118 @@ export class ScanService {
       currency: dto.currency ?? (brandCard.card.stampsEnabled ? 'STAMPS' : 'POINTS'),
       rewardUnlocked: result.rewardUnlocked,
     };
+  }
+
+  /**
+   * El dueño anula una carga de sellos o puntos mal ingresada (HANDOFF §5).
+   * Solo el OWNER puede anular. Exige motivo obligatorio, descuenta el saldo no consumido,
+   * audita el cambio en AuditLog y notifica a las billeteras digitales.
+   */
+  async voidScan(
+    customerId: string,
+    scanId: string,
+    dto: VoidScanRequestDto,
+    callerUserId: string,
+  ): Promise<VoidScanResponseDto> {
+    await requireActiveBrandOwner(this.prisma, callerUserId, dto.brandId);
+
+    const program = await findBrandProgram(this.prisma, dto.brandId);
+    if (!program) {
+      throw new NotFoundException('La marca no tiene un programa de fidelización');
+    }
+
+    const pass = await this.prisma.pass.findUnique({
+      where: { customerId_programId: { customerId, programId: program.id } },
+    });
+    if (!pass) {
+      throw new NotFoundException('El cliente no tiene una tarjeta en esta marca');
+    }
+
+    const scan = await this.prisma.scan.findUnique({
+      where: { id: scanId },
+    });
+    if (!scan || scan.passId !== pass.id || scan.brandId !== dto.brandId) {
+      throw new NotFoundException('Carga no encontrada para este cliente');
+    }
+
+    if (scan.type !== ScanType.STAMP_ADDED) {
+      throw new BadRequestException('Solo se pueden anular cargas de sellos o puntos, no canjes de recompensas');
+    }
+
+    if (scan.voidedAt) {
+      throw new ConflictException('Esta carga ya fue anulada previamente');
+    }
+
+    const now = new Date();
+    const card = toCardView(program);
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      // 1. ¿Algún sello/punto de esta carga ya fue consumido en un canje posterior?
+      const consumedStampsCount = await tx.stamp.count({
+        where: { sourceScanId: scan.id, consumedAt: { not: null } },
+      });
+      if (consumedStampsCount > 0) {
+        throw new ConflictException(
+          'No se puede anular la carga: los sellos o puntos ya fueron utilizados en un canje',
+        );
+      }
+
+      // 2. Marcar Scan como anulado
+      await tx.scan.update({
+        where: { id: scan.id },
+        data: {
+          voidedAt: now,
+          voidedByUserId: callerUserId,
+          voidReason: dto.reason,
+        },
+      });
+
+      // 3. Eliminar del libro las filas de Stamp no consumidas creadas por este scan
+      await tx.stamp.deleteMany({
+        where: { sourceScanId: scan.id, consumedAt: null },
+      });
+
+      // 4. Registrar en AuditLog
+      await recordAudit(tx, {
+        actorUserId: callerUserId,
+        actorType: 'OWNER',
+        action: 'scan.void',
+        entity: 'Scan',
+        entityId: scan.id,
+        before: { voidedAt: null },
+        after: {
+          voidedAt: now.toISOString(),
+          voidReason: dto.reason,
+          stampCount: scan.stampCount,
+          pointsEarned: scan.pointsEarned,
+          passId: pass.id,
+          customerId,
+          brandId: dto.brandId,
+        },
+        reason: dto.reason,
+      });
+
+      // 5. Recalcular saldo final
+      const newBalance = await readCardBalance(tx, pass.id, card, now);
+
+      return {
+        scanId: scan.id,
+        voidedAt: now.toISOString(),
+        activeStamps: newBalance.activeStamps,
+        activePoints: newBalance.activePoints,
+        stampsDeducted: scan.stampCount,
+        pointsDeducted: scan.pointsEarned,
+      };
+    });
+
+    // 7. Notificar a Google Wallet / Apple Pass
+    void this.passesService
+      .notifyPassUpdate(pass.id)
+      .catch((err) =>
+        this.logger.warn(`Error al notificar actualización de pase tras anulación: ${err}`),
+      );
+
+    return result;
   }
 
   private async requireActiveProgram(brandId: string): Promise<BrandCard> {
