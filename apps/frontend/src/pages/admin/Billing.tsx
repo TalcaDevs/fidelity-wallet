@@ -7,6 +7,8 @@ import {
   type PlanUsage,
   type SubscriptionStatus,
 } from '@fidelity/shared';
+import { Link } from 'react-router-dom';
+import { ROUTES } from '../../components/routing/routePaths';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
 import { useSubscription } from '../../hooks/useSubscription';
 import { formatDate } from '../../lib/formatDate';
@@ -107,7 +109,13 @@ function PlanCard({ plan, isAnnual, isCurrent }: { plan: Plan; isAnnual: boolean
   );
 }
 
-export function Billing({ brandId }: { brandId: string | null }) {
+export function Billing({
+  brandId,
+  isSuspended = false,
+}: {
+  brandId: string | null;
+  isSuspended?: boolean;
+}) {
   const [isAnnual, setIsAnnual] = useState(false);
   const { subscription, trialDaysLeft, loading, error } = useSubscription(brandId);
 
@@ -117,8 +125,9 @@ export function Billing({ brandId }: { brandId: string | null }) {
   }
 
   const currentPlan = getPlan(subscription.planId);
-  const periodText =
-    subscription.status === 'TRIALING'
+  const periodText = isSuspended
+    ? 'Servicio pausado por suspensión. Contacta a soporte para reactivarlo.'
+    : subscription.status === 'TRIALING'
       ? `Te ${trialDaysLeft === 1 ? 'queda 1 día' : `quedan ${trialDaysLeft} días`} de prueba (hasta el ${formatDate(subscription.trialEndsAt ?? subscription.currentPeriodEnd)}).`
       : `Período actual hasta el ${formatDate(subscription.currentPeriodEnd)}.`;
 
@@ -129,21 +138,72 @@ export function Billing({ brandId }: { brandId: string | null }) {
         <p className="text-panel-muted mt-2 text-sm sm:text-base">Tu plan, el uso de tu cuenta y tus boletas.</p>
       </div>
 
+      {isSuspended && (
+        <div
+          data-panel-reveal
+          role="alert"
+          className="rounded-2xl border border-red-500/30 bg-red-500/10 dark:bg-red-950/20 p-6 md:p-8 text-panel-text shadow-sm"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+            <div className="h-12 w-12 shrink-0 rounded-xl bg-red-500/20 text-red-600 dark:text-red-400 flex items-center justify-center text-2xl font-black">
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <div className="flex-1 space-y-2">
+              <h2 className="text-lg sm:text-xl font-bold text-red-600 dark:text-red-400">
+                Tu cuenta se encuentra suspendida por mora
+              </h2>
+              <p className="text-sm sm:text-base text-panel-muted leading-relaxed">
+                El acceso a las funciones operativas (escáner, clientes, métricas y locales) ha sido pausado temporalmente debido a pagos pendientes. Tus datos y clientes permanecen completamente seguros y guardados.
+              </p>
+              <div className="pt-2 flex flex-wrap items-center gap-3">
+                <Link
+                  to={ROUTES.support}
+                  className="inline-flex items-center gap-2 rounded-xl bg-red-600 hover:bg-red-700 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  <span>Contactar a Soporte</span>
+                </Link>
+                <span className="text-xs text-panel-muted">
+                  Escríbenos para regularizar tu situación y reactivar tu servicio de inmediato.
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <section data-panel-reveal className="bg-panel-surface rounded-2xl p-6 md:p-10 border border-panel-border shadow-panel">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
           <div>
             <h2 className="text-sm font-bold text-panel-muted uppercase tracking-wider mb-2">Tu plan actual</h2>
             <div className="flex flex-wrap items-baseline gap-3">
               <span className="text-4xl font-black text-panel-text">{currentPlan.name}</span>
-              <span className="text-panel-muted font-medium bg-panel-soft px-3 py-1 rounded-lg text-sm">
-                {STATUS_LABELS[subscription.status]}
+              <span className={`px-3 py-1 rounded-lg text-sm font-semibold ${
+                isSuspended
+                  ? 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/20'
+                  : 'bg-panel-soft text-panel-muted font-medium'
+              }`}>
+                {isSuspended ? 'Suspendido por mora' : STATUS_LABELS[subscription.status]}
               </span>
             </div>
             <p className="text-panel-muted mt-2">{periodText}</p>
           </div>
-          <button type="button" disabled title={SOON} className="px-6 py-3 rounded-xl bg-panel-accent/40 text-white font-bold cursor-not-allowed">
-            Suscribirme
-          </button>
+          {isSuspended ? (
+            <Link
+              to={ROUTES.support}
+              className="px-6 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold transition-colors text-center"
+            >
+              Contactar Soporte
+            </Link>
+          ) : (
+            <button type="button" disabled title={SOON} className="px-6 py-3 rounded-xl bg-panel-accent/40 text-white font-bold cursor-not-allowed">
+              Suscribirme
+            </button>
+          )}
         </div>
 
         <h3 className="text-lg font-bold text-panel-text mb-6">Uso de tu plan</h3>

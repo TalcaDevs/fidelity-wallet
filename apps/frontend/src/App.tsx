@@ -78,13 +78,13 @@ export default function App() {
 
           {/* Panel: requiere sesión y rol OWNER */}
           <Route element={<RequireRole session={session} membership={membership} allow={ADMIN_ROLES} platformAdmin={platformAdmin} />}>
-            <Route element={<Layout session={session} role={membership.role} brandId={membership.brandId} />}>
-              <Route path={ROUTES.admin} element={<Navigate to={ROUTES.dashboard} replace />} />
+            <Route element={<Layout session={session} role={membership.role} brandId={membership.brandId} isSuspended={membership.isSuspended} />}>
+              <Route path={ROUTES.admin} element={<Navigate to={membership.isSuspended ? ROUTES.billing : ROUTES.dashboard} replace />} />
               <Route path={ROUTES.dashboard} element={<Dashboard session={session} brandId={membership.brandId} />} />
               <Route path={ROUTES.analytics} element={<Analytics merchantId={membership.merchantId} />} />
               <Route path={ROUTES.team} element={<Team brandId={membership.brandId} />} />
               <Route path={ROUTES.locations} element={<Suspense fallback={null}><Locations brandId={membership.brandId} /></Suspense>} />
-              {isBillingEnabled && <Route path={ROUTES.billing} element={<Billing brandId={membership.brandId} />} />}
+              {(isBillingEnabled || membership.isSuspended) && <Route path={ROUTES.billing} element={<Billing brandId={membership.brandId} isSuspended={membership.isSuspended} />} />}
               <Route path={ROUTES.support} element={<Support brandId={membership.brandId} />} />
               <Route path={ROUTES.card} element={<CardEditor brandId={membership.brandId} />} />
               {/* Las promociones ahora son las recompensas del editor de la tarjeta. */}

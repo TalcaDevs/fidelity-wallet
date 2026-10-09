@@ -96,6 +96,26 @@ export function RequireRole({
     return <AccessDenied reason={membership.error} />;
   }
 
+  // Si la marca está suspendida (por mora o decisión interna):
+  if (membership.isSuspended) {
+    if (membership.role === 'STAFF') {
+      return (
+        <AccessDenied
+          reason="Tu local se encuentra temporalmente suspendido. Contacta al administrador del comercio."
+        />
+      );
+    }
+
+    // Para el OWNER: solo se permiten Facturación y Soporte
+    const isAllowedSuspendedRoute =
+      location.pathname === ROUTES.billing ||
+      location.pathname.startsWith(ROUTES.support);
+
+    if (!isAllowedSuspendedRoute) {
+      return <Navigate to={ROUTES.billing} replace />;
+    }
+  }
+
   if (!allow.includes(membership.role)) {
     return <Navigate to={ROUTES.scan} replace />;
   }
@@ -150,6 +170,13 @@ export function RedirectIfAuthenticated({
   }
 
   if (membership.role === 'STAFF') {
+    if (membership.isSuspended) {
+      return (
+        <AccessDenied
+          reason="Tu local se encuentra temporalmente suspendido. Contacta al administrador del comercio."
+        />
+      );
+    }
     return <Navigate to={ROUTES.scan} replace />;
   }
 
@@ -161,10 +188,19 @@ export function RedirectIfAuthenticated({
   const fromQuery = new URLSearchParams(location.search).get('redirect');
   const candidate = fromState ?? fromQuery;
 
+  if (membership.isSuspended) {
+    const candidatePath = candidate ? candidate.split('?')[0].split('#')[0] : '';
+    const isAllowedSuspended =
+      candidate && (candidatePath === ROUTES.billing || candidatePath.startsWith(ROUTES.support));
+    return <Navigate to={isAllowedSuspended ? candidate : ROUTES.billing} replace />;
+  }
+
   // Solo respetamos destinos que pertenezcan a /admin o /internal (rutas exactas o subrutas).
   // Defensa en profundidad: previene open redirects y descarta candidatos no deseados como /scan.
-  const isAllowed = (p: string) =>
-    [ROUTES.admin, ROUTES.internal].some((base) => p === base || p.startsWith(`${base}/`));
+  const isAllowed = (p: string) => {
+    const path = p.split('?')[0].split('#')[0];
+    return [ROUTES.admin, ROUTES.internal].some((base) => path === base || path.startsWith(`${base}/`));
+  };
   const target =
     candidate && isAllowed(candidate)
       ? resolveRedirectTarget(candidate)

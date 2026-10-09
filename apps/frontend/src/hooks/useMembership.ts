@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { fetchMemberships, type MerchantRole } from '../services/membershipService';
+import { fetchMemberships, type BrandStatus, type MerchantRole } from '../services/membershipService';
 
-export type { MerchantRole };
+export type { MerchantRole, BrandStatus };
 
 export interface MembershipState {
   brandId: string | null;
   merchantId: string | null;
   programId: string | null;
   role: MerchantRole | null;
+  brandStatus?: BrandStatus | null;
+  isSuspended?: boolean;
   loading: boolean;
   error: string | null;
 }
@@ -17,7 +19,16 @@ interface InternalState extends MembershipState {
   userId: string | null;
 }
 
-const EMPTY = { brandId: null, merchantId: null, programId: null, role: null, loading: false, error: null };
+const EMPTY = {
+  brandId: null,
+  merchantId: null,
+  programId: null,
+  role: null,
+  brandStatus: null,
+  isSuspended: false,
+  loading: false,
+  error: null,
+};
 
 function initialState(userId: string | null): InternalState {
   return userId

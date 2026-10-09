@@ -82,7 +82,9 @@ const NAV_ITEMS = [
 ] as const;
 
 // Facturación es un mockup: sin VITE_FEATURE_BILLING=true ni el ítem ni la ruta existen (§6.5).
-const VISIBLE_NAV_ITEMS = NAV_ITEMS.filter((item) => !('billingOnly' in item) || isBillingEnabled);
+// Si la cuenta está suspendida, se fuerza su visibilidad para permitir regularización.
+const getVisibleNavItems = (isSuspended: boolean) =>
+  NAV_ITEMS.filter((item) => !('billingOnly' in item) || isBillingEnabled || isSuspended);
 
 // El sidebar es un drawer solo bajo el breakpoint md; en escritorio está siempre visible.
 const MOBILE_QUERY = '(max-width: 767px)';
@@ -96,10 +98,12 @@ export function Layout({
   session,
   role,
   brandId,
+  isSuspended = false,
 }: {
   session: Session | null;
   role: MerchantRole | null;
   brandId: string | null;
+  isSuspended?: boolean;
 }) {
   const { isDarkMode, toggleDarkMode } = useTheme();
   const { pathname } = useLocation();
@@ -113,7 +117,8 @@ export function Layout({
   const isSidebarHidden = isMobile && !isSidebarOpen;
   useDialogFocus(drawerOpen, drawerRef, closeSidebar);
   const handleLogout = useSignOut();
-  const currentPage = VISIBLE_NAV_ITEMS.find((item) => pathname.startsWith(item.to))?.label ?? 'Panel';
+  const visibleNavItems = getVisibleNavItems(isSuspended);
+  const currentPage = visibleNavItems.find((item) => pathname.startsWith(item.to))?.label ?? 'Panel';
 
   return (
     <PanelMotionContext value={reducedMotion}>
@@ -144,21 +149,41 @@ export function Layout({
             )}
           </div>
           <nav aria-label="Secciones del negocio" className="flex-1 space-y-1">
-            {VISIBLE_NAV_ITEMS.map((item, index) => (
-              <div key={item.to}>
-                {(index === 0 || item.to === ROUTES.card || item.to === ROUTES.support) && (
-                  <p className={`px-4 pb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-panel-muted ${index === 0 ? '' : 'pt-5'}`}>
-                    {index === 0 ? 'Vista general' : item.to === ROUTES.card ? 'Tu programa' : 'Ayuda y cuenta'}
-                  </p>
-                )}
-                <NavLink to={item.to} className={NAV_LINK_CLASSES} onClick={closeSidebar}>
-                  <svg className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={item.strokeWidth} d={item.icon} />
-                  </svg>
-                  {item.label}
-                </NavLink>
-              </div>
-            ))}
+            {visibleNavItems.map((item, index) => {
+              const isLocked = isSuspended && item.to !== ROUTES.billing && item.to !== ROUTES.support;
+              return (
+                <div key={item.to}>
+                  {(index === 0 || item.to === ROUTES.card || item.to === ROUTES.support) && (
+                    <p className={`px-4 pb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-panel-muted ${index === 0 ? '' : 'pt-5'}`}>
+                      {index === 0 ? 'Vista general' : item.to === ROUTES.card ? 'Tu programa' : 'Ayuda y cuenta'}
+                    </p>
+                  )}
+                  {isLocked ? (
+                    <div
+                      role="link"
+                      aria-disabled="true"
+                      className="relative flex items-center justify-between px-4 py-3 rounded-xl text-sm font-semibold text-panel-muted/40 cursor-not-allowed select-none border border-transparent"
+                      title="Función bloqueada por suspensión de cuenta"
+                    >
+                      <div className="flex items-center gap-3">
+                        <svg className="h-5 w-5 shrink-0 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={item.strokeWidth} d={item.icon} />
+                        </svg>
+                        <span>{item.label}</span>
+                      </div>
+                      <span className="text-xs opacity-60" aria-label="Bloqueado">🔒</span>
+                    </div>
+                  ) : (
+                    <NavLink to={item.to} className={NAV_LINK_CLASSES} onClick={closeSidebar}>
+                      <svg className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={item.strokeWidth} d={item.icon} />
+                      </svg>
+                      {item.label}
+                    </NavLink>
+                  )}
+                </div>
+              );
+            })}
           </nav>
           <div className="mt-6 border-t border-panel-border pt-4">
             <div className="mb-4 flex gap-2">
@@ -193,15 +218,27 @@ export function Layout({
                 <p className="truncate text-sm font-semibold">{currentPage}</p>
               </div>
             </div>
-            <Link to={ROUTES.scan} aria-label="Abrir Escáner" className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-panel-primary px-3 py-2.5 text-xs font-bold text-white shadow-sm transition-colors hover:brightness-110 sm:px-4">
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeWidth="2" d="M4 9V4h5m6 0h5v5m0 6v5h-5m-6 0H4v-5M8 8h2v2H8zm6 0h2v2h-2zM8 14h2v2H8zm6 0h2v2h-2z" /></svg>
-              <span>Escáner</span>
-            </Link>
+            {isSuspended ? (
+              <span
+                title="Escáner pausado por cuenta suspendida"
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-panel-soft px-3 py-2.5 text-xs font-bold text-panel-muted/60 cursor-not-allowed select-none sm:px-4"
+              >
+                <svg className="h-4 w-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeWidth="2" d="M4 9V4h5m6 0h5v5m0 6v5h-5m-6 0H4v-5M8 8h2v2H8zm6 0h2v2h-2zM8 14h2v2H8zm6 0h2v2h-2z" />
+                </svg>
+                <span>Escáner pausado</span>
+              </span>
+            ) : (
+              <Link to={ROUTES.scan} aria-label="Abrir Escáner" className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-panel-primary px-3 py-2.5 text-xs font-bold text-white shadow-sm transition-colors hover:brightness-110 sm:px-4">
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeWidth="2" d="M4 9V4h5m6 0h5v5m0 6v5h-5m-6 0H4v-5M8 8h2v2H8zm6 0h2v2h-2zM8 14h2v2H8zm6 0h2v2h-2z" /></svg>
+                <span>Escáner</span>
+              </Link>
+            )}
           </header>
           <main id="panel-content" tabIndex={-1} className="relative isolate flex-1 overflow-y-auto overflow-x-hidden scroll-smooth">
             <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[480px] bg-[radial-gradient(ellipse_at_top_right,#087bd710,transparent_65%)] dark:bg-[radial-gradient(ellipse_at_top_right,#087bd71c,transparent_65%)]" />
             <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 sm:py-8 lg:px-10 lg:py-10">
-              {role === 'OWNER' && isBillingEnabled && <TrialBanner brandId={brandId} />}
+              {role === 'OWNER' && isBillingEnabled && !isSuspended && <TrialBanner brandId={brandId} />}
               <Outlet />
             </div>
           </main>

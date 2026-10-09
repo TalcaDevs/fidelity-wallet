@@ -13,12 +13,18 @@ const LOADED: MembershipState = { brandId: null, programId: null, merchantId: 'm
 
 const NO_MEMBERSHIP: MembershipState = { brandId: null, programId: null, merchantId: null, role: null, loading: false, error: 'Tu usuario no está asociado a ningún local.' };
 
-function renderGuard(membership: MembershipState, platformAdmin?: PlatformAdminState) {
+function renderGuard(
+  membership: MembershipState,
+  platformAdmin?: PlatformAdminState,
+  initialEntry = '/admin/dashboard',
+) {
   return render(
-    <MemoryRouter initialEntries={['/admin/dashboard']}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
         <Route element={<RequireRole session={SESSION} membership={membership} allow={['OWNER']} platformAdmin={platformAdmin} />}>
           <Route path="/admin/dashboard" element={<p>panel privado</p>} />
+          <Route path="/admin/billing" element={<p>pantalla facturacion</p>} />
+          <Route path="/admin/support" element={<p>pantalla soporte</p>} />
         </Route>
         <Route path="/scan" element={<p>escaner</p>} />
         <Route path="/internal" element={<p>panel interno</p>} />
@@ -59,6 +65,43 @@ describe('RequireRole', () => {
     expect(screen.queryByText('panel privado')).not.toBeInTheDocument();
     expect(screen.queryByText('escaner')).not.toBeInTheDocument();
     expect(screen.getByText('Cargando tu cuenta...')).toBeInTheDocument();
+  });
+
+  it('redirige al OWNER suspendido a /admin/billing si intenta acceder al dashboard', () => {
+    renderGuard(
+      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'OWNER', isSuspended: true, loading: false, error: null },
+      undefined,
+      '/admin/dashboard',
+    );
+    expect(screen.queryByText('panel privado')).not.toBeInTheDocument();
+    expect(screen.getByText('pantalla facturacion')).toBeInTheDocument();
+  });
+
+  it('permite al OWNER suspendido acceder a /admin/billing', () => {
+    renderGuard(
+      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'OWNER', isSuspended: true, loading: false, error: null },
+      undefined,
+      '/admin/billing',
+    );
+    expect(screen.getByText('pantalla facturacion')).toBeInTheDocument();
+  });
+
+  it('permite al OWNER suspendido acceder a /admin/support', () => {
+    renderGuard(
+      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'OWNER', isSuspended: true, loading: false, error: null },
+      undefined,
+      '/admin/support',
+    );
+    expect(screen.getByText('pantalla soporte')).toBeInTheDocument();
+  });
+
+  it('muestra acceso denegado con mensaje explicativo al STAFF de una marca suspendida', () => {
+    renderGuard(
+      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'STAFF', isSuspended: true, loading: false, error: null },
+    );
+    expect(screen.queryByText('panel privado')).not.toBeInTheDocument();
+    expect(screen.queryByText('escaner')).not.toBeInTheDocument();
+    expect(screen.getByText('Tu local se encuentra temporalmente suspendido. Contacta al administrador del comercio.')).toBeInTheDocument();
   });
 });
 
@@ -123,6 +166,8 @@ describe('RedirectIfAuthenticated', () => {
           </Route>
           <Route path="/scan" element={<p>pantalla escaner</p>} />
           <Route path="/admin/dashboard" element={<p>pantalla dashboard</p>} />
+          <Route path="/admin/billing" element={<p>pantalla facturacion</p>} />
+          <Route path="/admin/support" element={<p>pantalla soporte</p>} />
           <Route path="/admin/team" element={<p>pantalla equipo</p>} />
           <Route path="/internal" element={<p>pantalla interna</p>} />
         </Routes>
@@ -156,6 +201,38 @@ describe('RedirectIfAuthenticated', () => {
       ['/admin/login?redirect=%2Fadmin%2Fteam'],
     );
     expect(screen.getByText('pantalla equipo')).toBeInTheDocument();
+  });
+
+  it('manda al OWNER suspendido a /admin/billing al autenticarse', () => {
+    renderRedirect(
+      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'OWNER', isSuspended: true, loading: false, error: null },
+      ['/admin/login'],
+    );
+    expect(screen.getByText('pantalla facturacion')).toBeInTheDocument();
+  });
+
+  it('manda al OWNER suspendido a /admin/billing incluso si traía redirect a otra ruta no permitida', () => {
+    renderRedirect(
+      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'OWNER', isSuspended: true, loading: false, error: null },
+      ['/admin/login?redirect=%2Fadmin%2Fteam'],
+    );
+    expect(screen.getByText('pantalla facturacion')).toBeInTheDocument();
+  });
+
+  it('permite redirigir al OWNER suspendido a soporte si el redirect era a /admin/support', () => {
+    renderRedirect(
+      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'OWNER', isSuspended: true, loading: false, error: null },
+      ['/admin/login?redirect=%2Fadmin%2Fsupport'],
+    );
+    expect(screen.getByText('pantalla soporte')).toBeInTheDocument();
+  });
+
+  it('muestra acceso denegado al STAFF suspendido al autenticarse', () => {
+    renderRedirect(
+      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'STAFF', isSuspended: true, loading: false, error: null },
+      ['/admin/login'],
+    );
+    expect(screen.getByText('Tu local se encuentra temporalmente suspendido. Contacta al administrador del comercio.')).toBeInTheDocument();
   });
 
   it('manda a /internal si es un PlatformAdmin sin membresía comercial', () => {
