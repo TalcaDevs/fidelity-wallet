@@ -1,7 +1,11 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type SubmitEvent } from 'react';
 import { supabase } from '../lib/supabase';
 import { ROUTES, passwordResetUrl } from '../components/routing/routePaths';
+import { consumeLogoutReason } from '../utils/sessionActivity';
 import { AuthFrame } from './AuthFrame';
+
+const INACTIVITY_LOGOUT_MESSAGE =
+  'Tu sesión ha expirado por inactividad (1 hora). Por favor, inicia sesión nuevamente.';
 import {
   AUTH_DIVIDER,
   AUTH_DIVIDER_LINE,
@@ -45,6 +49,15 @@ export function SupabaseAuth() {
   const [errorMsg, setErrorMsg] = useState('');
   const [noticeMsg, setNoticeMsg] = useState('');
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const isUrlInactivity = params.get('reason') === 'inactivity';
+    const isStorageInactivity = consumeLogoutReason() === 'inactivity';
+    if (isUrlInactivity || isStorageInactivity) {
+      setErrorMsg(INACTIVITY_LOGOUT_MESSAGE);
+    }
+  }, []);
+
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true);
     setErrorMsg('');
@@ -66,8 +79,8 @@ export function SupabaseAuth() {
     }
   };
 
-  const handleSubmit = async (event: FormEvent) => {
-    event.preventDefault();
+  const handleSubmit = async (e: SubmitEvent<HTMLFormElement>) => {
+    e.preventDefault();
     setIsLoading(true);
     setErrorMsg('');
     try {
@@ -80,8 +93,8 @@ export function SupabaseAuth() {
     }
   };
 
-  const handleResetRequest = async (event: FormEvent) => {
-    event.preventDefault();
+  const handleResetRequest = async (e: SubmitEvent<HTMLFormElement>) => {
+    e.preventDefault();
     setIsLoading(true);
     setErrorMsg('');
     setNoticeMsg('');

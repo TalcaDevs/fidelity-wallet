@@ -9,16 +9,13 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import {
-  DEFAULT_OWNER_MAX_STAMPS,
   DEFAULT_PESOS_PER_POINT,
   POINTS_PER_SCAN_MAX,
   balanceUnit,
-  firstName,
   pointsForAmount,
   type PanelStampsResultDto,
 } from '@fidelity/shared';
-import type { Customer, LoyaltyProgram, Pass, Promotion, Scan, Stamp } from '@prisma/client';
-import { Prisma } from '@prisma/client';
+import type { LoyaltyProgram, Pass, Promotion, Scan } from '@prisma/client';
 import { MerchantRole, ScanMethod, ScanType } from '@prisma/client';
 import { enabledCurrencies, readCardBalance } from '../cards/card-balance.js';
 import { passExpiresAt, toCardView, type CardView } from '../cards/card-program.js';
@@ -28,14 +25,11 @@ import {
   locationWithBrandSelect,
   requireActiveBrandOwner,
   resolveLocationAccess,
-  type Db,
-  type LocationWithBrand,
 } from '../common/access/brand-access.js';
 import { recordAudit } from '../common/audit/audit.js';
-import { sanitizeImage, type UploadedImage, type ValidatedImage } from '../common/storage/image.js';
+import { sanitizeImage, type UploadedImage } from '../common/storage/image.js';
 import { CHILE_TIME_ZONE, chileDay, nextChileMidnight } from '../common/utils/chile-time.js';
 import { normalizeEmail } from '../common/utils/email.util.js';
-import { maskEmail, maskPhone, maskRut } from '../common/utils/mask.util.js';
 import { normalizePhone } from '../common/utils/phone.util.js';
 import { cleanRut, validateRut } from '../common/utils/rut.util.js';
 import { ConfigService } from '@nestjs/config';
@@ -45,7 +39,6 @@ import type { PanelStampsDto } from '../customers/dto/panel-stamps.dto.js';
 import type { VoidScanRequestDto, VoidScanResponseDto } from '../customers/dto/void-scan.dto.js';
 import {
   MaskedCustomerDto,
-  PromotionOptionDto,
   ScanActionDto,
   ScanActionType,
   ScanResultDto,
@@ -55,128 +48,36 @@ import {
 import { ManualLookupLimiter } from './manual-lookup-limiter.js';
 import { ReceiptStorageService } from './receipt-storage.service.js';
 import { ScanValidationTokens } from './validation-token.js';
+import {
+  POINTS_DUPLICATE_WINDOW_MS,
+  RECEIPT_LABEL,
+  REDEEM_DUPLICATE_WINDOW_MS,
+  VISIT_REDEMPTION_WINDOW_MS,
+  clp,
+} from './scan.constants.js';
+import type {
+  BrandCard,
+  PassWithRelations,
+  ResolvedTarget,
+  ScanContext,
+  StampInput,
+  StampOptions,
+  StampResponseContext,
+  StampSource,
+  Tx,
+} from './interfaces/scan.interface.js';
+import {
+  activeStampsWhere,
+  calculateFifoConsumption,
+  resolveOwnerMaxStamps,
+  resolveStampCooldownMs,
+  toCashierCustomer,
+  toPromotionOptions,
+} from './utils/scan.mappers.js';
 
-// Canje: evita el doble toque del cajero sobre el botón de canjear.
-export const REDEEM_DUPLICATE_WINDOW_MS = 90 * 1000; // 90 seconds
-export const VISIT_REDEMPTION_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 horas
-
-// Sellos: tras sumar un sello (por QR o ingreso manual), el pase queda bloqueado para sumar
-// otro durante este tiempo. Evita que un mismo cliente acumule varios sellos en una visita.
-export const DEFAULT_STAMP_COOLDOWN_MINUTES = 30;
-
-// Puntos: el monto de cada compra da sus puntos y un cliente puede comprar dos veces seguidas.
-// Solo se frena el doble envío de la misma compra.
-export const POINTS_DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
-
-/**
- * Convierte STAMP_COOLDOWN_MINUTES a milisegundos. Función pura: sin valor por defecto
- * tomado del entorno, para que el resultado dependa solo del argumento (y los tests no
- * cambien según el .env de quien los corre). Vacío, inválido o negativo → 30 min; 0 lo desactiva.
- */
-export function resolveStampCooldownMs(raw: string | undefined): number {
-  const minutes = raw === undefined || raw.trim() === '' ? NaN : Number(raw);
-  const safeMinutes =
-    Number.isFinite(minutes) && minutes >= 0 ? minutes : DEFAULT_STAMP_COOLDOWN_MINUTES;
-  return safeMinutes * 60 * 1000;
-}
-
-/** OWNER_MAX_STAMPS_PER_LOAD: entero positivo; vacío o inválido → 10. */
-export function resolveOwnerMaxStamps(raw: string | undefined): number {
-  const value = raw === undefined || raw.trim() === '' ? NaN : Number(raw);
-  return Number.isInteger(value) && value >= 1 ? value : DEFAULT_OWNER_MAX_STAMPS;
-}
-
-type PassWithRelations = Pass & {
-  customer: Customer | null;
-};
-
-/** La tarjeta de la marca y lo que vale cada punto. */
-interface BrandCard {
-  program: LoyaltyProgram;
-  card: CardView;
-  pesosPerPoint: number;
-}
-
-interface ScanContext extends BrandCard {
-  merchant: LocationWithBrand;
-}
-
-type StampSource = 'SCANNER' | 'PANEL';
-
-interface ResolvedTarget {
-  pass: PassWithRelations;
-  method: ScanMethod;
-}
-
-/** Lo que puede acompañar una carga de sellos, venga del escáner o del panel. */
-interface StampInput {
-  stampCount?: number;
-  currency?: 'STAMPS' | 'POINTS';
-  reason?: string;
-  purchaseAmount?: number;
-  note?: string;
-}
-
-interface StampOptions {
-  stampCount: number;
-  pointsEarned: number;
-  source: StampSource;
-  isOwner: boolean;
-  reason?: string;
-  purchaseAmount?: number;
-  note?: string;
-  receipt: { path: string; image: ValidatedImage } | null;
-}
-
-interface StampResponseContext {
-  passId: string;
-  card: CardView;
-  promotions: Promotion[];
-  customer: MaskedCustomerDto | undefined;
-  options: StampOptions;
-  scan: Pick<Scan, 'id' | 'method'>;
-  now: Date;
-  block?: { until: Date; scan: Scan; cause: 'STAMP' | 'POINTS' };
-}
-
-type Tx = Db;
-
-const RECEIPT_LABEL = { label: 'La foto de la boleta', fallbackName: 'boleta' };
-
-const clp = new Intl.NumberFormat('es-CL');
-
-/** Sellos que cuentan en el saldo: no consumidos y no vencidos, de cualquier promoción. */
-const activeStampsWhere = (passId: string, now: Date) => ({
-  passId,
-  consumedAt: null,
-  OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-});
-
-/** Promociones activas del comercio con la indicación de si el saldo alcanza para cada una. */
-const toPromotionOptions = (
-  promotions: Promotion[],
-  activeStamps: number,
-  activePoints: number,
-): PromotionOptionDto[] =>
-  promotions.map((p) => ({
-    id: p.id,
-    name: p.name,
-    rewardName: p.rewardName,
-    targetStamps: p.targetStamps,
-    currency: p.currency,
-    canRedeem: p.currency === 'POINTS' ? activePoints >= p.targetStamps : activeStamps >= p.targetStamps,
-  }));
-
-/** Lo que ve la caja: el primer nombre y los identificadores enmascarados, nunca el id interno. */
-function toCashierCustomer(customer: Customer | null): MaskedCustomerDto | undefined {
-  if (!customer) return undefined;
-  return {
-    firstName: firstName(customer.name),
-    rut: customer.rut ? maskRut(customer.rut) : null,
-    phone: customer.phone ? maskPhone(customer.phone) : null,
-    email: customer.email ? maskEmail(customer.email) : null,
-  };
-}
+export * from './scan.constants.js';
+export * from './interfaces/scan.interface.js';
+export * from './utils/scan.mappers.js';
 
 @Injectable()
 export class ScanService {
@@ -1278,40 +1179,3 @@ export class ScanService {
   }
 }
 
-export function calculateFifoConsumption(
-  activeStampsList: Stamp[],
-  targetStamps: number
-): { stampsToUpdate: string[]; newStampsToCreate: Prisma.StampCreateManyInput[]; partialConsumption?: { id: string; amount: number } } {
-  let remainingToConsume = targetStamps;
-  let partialConsumption: { id: string; amount: number } | undefined;
-  const stampsToUpdate: string[] = [];
-  const newStampsToCreate: Prisma.StampCreateManyInput[] = [];
-
-  for (const stamp of activeStampsList) {
-    if (remainingToConsume <= 0) break;
-
-    if (stamp.amount <= remainingToConsume) {
-      stampsToUpdate.push(stamp.id);
-      remainingToConsume -= stamp.amount;
-    } else {
-      stampsToUpdate.push(stamp.id);
-      const remainingAmount = stamp.amount - remainingToConsume;
-      partialConsumption = { id: stamp.id, amount: remainingToConsume };
-      newStampsToCreate.push({
-         passId: stamp.passId,
-         merchantId: stamp.merchantId,
-         brandId: stamp.brandId,
-         programId: stamp.programId,
-         sourceScanId: stamp.sourceScanId,
-         createdByUserId: stamp.createdByUserId,
-         earnedAt: stamp.earnedAt,
-         expiresAt: stamp.expiresAt,
-         currency: stamp.currency,
-         amount: remainingAmount,
-      });
-      remainingToConsume = 0;
-    }
-  }
-
-  return { stampsToUpdate, newStampsToCreate, partialConsumption };
-}

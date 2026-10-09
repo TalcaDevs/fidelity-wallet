@@ -141,5 +141,37 @@ describe('Authentication forms', () => {
     fireEvent.click(screen.getByRole('button', { name: '¿Olvidaste tu contraseña?' }));
     expect(screen.queryByRole('button', { name: /Continuar con Google/ })).not.toBeInTheDocument();
   });
+
+  it('displays session inactivity timeout alert from sessionStorage and clears it', async () => {
+    let sessionStore: Record<string, string> = { fidelity_logout_reason: 'inactivity' };
+    vi.stubGlobal('sessionStorage', {
+      getItem: (key: string) => sessionStore[key] ?? null,
+      removeItem: (key: string) => {
+        delete sessionStore[key];
+      },
+    });
+
+    try {
+      render(<SupabaseAuth />);
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent('Tu sesión ha expirado por inactividad (1 hora)');
+      expect(sessionStore.fidelity_logout_reason).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('displays session inactivity timeout alert from URL parameter', async () => {
+    const originalHref = window.location.href;
+    window.history.pushState({}, '', '/admin/login?reason=inactivity');
+
+    try {
+      render(<SupabaseAuth />);
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent('Tu sesión ha expirado por inactividad (1 hora)');
+    } finally {
+      window.history.pushState({}, '', originalHref);
+    }
+  });
 });
 
