@@ -11,6 +11,7 @@ import type { ConfigService } from '@nestjs/config';
 import { ApplePassService } from './services/apple-pass.service.js';
 import { GoogleWalletService } from './services/google-wallet.service.js';
 import { PassUpdateWorkerService } from './services/pass-update-worker.service.js';
+import { PassDeactivationWorkerService } from './services/pass-deactivation-worker.service.js';
 
 describe('PassesService', () => {
   let service: PassesService;
@@ -134,6 +135,29 @@ describe('PassesService', () => {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
+      passDeactivationTask: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findUnique: vi.fn().mockImplementation(({ where }: { where: { id: string } }) =>
+          Promise.resolve({
+            id: where?.id ?? 'deact-task-1',
+            passId: mockPassId,
+            status: 'PENDING',
+            attempts: 0,
+            maxAttempts: 5,
+          }),
+        ),
+        findMany: vi.fn().mockResolvedValue([]),
+        create: vi.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+          Promise.resolve({
+            id: 'deact-task-1',
+            attempts: 0,
+            maxAttempts: 5,
+            ...data,
+          }),
+        ),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
     } as unknown as PrismaService;
 
     applePassService = {
@@ -157,12 +181,18 @@ describe('PassesService', () => {
     } as unknown as ConfigService;
 
     const passUpdateWorkerService = new PassUpdateWorkerService(prisma, mockConfigService);
+    const passDeactivationWorkerService = new PassDeactivationWorkerService(
+      prisma,
+      mockConfigService,
+      googleWalletService,
+    );
 
     service = new PassesService(
       prisma,
       applePassService,
       googleWalletService,
       passUpdateWorkerService,
+      passDeactivationWorkerService,
     );
   });
 

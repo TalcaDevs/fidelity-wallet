@@ -312,14 +312,17 @@ export class CustomersService {
     let customerCompletelyDeleted = false;
 
     await this.prisma.$transaction(async (tx) => {
-      // Eliminar pase (la cascada en BD elimina Scans y Stamps)
+      // 1. Guardar tarea de desactivación en la misma transacción que elimina los datos
+      await this.passesService.enqueuePassDeactivation(passId, tx);
+
+      // 2. Eliminar pase (la cascada en BD elimina Scans y Stamps)
       await tx.pass.delete({
         where: {
           id: passId,
         },
       });
 
-      // Verificar si el cliente aún tiene pases en otros comercios
+      // 3. Verificar si el cliente aún tiene pases en otros comercios
       const remainingPasses = await tx.pass.count({
         where: { customerId },
       });
@@ -332,8 +335,8 @@ export class CustomersService {
       }
     });
 
-    // Inactivar el pase en Google Wallet (state: INACTIVE)
-    await this.passesService.deactivatePass(passId);
+    // 4. Intentar disparo inmediato tras el commit (si falla, el worker durable reintenta)
+    void this.passesService.deactivatePass(passId);
 
     return {
       success: true,
@@ -361,14 +364,22 @@ export class CustomersService {
 
     const passIds = customer.passes.map((p) => p.id);
 
-    await this.prisma.customer.delete({
-      where: { id: customerId },
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Guardar tareas de desactivación para todos los pases antes de eliminar
+      for (const passId of passIds) {
+        await this.passesService.enqueuePassDeactivation(passId, tx);
+      }
+
+      // 2. Eliminar cliente (cascada en BD elimina pases)
+      await tx.customer.delete({
+        where: { id: customerId },
+      });
     });
 
-    // Inactivar todos los pases del cliente en Google Wallet
-    await Promise.allSettled(
-      passIds.map((passId) => this.passesService.deactivatePass(passId)),
-    );
+    // 3. Disparo inmediato no bloqueante tras el commit
+    for (const passId of passIds) {
+      void this.passesService.deactivatePass(passId);
+    }
 
     return {
       success: true,

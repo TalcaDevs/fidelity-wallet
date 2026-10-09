@@ -90,6 +90,11 @@ describe('CustomersService', () => {
       }),
       notifyPassUpdate: vi.fn(),
       deactivatePass: vi.fn().mockResolvedValue(undefined),
+      enqueuePassDeactivation: vi.fn().mockResolvedValue({
+        id: 'deact-1',
+        passId: 'p-1',
+        status: 'PENDING',
+      }),
     };
 
     service = new CustomersService(
@@ -662,6 +667,7 @@ describe('CustomersService', () => {
 
       const result = await service.deleteCustomerByMerchant('m-1', 'c-1', 'user-owner');
 
+      expect(passesServiceMock.enqueuePassDeactivation).toHaveBeenCalledWith('p-1', expect.anything());
       expect(prismaMock.pass.delete).toHaveBeenCalledWith({ where: { id: 'p-1' } });
       expect(prismaMock.customer.delete).not.toHaveBeenCalled();
       expect(passesServiceMock.deactivatePass).toHaveBeenCalledWith('p-1');
@@ -677,6 +683,7 @@ describe('CustomersService', () => {
 
       const result = await service.deleteCustomerByMerchant('m-1', 'c-1', 'user-owner');
 
+      expect(passesServiceMock.enqueuePassDeactivation).toHaveBeenCalledWith('p-1', expect.anything());
       expect(prismaMock.pass.delete).toHaveBeenCalledWith({ where: { id: 'p-1' } });
       expect(prismaMock.customer.delete).toHaveBeenCalledWith({ where: { id: 'c-1' } });
       expect(passesServiceMock.deactivatePass).toHaveBeenCalledWith('p-1');
@@ -699,6 +706,8 @@ describe('CustomersService', () => {
 
       const result = await service.deleteCustomerGlobal('c-1');
 
+      expect(passesServiceMock.enqueuePassDeactivation).toHaveBeenCalledWith('p-1', expect.anything());
+      expect(passesServiceMock.enqueuePassDeactivation).toHaveBeenCalledWith('p-2', expect.anything());
       expect(prismaMock.customer.delete).toHaveBeenCalledWith({ where: { id: 'c-1' } });
       expect(passesServiceMock.deactivatePass).toHaveBeenCalledWith('p-1');
       expect(passesServiceMock.deactivatePass).toHaveBeenCalledWith('p-2');

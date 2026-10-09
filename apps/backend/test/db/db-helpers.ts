@@ -122,7 +122,7 @@ export async function createBrand(
     data: {
       id: f.customerId,
       rut: `${suffix}-K`,
-      phone: `+569${Date.now() % 1e8}`,
+      phone: `+569${String(Date.now() % 1e8).padStart(8, '9')}`,
     },
   });
   await tx.pass.create({

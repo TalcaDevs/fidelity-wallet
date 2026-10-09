@@ -95,7 +95,11 @@ export class GoogleWalletService {
       const payload = buildObjectState(this.withPublicPassImages(data), this.baseUrl());
       const res = await this.updateObjectState(resourceId, payload, accessToken);
 
-      return await this.handlePatchResponse(res, passId, activeStamps);
+      return await this.handlePatchResponse(res, passId, {
+        operation: 'patch',
+        successLog: `Successfully patched loyaltyObject for pass ${passId} (stamps: ${activeStamps})`,
+        errorLog: `Failed to patch pass ${passId}`,
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(
@@ -133,25 +137,11 @@ export class GoogleWalletService {
         accessToken,
       );
 
-      if (res.ok) {
-        this.logger.log(
-          `[Google Wallet API] Successfully deactivated loyaltyObject for pass ${passId} (state: INACTIVE)`,
-        );
-        return { success: true };
-      }
-
-      if (res.status === 404) {
-        this.logger.debug(
-          `[Google Wallet API] LoyaltyObject not found (404) for pass ${passId}. User had not saved it to wallet.`,
-        );
-        return { success: true, notFound: true };
-      }
-
-      const errBody = await res.text().catch(() => '');
-      this.logger.warn(
-        `[Google Wallet API] Failed to deactivate pass ${passId} (${res.status}): ${errBody}`,
-      );
-      return { success: false, error: `Google Wallet API error (${res.status}): ${errBody}` };
+      return await this.handlePatchResponse(res, passId, {
+        operation: 'deactivate',
+        successLog: `Successfully deactivated loyaltyObject for pass ${passId} (state: INACTIVE)`,
+        errorLog: `Failed to deactivate pass ${passId}`,
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(
@@ -418,12 +408,14 @@ export class GoogleWalletService {
   private async handlePatchResponse(
     res: Response,
     passId: string,
-    activeStamps: number,
+    context: {
+      operation: string;
+      successLog: string;
+      errorLog: string;
+    },
   ): Promise<UpdateLoyaltyObjectResult> {
     if (res.ok) {
-      this.logger.log(
-        `[Google Wallet API] Successfully patched loyaltyObject for pass ${passId} (stamps: ${activeStamps})`,
-      );
+      this.logger.log(`[Google Wallet API] ${context.successLog}`);
       return { success: true };
     }
 
@@ -436,7 +428,7 @@ export class GoogleWalletService {
 
     const errBody = await res.text().catch(() => '');
     this.logger.warn(
-      `[Google Wallet API] Failed to patch pass ${passId} (${res.status}): ${errBody}`,
+      `[Google Wallet API] ${context.errorLog} (${res.status}): ${errBody}`,
     );
     return { success: false, error: `Google Wallet API error (${res.status}): ${errBody}` };
   }

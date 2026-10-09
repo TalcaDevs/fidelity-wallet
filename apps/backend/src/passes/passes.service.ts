@@ -18,6 +18,8 @@ import type { CardClassData, PassData } from './interfaces/pass-data.interface.j
 import { ApplePassService } from './services/apple-pass.service.js';
 import { GoogleWalletService } from './services/google-wallet.service.js';
 import { PassUpdateWorkerService } from './services/pass-update-worker.service.js';
+import { PassDeactivationWorkerService } from './services/pass-deactivation-worker.service.js';
+import type { PassDeactivationTask } from '@prisma/client';
 
 /** Nombre que muestra la tarjeta en la billetera: el primer nombre, o un dato enmascarado. */
 export function passCustomerLabel(customer: Customer | null): string {
@@ -64,6 +66,7 @@ export class PassesService {
     private readonly applePassService: ApplePassService,
     private readonly googleWalletService: GoogleWalletService,
     private readonly updateWorker: PassUpdateWorkerService,
+    private readonly deactivationWorker: PassDeactivationWorkerService,
   ) {
     this.updateWorker.registerDispatcher((passId) => this.dispatchPassUpdate(passId));
   }
@@ -307,22 +310,28 @@ export class PassesService {
   }
 
   /**
+   * Encola la desactivación durable de un pase dentro de la misma transacción
+   * de BD que elimina el pase o cliente. Sobrevive al borrado del registro Pass.
+   */
+  public async enqueuePassDeactivation(
+    passId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<PassDeactivationTask> {
+    return this.deactivationWorker.enqueue(passId, tx);
+  }
+
+  /**
    * Invalida un pase en Google Wallet (state: INACTIVE) tras la eliminación
-   * de un cliente o de su pase (Ley 19.628). La operación no es bloqueante
-   * para la transacción principal de base de datos en caso de fallo externo.
+   * de un cliente o de su pase (Ley 19.628). Procesa la tarea durable en segundo plano
+   * con reintentos idempotentes y captura segura de errores.
    */
   public async deactivatePass(passId: string): Promise<void> {
     try {
-      const result = await this.googleWalletService.deactivateLoyaltyObject(passId);
-      if (result && !result.success && !result.notFound) {
-        this.logger.warn(
-          `[PassesService] Fallo no fatal al desactivar pase ${passId} en Google Wallet: ${result.error}`,
-        );
-      }
+      await this.deactivationWorker.processPass(passId);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(
-        `[PassesService] Error al desactivar pase ${passId} en Google Wallet: ${msg}`,
+        `[PassesService] Error al procesar desactivación de pase ${passId}: ${msg}`,
       );
     }
   }
