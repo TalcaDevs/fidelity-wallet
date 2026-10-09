@@ -137,7 +137,6 @@
 - 🟠 Definir el cobro: moneda (USD o CLP), IVA, boleta y proveedor de pago.
 
 **Billetera**
-- 🟠 Invalidar el pase en Google (`state: INACTIVE`) al borrar un cliente o su pase.
 - 🟠 Aviso de vencimiento del saldo por la billetera, unos 7 días antes.
 - 🟠 Recuperar un pase perdido y verificación por OTP SMS.
 - ⚪ Diferido: Apple Wallet real (Pass Type ID, `.p12`, WWDR, web service de PassKit y APNs) y la cámara en iOS Safari.
@@ -168,7 +167,7 @@
 - **Aviso por cercanía:** está integrado (`merchantLocations`), pero el radio y la frecuencia los decide Google y dependen de los permisos del celular. Validarlo en terreno antes de venderlo como funcionalidad del plan.
 - **Límite diario por defecto:** quedó activado en todas las marcas. Confirmar con los primeros locales si prefieren la espera de 30 min.
 
-Decisiones ya cerradas que conviene recordar: token del QR estático; saldo único por pase para varias recompensas; ciclo infinito tras el canje; solo el `OWNER` corrige sellos; los límites del plan se aplican al instante; los datos de una marca suspendida se anonimizan, no se retienen.
+Decisiones ya cerradas que conviene recordar: token del QR estático; saldo único por pase para varias recompensas; ciclo infinito tras el canje; solo el `OWNER` corrige sellos; los límites del plan se aplican al instante; los datos de una marca suspendida se anonimizan, no se retienen; al eliminar un cliente o pase se invalida en Google Wallet con `state: INACTIVE` para archivarlo sin borrarlo abruptamente.
 
 ---
 

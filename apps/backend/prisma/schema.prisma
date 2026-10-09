@@ -476,3 +476,23 @@ model PassUpdateTask {
   @@index([status, nextRetryAt])
   @@index([passId])
 }
+
+/// Tarea durable outbox para invalidar pases eliminados en billeteras digitales (Google/Apple).
+/// Sobrevive al borrado del registro Pass en base de datos al conservar passId sin cascada.
+model PassDeactivationTask {
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  passId      String           @db.Uuid
+  status      PassUpdateStatus @default(PENDING)
+  attempts    Int              @default(0)
+  maxAttempts Int              @default(5)
+  nextRetryAt DateTime         @default(now())
+  lastError   String?
+  lockedAt    DateTime?
+  lockedBy    String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([status, nextRetryAt])
+  @@index([passId])
+}
+

@@ -11,6 +11,7 @@ import type { ConfigService } from '@nestjs/config';
 import { ApplePassService } from './services/apple-pass.service.js';
 import { GoogleWalletService } from './services/google-wallet.service.js';
 import { PassUpdateWorkerService } from './services/pass-update-worker.service.js';
+import { PassDeactivationWorkerService } from './services/pass-deactivation-worker.service.js';
 
 describe('PassesService', () => {
   let service: PassesService;
@@ -134,6 +135,29 @@ describe('PassesService', () => {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
+      passDeactivationTask: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findUnique: vi.fn().mockImplementation(({ where }: { where: { id: string } }) =>
+          Promise.resolve({
+            id: where?.id ?? 'deact-task-1',
+            passId: mockPassId,
+            status: 'PENDING',
+            attempts: 0,
+            maxAttempts: 5,
+          }),
+        ),
+        findMany: vi.fn().mockResolvedValue([]),
+        create: vi.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+          Promise.resolve({
+            id: 'deact-task-1',
+            attempts: 0,
+            maxAttempts: 5,
+            ...data,
+          }),
+        ),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
     } as unknown as PrismaService;
 
     applePassService = {
@@ -144,6 +168,7 @@ describe('PassesService', () => {
     googleWalletService = {
       generateSaveUrl: vi.fn(() => 'https://pay.google.com/gp/v/save/mock-jwt'),
       updateLoyaltyObject: vi.fn().mockResolvedValue({ success: true }),
+      deactivateLoyaltyObject: vi.fn().mockResolvedValue({ success: true }),
       upsertLoyaltyClass: vi.fn<GoogleWalletService['upsertLoyaltyClass']>()
         .mockResolvedValue(undefined),
     } as unknown as GoogleWalletService;
@@ -156,12 +181,18 @@ describe('PassesService', () => {
     } as unknown as ConfigService;
 
     const passUpdateWorkerService = new PassUpdateWorkerService(prisma, mockConfigService);
+    const passDeactivationWorkerService = new PassDeactivationWorkerService(
+      prisma,
+      mockConfigService,
+      googleWalletService,
+    );
 
     service = new PassesService(
       prisma,
       applePassService,
       googleWalletService,
       passUpdateWorkerService,
+      passDeactivationWorkerService,
     );
   });
 
@@ -682,6 +713,28 @@ describe('PassesService', () => {
     it('never throws: it runs in the background after saving', async () => {
       vi.spyOn(prisma.loyaltyProgram, 'findUnique').mockRejectedValue(new Error('db down'));
       await expect(service.publishCard(mockProgramId)).resolves.toBeUndefined();
+    });
+  });
+
+  describe('deactivatePass', () => {
+    it('calls googleWalletService.deactivateLoyaltyObject with passId', async () => {
+      await service.deactivatePass(mockPassId);
+      expect(googleWalletService.deactivateLoyaltyObject).toHaveBeenCalledWith(mockPassId);
+    });
+
+    it('does not throw when googleWalletService returns an error result', async () => {
+      vi.mocked(googleWalletService.deactivateLoyaltyObject).mockResolvedValue({
+        success: false,
+        error: 'Network timeout',
+      });
+      await expect(service.deactivatePass(mockPassId)).resolves.not.toThrow();
+    });
+
+    it('does not throw when googleWalletService rejects with an exception', async () => {
+      vi.mocked(googleWalletService.deactivateLoyaltyObject).mockRejectedValue(
+        new Error('Google API fatal crash'),
+      );
+      await expect(service.deactivatePass(mockPassId)).resolves.not.toThrow();
     });
   });
 });

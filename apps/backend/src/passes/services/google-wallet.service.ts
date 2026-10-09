@@ -95,11 +95,57 @@ export class GoogleWalletService {
       const payload = buildObjectState(this.withPublicPassImages(data), this.baseUrl());
       const res = await this.updateObjectState(resourceId, payload, accessToken);
 
-      return await this.handlePatchResponse(res, passId, activeStamps);
+      return await this.handlePatchResponse(res, passId, {
+        operation: 'patch',
+        successLog: `Successfully patched loyaltyObject for pass ${passId} (stamps: ${activeStamps})`,
+        errorLog: `Failed to patch pass ${passId}`,
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(
         `[Google Wallet API] Error updating loyaltyObject for pass ${passId}: ${msg}`,
+      );
+      return { success: false, error: msg };
+    }
+  }
+
+  /**
+   * Invalida un pase en Google Wallet marcando su estado como INACTIVE.
+   * La tarjeta pasa a la sección de archivados/vencidos y el código QR queda inhabilitado.
+   * Si el usuario nunca guardó el pase (404), se considera un éxito sin acción pendiente.
+   */
+  public async deactivateLoyaltyObject(passId: string): Promise<UpdateLoyaltyObjectResult> {
+    const accessToken = await this.liveAccessToken(`deactivate pass ${passId}`);
+    if (!accessToken) {
+      if (this.isMockAllowed()) {
+        return { success: true };
+      }
+      return {
+        success: false,
+        error: !this.hasCredentials()
+          ? 'Las credenciales de Google Wallet no están configuradas'
+          : 'Could not obtain OAuth2 token for Google Wallet',
+      };
+    }
+
+    try {
+      const resourceId = this.resolveResourceId(passId);
+      const res = await this.walletRequest(
+        'PATCH',
+        `/loyaltyObject/${resourceId}`,
+        { state: 'INACTIVE' },
+        accessToken,
+      );
+
+      return await this.handlePatchResponse(res, passId, {
+        operation: 'deactivate',
+        successLog: `Successfully deactivated loyaltyObject for pass ${passId} (state: INACTIVE)`,
+        errorLog: `Failed to deactivate pass ${passId}`,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `[Google Wallet API] Error deactivating loyaltyObject for pass ${passId}: ${msg}`,
       );
       return { success: false, error: msg };
     }
@@ -362,12 +408,14 @@ export class GoogleWalletService {
   private async handlePatchResponse(
     res: Response,
     passId: string,
-    activeStamps: number,
+    context: {
+      operation: string;
+      successLog: string;
+      errorLog: string;
+    },
   ): Promise<UpdateLoyaltyObjectResult> {
     if (res.ok) {
-      this.logger.log(
-        `[Google Wallet API] Successfully patched loyaltyObject for pass ${passId} (stamps: ${activeStamps})`,
-      );
+      this.logger.log(`[Google Wallet API] ${context.successLog}`);
       return { success: true };
     }
 
@@ -380,7 +428,7 @@ export class GoogleWalletService {
 
     const errBody = await res.text().catch(() => '');
     this.logger.warn(
-      `[Google Wallet API] Failed to patch pass ${passId} (${res.status}): ${errBody}`,
+      `[Google Wallet API] ${context.errorLog} (${res.status}): ${errBody}`,
     );
     return { success: false, error: `Google Wallet API error (${res.status}): ${errBody}` };
   }

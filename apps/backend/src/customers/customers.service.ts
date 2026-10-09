@@ -308,17 +308,21 @@ export class CustomersService {
       throw new NotFoundException('Cliente o pase no encontrado en este comercio');
     }
 
+    const passId = pass.id;
     let customerCompletelyDeleted = false;
 
     await this.prisma.$transaction(async (tx) => {
-      // Eliminar pase (la cascada en BD elimina Scans y Stamps)
+      // 1. Guardar tarea de desactivación en la misma transacción que elimina los datos
+      await this.passesService.enqueuePassDeactivation(passId, tx);
+
+      // 2. Eliminar pase (la cascada en BD elimina Scans y Stamps)
       await tx.pass.delete({
         where: {
-          id: pass.id,
+          id: passId,
         },
       });
 
-      // Verificar si el cliente aún tiene pases en otros comercios
+      // 3. Verificar si el cliente aún tiene pases en otros comercios
       const remainingPasses = await tx.pass.count({
         where: { customerId },
       });
@@ -330,6 +334,9 @@ export class CustomersService {
         customerCompletelyDeleted = true;
       }
     });
+
+    // 4. Intentar disparo inmediato tras el commit (si falla, el worker durable reintenta)
+    void this.passesService.deactivatePass(passId);
 
     return {
       success: true,
@@ -346,15 +353,33 @@ export class CustomersService {
   async deleteCustomerGlobal(customerId: string): Promise<DeleteCustomerResponseDto> {
     const customer = await this.prisma.customer.findUnique({
       where: { id: customerId },
+      include: {
+        passes: { select: { id: true } },
+      },
     });
 
     if (!customer) {
       throw new NotFoundException('Cliente no encontrado');
     }
 
-    await this.prisma.customer.delete({
-      where: { id: customerId },
+    const passIds = customer.passes.map((p) => p.id);
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Guardar tareas de desactivación para todos los pases antes de eliminar
+      for (const passId of passIds) {
+        await this.passesService.enqueuePassDeactivation(passId, tx);
+      }
+
+      // 2. Eliminar cliente (cascada en BD elimina pases)
+      await tx.customer.delete({
+        where: { id: customerId },
+      });
     });
+
+    // 3. Disparo inmediato no bloqueante tras el commit
+    for (const passId of passIds) {
+      void this.passesService.deactivatePass(passId);
+    }
 
     return {
       success: true,
