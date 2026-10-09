@@ -11,6 +11,7 @@ import type { CreateCustomerDto } from './dto/create-customer.dto.js';
 describe('CustomersController (Security & Protection)', () => {
   let controller: CustomersController;
   let customersService: Partial<CustomersService>;
+  let scanService: Pick<ScanService, 'addStampsFromPanel' | 'voidScan'>;
 
   const customerId = '11111111-1111-4111-a111-111111111111';
   const merchantId = '22222222-2222-4222-a222-222222222222';
@@ -23,10 +24,15 @@ describe('CustomersController (Security & Protection)', () => {
       deleteCustomerGlobal: vi.fn(),
     };
 
+    scanService = {
+      addStampsFromPanel: vi.fn(),
+      voidScan: vi.fn(),
+    };
+
     controller = new CustomersController(
       customersService as CustomersService,
       { forOwner: vi.fn() } as unknown as CustomerHistoryService,
-      { addStampsFromPanel: vi.fn() } as unknown as ScanService,
+      scanService as unknown as ScanService,
     );
   });
 
@@ -40,6 +46,12 @@ describe('CustomersController (Security & Protection)', () => {
 
     it('applies SupabaseAuthGuard to POST :customerId/stamps', () => {
       const guards = Reflect.getMetadata(GUARDS_METADATA, CustomersController.prototype.addStamps);
+
+      expect(guards).toContain(SupabaseAuthGuard);
+    });
+
+    it('applies SupabaseAuthGuard to POST :customerId/scans/:scanId/void', () => {
+      const guards = Reflect.getMetadata(GUARDS_METADATA, CustomersController.prototype.voidScan);
 
       expect(guards).toContain(SupabaseAuthGuard);
     });
@@ -170,6 +182,55 @@ describe('CustomersController (Security & Protection)', () => {
 
       expect(result).toEqual(mockResponse);
       expect(customersService.createOrFindCustomer).toHaveBeenCalledWith(dto);
+    });
+  });
+
+  describe('POST :customerId/scans/:scanId/void - Execution & Authorization', () => {
+    const scanId = '33333333-3333-4333-a333-333333333333';
+    const brandId = '44444444-4444-4444-a444-444444444444';
+    const dto = {
+      brandId,
+      reason: 'Error de tipeo en caja, se cargaron sellos de más',
+    };
+
+    it('throws UnauthorizedException when user is undefined', async () => {
+      await expect(
+        controller.voidScan(customerId, scanId, dto, undefined),
+      ).rejects.toThrow(new UnauthorizedException('Usuario no autenticado'));
+    });
+
+    it('throws UnauthorizedException when user has no id', async () => {
+      await expect(
+        controller.voidScan(customerId, scanId, dto, {} as any),
+      ).rejects.toThrow(new UnauthorizedException('Usuario no autenticado'));
+    });
+
+    it('delegates to scanService.voidScan with customerId, scanId, dto and user.id', async () => {
+      const mockResult = {
+        scanId,
+        voidedAt: '2026-10-08T15:00:00.000Z',
+        activeStamps: 2,
+        activePoints: 0,
+        stampsDeducted: 1,
+        pointsDeducted: 0,
+      };
+
+      vi.mocked(scanService.voidScan).mockResolvedValue(mockResult);
+
+      const result = await controller.voidScan(
+        customerId,
+        scanId,
+        dto,
+        { id: ownerUserId, email: 'owner@local.cl' },
+      );
+
+      expect(result).toEqual(mockResult);
+      expect(scanService.voidScan).toHaveBeenCalledWith(
+        customerId,
+        scanId,
+        dto,
+        ownerUserId,
+      );
     });
   });
 });

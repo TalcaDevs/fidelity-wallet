@@ -184,6 +184,69 @@ describe('CustomerDetail', () => {
 
     expect(await screen.findByText('Solo el dueño del comercio puede realizar esta acción')).toBeInTheDocument();
   });
+
+  it('allows owner to void an active load from the history', async () => {
+    const historySpy = vi.spyOn(customersService, 'getCustomerHistory').mockResolvedValue(history());
+    const voidSpy = vi.spyOn(customersService, 'voidCustomerScan').mockResolvedValue({
+      scanId: 's-1',
+      voidedAt: '2026-10-08T15:00:00Z',
+      activeStamps: 2,
+      activePoints: 0,
+      stampsDeducted: 1,
+      pointsDeducted: 0,
+    });
+
+    renderDetail();
+
+    const voidButton = await screen.findByRole('button', { name: 'Anular' });
+    fireEvent.click(voidButton);
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('Anular carga de sellos')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/motivo de la anulación/i), {
+      target: { value: 'Carga duplicada por error en caja' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar anulación' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(voidSpy).toHaveBeenCalledWith('c-1', 's-1', 'b-1', 'Carga duplicada por error en caja');
+    expect(notifySuccess).toHaveBeenCalledWith('Carga anulada exitosamente. Se descontaron 1 sello.');
+    await waitFor(() => expect(historySpy).toHaveBeenCalledTimes(2));
+  });
+
+  it('notifies both stamps and points deducted when voiding a dual load', async () => {
+    const notifySuccess = vi.fn();
+    vi.spyOn(toastHook, 'useToast').mockReturnValue({ notifySuccess, notifyError: vi.fn() });
+    vi.spyOn(customersService, 'getCustomerHistory').mockResolvedValue(history());
+    vi.spyOn(customersService, 'voidCustomerScan').mockResolvedValue({
+      scanId: 's-1',
+      voidedAt: '2026-10-06T15:00:00Z',
+      activeStamps: 2,
+      activePoints: 400,
+      stampsDeducted: 1,
+      pointsDeducted: 100,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/admin/customers/c-1']}>
+        <Routes>
+          <Route path="/admin/customers/:customerId" element={<CustomerDetail brandId="b-1" />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const voidButton = await screen.findByRole('button', { name: 'Anular' });
+    fireEvent.click(voidButton);
+
+    fireEvent.change(screen.getByLabelText(/motivo de la anulación/i), {
+      target: { value: 'Error en monto y sello simultáneo' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar anulación' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(notifySuccess).toHaveBeenCalledWith('Carga anulada exitosamente. Se descontaron 1 sello y 100 puntos.');
+  });
 });
 
 describe('Customers list', () => {

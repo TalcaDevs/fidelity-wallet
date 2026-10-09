@@ -95,6 +95,9 @@ describe('ScanService', () => {
 
   beforeEach(() => {
     prisma = {
+      brand: {
+        findUnique: vi.fn().mockResolvedValue({ id: mockBrandId, status: 'ACTIVE' }),
+      },
       merchant: {
         findUnique: vi.fn().mockResolvedValue(mockLocation),
       },
@@ -118,6 +121,11 @@ describe('ScanService', () => {
       },
       scan: {
         findFirst: vi.fn(),
+        findUnique: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+      },
+      auditLog: {
         create: vi.fn(),
       },
       stamp: {
@@ -130,6 +138,7 @@ describe('ScanService', () => {
         findMany: vi.fn(),
         findFirst: vi.fn(),
         create: vi.fn(),
+        deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
         updateMany: vi.fn(async (args) => {
           return { count: args?.where?.id?.in?.length || 0 };
         }),
@@ -869,7 +878,7 @@ describe('ScanService', () => {
       );
 
       expect(prisma.scan.findFirst).toHaveBeenCalledWith({
-        where: { passId: mockPassId, type: ScanType.STAMP_ADDED, method: { not: ScanMethod.WELCOME }, stampCount: { gt: 0 } },
+        where: { passId: mockPassId, type: ScanType.STAMP_ADDED, method: { not: ScanMethod.WELCOME }, stampCount: { gt: 0 }, voidedAt: null },
         orderBy: { createdAt: 'desc' },
       });
       expect(prisma.stamp.aggregate).toHaveBeenCalledWith({ _sum: { amount: true },
@@ -1211,6 +1220,286 @@ describe('ScanService', () => {
 
     it('rejects an empty customer object', async () => {
       expect(await errorsOf({ merchantId, action: 'STAMP', customer: {} })).toContain('customer');
+    });
+  });
+
+  describe('voidScan', () => {
+    const ownerUserId = 'u0000000-0000-0000-0000-000000000088';
+    const customerId = 'c0000000-0000-0000-0000-000000000001';
+    const scanId = 's0000000-0000-0000-0000-000000000001';
+    const voidDto = {
+      brandId: mockBrandId,
+      reason: 'Error en caja: se cargó doble sello por error',
+    };
+
+    const validScanToVoid = {
+      id: scanId,
+      passId: mockPassId,
+      brandId: mockBrandId,
+      type: ScanType.STAMP_ADDED,
+      stampCount: 2,
+      pointsEarned: 0,
+      voidedAt: null,
+    };
+
+    beforeEach(() => {
+      vi.mocked(prisma.brandMember.findUnique).mockResolvedValue({
+        userId: ownerUserId,
+        brandId: mockBrandId,
+        merchantId: mockMerchantId,
+        role: 'OWNER',
+      } as any);
+      vi.mocked(prisma.loyaltyProgram.findFirst).mockResolvedValue(mockProgram as any);
+      vi.mocked(prisma.pass.findUnique).mockResolvedValue(mockPass as any);
+      vi.mocked(prisma.scan.findUnique).mockResolvedValue(validScanToVoid as any);
+      vi.mocked(prisma.stamp.count).mockResolvedValue(0); // 0 sellos consumidos de este scan
+      // Mock para aggregate por moneda: 3 sellos activos restantes tras anular
+      vi.mocked(prisma.stamp.aggregate as any).mockImplementation(async ({ where }: any) => {
+        if (where?.currency === 'STAMPS') return { _sum: { amount: 3 } } as any;
+        if (where?.currency === 'POINTS') return { _sum: { amount: 0 } } as any;
+        return { _sum: { amount: 3 } } as any;
+      });
+      vi.mocked(prisma.stamp.deleteMany).mockResolvedValue({ count: 1 });
+      vi.mocked(passesService.enqueuePassUpdate).mockResolvedValue(undefined);
+      vi.mocked(passesService.notifyPassUpdate).mockResolvedValue(undefined);
+    });
+
+    it('rejects if caller is not an OWNER of the brand', async () => {
+      vi.mocked(prisma.brandMember.findUnique).mockResolvedValue({
+        userId: mockUserId,
+        brandId: mockBrandId,
+        merchantId: mockMerchantId,
+        role: 'STAFF',
+      } as any);
+
+      await expect(
+        service.voidScan(customerId, scanId, voidDto, mockUserId),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rejects if brand program or pass does not exist', async () => {
+      vi.mocked(prisma.pass.findUnique).mockResolvedValue(null);
+
+      await expect(
+        service.voidScan(customerId, scanId, voidDto, ownerUserId),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects if scan does not exist or belongs to another brand/pass', async () => {
+      vi.mocked(prisma.scan.findUnique).mockResolvedValue({
+        ...validScanToVoid,
+        brandId: 'other-brand',
+      } as any);
+
+      await expect(
+        service.voidScan(customerId, scanId, voidDto, ownerUserId),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects if scan is a redemption rather than a stamp addition', async () => {
+      vi.mocked(prisma.scan.findUnique).mockResolvedValue({
+        ...validScanToVoid,
+        type: ScanType.REWARD_REDEEMED,
+      } as any);
+
+      await expect(
+        service.voidScan(customerId, scanId, voidDto, ownerUserId),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects if scan was already voided previously', async () => {
+      vi.mocked(prisma.scan.findUnique).mockResolvedValue({
+        ...validScanToVoid,
+        voidedAt: new Date('2026-10-01'),
+      } as any);
+
+      await expect(
+        service.voidScan(customerId, scanId, voidDto, ownerUserId),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('rejects if stamps from this scan were already consumed in a redemption', async () => {
+      vi.mocked(prisma.stamp.count).mockResolvedValue(1); // 1 sello ya consumido
+
+      await expect(
+        service.voidScan(customerId, scanId, voidDto, ownerUserId),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('successfully voids scan even if stamps have expired, as long as they were not consumed', async () => {
+      vi.mocked(prisma.stamp.count).mockResolvedValue(0);
+      vi.mocked(prisma.stamp.aggregate as any).mockResolvedValue({ _sum: { amount: 0 } } as any);
+
+      const result = await service.voidScan(customerId, scanId, voidDto, ownerUserId);
+
+      expect(result).toEqual({
+        scanId,
+        voidedAt: expect.any(String),
+        activeStamps: 0,
+        activePoints: 0,
+        stampsDeducted: 2,
+        pointsDeducted: 0,
+      });
+      expect(prisma.stamp.deleteMany).toHaveBeenCalledWith({
+        where: { sourceScanId: scanId, consumedAt: null },
+      });
+    });
+
+    it('successfully voids scan, deletes stamps, logs audit, enqueues wallet update and returns correct final balances', async () => {
+      const result = await service.voidScan(customerId, scanId, voidDto, ownerUserId);
+
+      expect(result).toEqual({
+        scanId,
+        voidedAt: expect.any(String),
+        activeStamps: 3,
+        activePoints: 0,
+        stampsDeducted: 2,
+        pointsDeducted: 0,
+      });
+
+      expect(prisma.scan.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: scanId },
+          data: expect.objectContaining({
+            voidReason: 'Error en caja: se cargó doble sello por error',
+            voidedByUserId: ownerUserId,
+          }),
+        }),
+      );
+
+      expect(prisma.stamp.deleteMany).toHaveBeenCalledWith({
+        where: { sourceScanId: scanId, consumedAt: null },
+      });
+
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            actorUserId: ownerUserId,
+            actorType: 'OWNER',
+            action: 'scan.void',
+            entity: 'Scan',
+            entityId: scanId,
+            reason: 'Error en caja: se cargó doble sello por error',
+          }),
+        }),
+      );
+
+      expect(passesService.enqueuePassUpdate).toHaveBeenCalledWith(mockPassId, expect.anything());
+      expect(passesService.notifyPassUpdate).toHaveBeenCalledWith(mockPassId);
+    });
+
+    it('successfully voids a points-only scan and returns updated activePoints', async () => {
+      vi.mocked(prisma.loyaltyProgram.findFirst).mockResolvedValue({
+        ...mockProgram,
+        pointsEnabled: true,
+        stampsEnabled: false,
+      } as any);
+
+      vi.mocked(prisma.scan.findUnique).mockResolvedValue({
+        id: scanId,
+        passId: mockPassId,
+        brandId: mockBrandId,
+        type: ScanType.STAMP_ADDED,
+        stampCount: 0,
+        pointsEarned: 150,
+        voidedAt: null,
+      } as any);
+
+      vi.mocked(prisma.stamp.aggregate as any).mockImplementation(async ({ where }: any) => {
+        if (where?.currency === 'POINTS') return { _sum: { amount: 100 } } as any;
+        return { _sum: { amount: 0 } } as any;
+      });
+
+      const result = await service.voidScan(customerId, scanId, { brandId: mockBrandId, reason: 'Monto equivocado' }, ownerUserId);
+
+      expect(result).toEqual({
+        scanId,
+        voidedAt: expect.any(String),
+        activeStamps: 0,
+        activePoints: 100,
+        stampsDeducted: 0,
+        pointsDeducted: 150,
+      });
+      expect(passesService.enqueuePassUpdate).toHaveBeenCalledWith(mockPassId, expect.anything());
+    });
+
+    it('successfully voids a dual load (stamps + points) and deducts both amounts', async () => {
+      vi.mocked(prisma.loyaltyProgram.findFirst).mockResolvedValue({
+        ...mockProgram,
+        pointsEnabled: true,
+        stampsEnabled: true,
+      } as any);
+
+      vi.mocked(prisma.scan.findUnique).mockResolvedValue({
+        id: scanId,
+        passId: mockPassId,
+        brandId: mockBrandId,
+        type: ScanType.STAMP_ADDED,
+        stampCount: 1,
+        pointsEarned: 100,
+        voidedAt: null,
+      } as any);
+
+      vi.mocked(prisma.stamp.aggregate as any).mockImplementation(async ({ where }: any) => {
+        if (where?.currency === 'STAMPS') return { _sum: { amount: 4 } } as any;
+        if (where?.currency === 'POINTS') return { _sum: { amount: 300 } } as any;
+        return { _sum: { amount: 0 } } as any;
+      });
+
+      const result = await service.voidScan(customerId, scanId, { brandId: mockBrandId, reason: 'Carga dual errónea' }, ownerUserId);
+
+      expect(result).toEqual({
+        scanId,
+        voidedAt: expect.any(String),
+        activeStamps: 4,
+        activePoints: 300,
+        stampsDeducted: 1,
+        pointsDeducted: 100,
+      });
+      expect(passesService.enqueuePassUpdate).toHaveBeenCalledWith(mockPassId, expect.anything());
+      expect(passesService.notifyPassUpdate).toHaveBeenCalledWith(mockPassId);
+    });
+
+    it('successfully voids scan even if the brand has zero active promotions (decoupled from promotions)', async () => {
+      // Si la marca desactiva o no tiene promociones, voidScan no debe fallar con 'El comercio no tiene una promoción activa válida'
+      vi.mocked(prisma.promotion.findMany).mockResolvedValue([]);
+
+      const result = await service.voidScan(customerId, scanId, voidDto, ownerUserId);
+
+      expect(result).toEqual({
+        scanId,
+        voidedAt: expect.any(String),
+        activeStamps: 3,
+        activePoints: 0,
+        stampsDeducted: 2,
+        pointsDeducted: 0,
+      });
+
+      // Comprobar que se ejecutó el bloqueo pesimista de Pass FOR UPDATE y LoyaltyProgram FOR SHARE
+      expect(prisma.$queryRaw).toHaveBeenCalledWith(
+        expect.arrayContaining([expect.stringContaining('SELECT id FROM "Pass"')]),
+        expect.anything(),
+      );
+    });
+
+    it('allows a new stamp load immediately after voiding the previous scan without cooldown block', async () => {
+      // Si el último scan fue anulado (voidedAt no es null), findLatestScans lo ignora y devuelve null.
+      vi.spyOn(prisma.pass, 'findUnique').mockResolvedValue(mockPass as any);
+      vi.spyOn(prisma.scan, 'findFirst').mockResolvedValue(null);
+      vi.spyOn(prisma.scan, 'create').mockResolvedValue({ id: 'new-scan-1', stampCount: 1, pointsEarned: 0 } as any);
+      vi.spyOn(prisma.stamp, 'create').mockResolvedValue({ id: 'new-stamp-1', amount: 1 } as any);
+
+      const stampResult = await service.processScan(
+        { passToken: mockToken, action: ScanActionType.STAMP, merchantId: mockMerchantId },
+        mockUserId,
+      );
+
+      expect(stampResult.success).toBe(true);
+      expect(stampResult.alreadyScanned).toBe(false);
+      expect(prisma.scan.findFirst).toHaveBeenCalledWith({
+        where: { passId: mockPassId, type: ScanType.STAMP_ADDED, method: { not: ScanMethod.WELCOME }, stampCount: { gt: 0 }, voidedAt: null },
+        orderBy: { createdAt: 'desc' },
+      });
     });
   });
 });

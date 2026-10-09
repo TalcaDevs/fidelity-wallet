@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { balanceUnit, type PanelStampsResultDto } from '@fidelity/shared';
+import { balanceUnit, type PanelStampsResultDto, type PurchaseHistoryEntryDto, type VoidScanResultDto } from '@fidelity/shared';
 import { PurchaseHistory } from '../../components/customers/PurchaseHistory';
 import { ROUTES } from '../../components/routing/routePaths';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
@@ -8,6 +8,7 @@ import { useAsyncData } from '../../hooks/useAsyncData';
 import { useToast } from '../../hooks/useToast';
 import { getCustomerHistory } from '../../services/customersService';
 import { AddStampsModal } from './components/customers/AddStampsModal';
+import { VoidScanModal } from './components/customers/VoidScanModal';
 
 /** Ficha del cliente con su historial de compras en la marca (solo el dueño). */
 export function CustomerDetail({ brandId }: { brandId: string | null }) {
@@ -15,6 +16,7 @@ export function CustomerDetail({ brandId }: { brandId: string | null }) {
   const { notifySuccess } = useToast();
   const [page, setPage] = useState(1);
   const [adding, setAdding] = useState(false);
+  const [scanToVoid, setScanToVoid] = useState<PurchaseHistoryEntryDto | null>(null);
 
   const fetcher = useCallback(
     () => getCustomerHistory(customerId!, brandId!, page),
@@ -35,6 +37,17 @@ export function CustomerDetail({ brandId }: { brandId: string | null }) {
     // La carga nueva queda arriba en el historial: se vuelve a la primera página.
     if (page === 1) reload();
     else setPage(1);
+  };
+
+  const handleVoided = (result: VoidScanResultDto) => {
+    setScanToVoid(null);
+    const parts = [
+      result.stampsDeducted > 0 ? `${result.stampsDeducted} ${balanceUnit('STAMPS', result.stampsDeducted)}` : '',
+      result.pointsDeducted > 0 ? `${result.pointsDeducted} ${balanceUnit('POINTS', result.pointsDeducted)}` : '',
+    ].filter(Boolean);
+    const unitText = parts.join(' y ') || 'la carga';
+    notifySuccess(`Carga anulada exitosamente. Se descontaron ${unitText}.`);
+    reload();
   };
 
   return (
@@ -74,6 +87,7 @@ export function CustomerDetail({ brandId }: { brandId: string | null }) {
         data && <PurchaseHistory
           data={data}
           onPage={setPage}
+          onVoid={setScanToVoid}
           className="[&_section]:bg-panel-surface [&_section]:border-panel-border [&_section]:shadow-panel [&_[aria-label=Totales]>div]:bg-panel-surface [&_[aria-label=Totales]>div]:border-panel-border [&_dt]:text-panel-muted [&_dd]:text-panel-text [&_h2]:text-panel-text [&_p]:text-panel-muted [&_p.font-bold]:text-panel-text [&_p.font-black]:text-panel-text [&_time]:text-panel-muted [&_button]:bg-panel-soft [&_button]:text-panel-text [&_ol]:divide-panel-border"
         />
       )}
@@ -91,6 +105,17 @@ export function CustomerDetail({ brandId }: { brandId: string | null }) {
           pointsEnabled={data.pointsEnabled}
           onClose={() => setAdding(false)}
           onAdded={handleAdded}
+        />
+      )}
+
+      {scanToVoid && data && brandId && customerId && (
+        <VoidScanModal
+          brandId={brandId}
+          customerId={customerId}
+          customerName={customerName}
+          entry={scanToVoid}
+          onClose={() => setScanToVoid(null)}
+          onVoided={handleVoided}
         />
       )}
     </>
