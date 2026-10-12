@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
-import { RedirectIfAuthenticated, RequirePlatformAdmin, RequireRole } from './RouteGuards';
+import { RedirectIfAuthenticated, RequireActiveSubscription, RequirePlatformAdmin, RequireRole } from './RouteGuards';
 import type { MembershipState } from '../../hooks/useMembership';
 import type { PlatformAdminState } from '../../hooks/usePlatformAdmin';
 
@@ -22,9 +22,11 @@ function renderGuard(
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
         <Route element={<RequireRole session={SESSION} membership={membership} allow={['OWNER']} platformAdmin={platformAdmin} />}>
-          <Route path="/admin/dashboard" element={<p>panel privado</p>} />
           <Route path="/admin/billing" element={<p>pantalla facturacion</p>} />
           <Route path="/admin/support" element={<p>pantalla soporte</p>} />
+          <Route element={<RequireActiveSubscription membership={membership} />}>
+            <Route path="/admin/dashboard" element={<p>panel privado</p>} />
+          </Route>
         </Route>
         <Route path="/scan" element={<p>escaner</p>} />
         <Route path="/internal" element={<p>panel interno</p>} />
@@ -251,5 +253,37 @@ describe('RedirectIfAuthenticated', () => {
       { role: 'SUPERADMIN', loading: false },
     );
     expect(screen.getByText('pantalla interna')).toBeInTheDocument();
+  });
+});
+
+describe('RequireActiveSubscription', () => {
+  it('permite el acceso a rutas protegidas cuando la suscripción está activa', () => {
+    render(
+      <MemoryRouter initialEntries={['/admin/dashboard']}>
+        <Routes>
+          <Route element={<RequireActiveSubscription membership={{ ...LOADED, isSuspended: false }} />}>
+            <Route path="/admin/dashboard" element={<p>panel activo</p>} />
+          </Route>
+          <Route path="/admin/billing" element={<p>pantalla facturacion</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('panel activo')).toBeInTheDocument();
+    expect(screen.queryByText('pantalla facturacion')).not.toBeInTheDocument();
+  });
+
+  it('intercepta y redirige a /admin/billing cuando la marca se encuentra suspendida', () => {
+    render(
+      <MemoryRouter initialEntries={['/admin/dashboard']}>
+        <Routes>
+          <Route element={<RequireActiveSubscription membership={{ ...LOADED, isSuspended: true }} />}>
+            <Route path="/admin/dashboard" element={<p>panel activo</p>} />
+          </Route>
+          <Route path="/admin/billing" element={<p>pantalla facturacion</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText('panel activo')).not.toBeInTheDocument();
+    expect(screen.getByText('pantalla facturacion')).toBeInTheDocument();
   });
 });

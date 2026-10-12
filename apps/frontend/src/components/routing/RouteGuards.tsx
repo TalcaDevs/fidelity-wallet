@@ -97,29 +97,36 @@ export function RequireRole({
   }
 
   // Si la marca está suspendida (por mora o decisión interna):
-  if (membership.isSuspended) {
-    if (membership.role === 'STAFF') {
-      return (
-        <AccessDenied
-          reason="Tu local se encuentra temporalmente suspendido. Contacta al administrador del comercio."
-        />
-      );
-    }
-
-    // Para el OWNER: solo se permiten Facturación y Soporte
-    const isAllowedSuspendedRoute =
-      location.pathname === ROUTES.billing ||
-      location.pathname.startsWith(ROUTES.support);
-
-    if (!isAllowedSuspendedRoute) {
-      return <Navigate to={ROUTES.billing} replace />;
-    }
+  // El STAFF queda bloqueado inmediatamente ya que no puede operar el escáner.
+  // La restricción de rutas operativas del OWNER se maneja de forma declarativa con RequireActiveSubscription.
+  if (membership.isSuspended && membership.role === 'STAFF') {
+    return (
+      <AccessDenied
+        reason="Tu local se encuentra temporalmente suspendido. Contacta al administrador del comercio."
+      />
+    );
   }
 
   if (!allow.includes(membership.role)) {
     return <Navigate to={ROUTES.scan} replace />;
   }
 
+  return <Outlet />;
+}
+
+/**
+ * Guard para rutas operativas del panel:
+ * Si la suscripción de la marca está suspendida (por mora), intercepta la navegación
+ * y redirige automáticamente al dueño a Facturación (/admin/billing).
+ */
+export function RequireActiveSubscription({
+  membership,
+}: {
+  membership: MembershipState;
+}) {
+  if (membership.isSuspended) {
+    return <Navigate to={ROUTES.billing} replace />;
+  }
   return <Outlet />;
 }
 

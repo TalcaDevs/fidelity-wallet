@@ -160,7 +160,6 @@ export function Layout({
                   )}
                   {isLocked ? (
                     <div
-                      role="link"
                       aria-disabled="true"
                       className="relative flex items-center justify-between px-4 py-3 rounded-xl text-sm font-semibold text-panel-muted/40 cursor-not-allowed select-none border border-transparent"
                       title="Función bloqueada por suspensión de cuenta"

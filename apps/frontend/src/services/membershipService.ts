@@ -46,6 +46,10 @@ async function resolveMembership(row: BrandMemberRow): Promise<Membership> {
   const isSuspended = brandStatus === 'SUSPENDED';
 
   if (isSuspended) {
+    // Si la marca está suspendida, las políticas RLS ocultan las tablas operativas (LoyaltyProgram, etc.).
+    // Retornamos de inmediato con programId: null. El enrutamiento protege las rutas operativas
+    // mediante RequireActiveSubscription y restringe al usuario a Billing y Support, las cuales
+    // dependen únicamente de brandId y son completamente seguras contra valores nulos.
     return {
       brandId: row.brandId,
       merchantId: row.merchantId ?? '',
