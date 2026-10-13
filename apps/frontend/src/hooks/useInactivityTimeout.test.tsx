@@ -1,7 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import type { Session } from '@supabase/supabase-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { supabase } from '../lib/supabase';
 import {
   ACTIVITY_STORAGE_KEY,
   clearLastActivity,
@@ -83,22 +82,25 @@ describe('useInactivityTimeout and activity utilities', () => {
   });
 
   it('does not monitor activity or set storage if session is null', () => {
+    const onTimeout = vi.fn();
     setLastActivity(5000);
-    renderHook(() => useInactivityTimeout(null));
+    renderHook(() => useInactivityTimeout(null, { onTimeout }));
 
     expect(getLastActivity()).toBeNull();
   });
 
   it('initializes last activity timestamp when session is present', () => {
+    const onTimeout = vi.fn();
     const now = 1000000;
     vi.setSystemTime(now);
 
-    renderHook(() => useInactivityTimeout(mockSession));
+    renderHook(() => useInactivityTimeout(mockSession, { onTimeout }));
 
     expect(getLastActivity()).toBe(now);
   });
 
   it('updates timestamp on user activity after throttle window', () => {
+    const onTimeout = vi.fn();
     const start = 1000000;
     vi.setSystemTime(start);
 
@@ -107,6 +109,7 @@ describe('useInactivityTimeout and activity utilities', () => {
         throttleMs: 1000,
         timeoutMs: 5000,
         checkIntervalMs: 500,
+        onTimeout,
       }),
     );
 
@@ -129,12 +132,14 @@ describe('useInactivityTimeout and activity utilities', () => {
     const start = 1000000;
     vi.setSystemTime(start);
     const onActivity = vi.fn();
+    const onTimeout = vi.fn();
 
     renderHook(() =>
       useInactivityTimeout(mockSession, {
         throttleMs: 1000,
         timeoutMs: 5000,
         checkIntervalMs: 500,
+        onTimeout,
         onActivity,
       }),
     );
@@ -151,7 +156,6 @@ describe('useInactivityTimeout and activity utilities', () => {
     const start = 1000000;
     vi.setSystemTime(start);
     const onTimeout = vi.fn();
-    const signOutSpy = vi.spyOn(supabase.auth, 'signOut').mockResolvedValue({ error: null });
 
     renderHook(() =>
       useInactivityTimeout(mockSession, {
@@ -168,35 +172,18 @@ describe('useInactivityTimeout and activity utilities', () => {
     expect(onTimeout).toHaveBeenCalledTimes(1);
     expect(sessionStore[LOGOUT_REASON_KEY]).toBe('inactivity');
     expect(getLastActivity()).toBeNull();
-    expect(signOutSpy).not.toHaveBeenCalled();
-  });
-
-  it('calls supabase.auth.signOut by default on inactivity timeout', async () => {
-    const start = 1000000;
-    vi.setSystemTime(start);
-    const signOutSpy = vi.spyOn(supabase.auth, 'signOut').mockResolvedValue({ error: null });
-
-    renderHook(() =>
-      useInactivityTimeout(mockSession, {
-        timeoutMs: 2000,
-        checkIntervalMs: 500,
-      }),
-    );
-
-    vi.advanceTimersByTime(2500);
-
-    expect(signOutSpy).toHaveBeenCalledTimes(1);
-    expect(sessionStore[LOGOUT_REASON_KEY]).toBe('inactivity');
   });
 
   it('synchronizes last activity timestamp from other tabs via storage event', () => {
     const start = 1000000;
     vi.setSystemTime(start);
+    const onTimeout = vi.fn();
 
     renderHook(() =>
       useInactivityTimeout(mockSession, {
         timeoutMs: 5000,
         checkIntervalMs: 1000,
+        onTimeout,
       }),
     );
 
@@ -212,6 +199,33 @@ describe('useInactivityTimeout and activity utilities', () => {
 
     vi.advanceTimersByTime(4000);
     expect(sessionStore[LOGOUT_REASON_KEY]).toBeUndefined();
+  });
+
+  it('handles storage removal without triggering false timeout', () => {
+    const start = 1000000;
+    vi.setSystemTime(start);
+    const onTimeout = vi.fn();
+
+    renderHook(() =>
+      useInactivityTimeout(mockSession, {
+        timeoutMs: 5000,
+        checkIntervalMs: 1000,
+        onTimeout,
+      }),
+    );
+
+    act(() => {
+      delete localStore[ACTIVITY_STORAGE_KEY];
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: ACTIVITY_STORAGE_KEY,
+          newValue: null,
+        }),
+      );
+    });
+
+    vi.advanceTimersByTime(6000);
+    expect(onTimeout).not.toHaveBeenCalled();
   });
 
   it('checks for timeout immediately when tab becomes visible after long sleep', () => {

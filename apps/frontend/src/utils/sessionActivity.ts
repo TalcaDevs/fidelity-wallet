@@ -1,5 +1,3 @@
-import type { Session } from '@supabase/supabase-js';
-
 export const DEFAULT_INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000;
 export const ACTIVITY_STORAGE_KEY = 'fidelity_last_activity';
 export const LOGOUT_REASON_KEY = 'fidelity_logout_reason';
@@ -60,11 +58,11 @@ export function consumeLogoutReason(storageKey = LOGOUT_REASON_KEY): string | nu
 }
 
 export function isTokenExpiringSoon(
-  session: Session | null | undefined,
+  expiresAt: number | null | undefined,
   thresholdMs: number,
   now = Date.now(),
 ): boolean {
-  if (!session?.expires_at) return false;
-  const timeToExpiry = session.expires_at * 1000 - now;
+  if (!expiresAt || !Number.isFinite(expiresAt)) return false;
+  const timeToExpiry = expiresAt * 1000 - now;
   return timeToExpiry > 0 && timeToExpiry < thresholdMs;
 }

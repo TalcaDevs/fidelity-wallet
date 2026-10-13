@@ -1,4 +1,3 @@
-import type { Session } from '@supabase/supabase-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearLastActivity,
@@ -73,20 +72,15 @@ describe('sessionActivity utilities', () => {
   it('evaluates whether token is expiring soon', () => {
     const now = 1000000;
     expect(isTokenExpiringSoon(null, 60000, now)).toBe(false);
+    expect(isTokenExpiringSoon(undefined, 60000, now)).toBe(false);
 
-    const validSession = {
-      expires_at: 1000 + 300,
-    } as Session;
-    expect(isTokenExpiringSoon(validSession, 60000, now)).toBe(false);
+    const validExpiry = 1000 + 300;
+    expect(isTokenExpiringSoon(validExpiry, 60000, now)).toBe(false);
 
-    const expiringSession = {
-      expires_at: 1000 + 50,
-    } as Session;
-    expect(isTokenExpiringSoon(expiringSession, 60000, now)).toBe(true);
+    const expiringSoon = 1000 + 50;
+    expect(isTokenExpiringSoon(expiringSoon, 60000, now)).toBe(true);
 
-    const expiredSession = {
-      expires_at: 999,
-    } as Session;
-    expect(isTokenExpiringSoon(expiredSession, 60000, now)).toBe(false);
+    const expired = 999;
+    expect(isTokenExpiringSoon(expired, 60000, now)).toBe(false);
   });
 });

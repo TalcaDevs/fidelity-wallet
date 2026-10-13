@@ -16,11 +16,15 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
   const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
 
+  const handleTimeout = useCallback(async () => {
+    await supabase.auth.signOut();
+  }, []);
+
   const handleUserActivity = useCallback(async () => {
     try {
       const { data } = await supabase.auth.getSession();
       const currentSession = data?.session;
-      if (isTokenExpiringSoon(currentSession, PROACTIVE_REFRESH_THRESHOLD_MS)) {
+      if (isTokenExpiringSoon(currentSession?.expires_at, PROACTIVE_REFRESH_THRESHOLD_MS)) {
         await supabase.auth.refreshSession();
       }
     } catch (error) {
@@ -29,6 +33,7 @@ export function useAuth() {
   }, []);
 
   useInactivityTimeout(session, {
+    onTimeout: handleTimeout,
     onActivity: handleUserActivity,
   });
 
@@ -57,7 +62,7 @@ export function useAuth() {
           const { data, error } = await supabase.auth.getSession();
           if (error || !data || !data.session) return;
           const session = data.session;
-          if (isTokenExpiringSoon(session, VISIBILITY_REFRESH_THRESHOLD_MS)) {
+          if (isTokenExpiringSoon(session.expires_at, VISIBILITY_REFRESH_THRESHOLD_MS)) {
             await supabase.auth.refreshSession();
           }
         } catch (error) {

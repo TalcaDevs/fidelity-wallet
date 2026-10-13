@@ -1,6 +1,4 @@
-import { useEffect, useRef } from 'react';
-import type { Session } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   ACTIVITY_STORAGE_KEY,
   ACTIVITY_THROTTLE_MS,
@@ -11,30 +9,24 @@ import {
   setLastActivity,
   setLogoutReason,
 } from '../utils/sessionActivity';
+import { useActivityListeners } from './useActivityListeners';
 
 export * from '../utils/sessionActivity';
-
-const ACTIVITY_EVENTS = [
-  'mousedown',
-  'keydown',
-  'touchstart',
-  'scroll',
-  'click',
-  'mousemove',
-] as const;
+export { ACTIVITY_EVENTS, useActivityListeners } from './useActivityListeners';
+export type { UseActivityListenersOptions } from './useActivityListeners';
 
 export interface UseInactivityTimeoutOptions {
+  onTimeout: () => void | Promise<void>;
   timeoutMs?: number;
   storageKey?: string;
   checkIntervalMs?: number;
   throttleMs?: number;
-  onTimeout?: () => void | Promise<void>;
   onActivity?: () => void | Promise<void>;
 }
 
 export function useInactivityTimeout(
-  session: Session | null,
-  options: UseInactivityTimeoutOptions = {},
+  session: unknown | null,
+  options: UseInactivityTimeoutOptions,
 ) {
   const {
     timeoutMs = DEFAULT_INACTIVITY_TIMEOUT_MS,
@@ -45,6 +37,10 @@ export function useInactivityTimeout(
     onActivity,
   } = options;
 
+  const isSessionActive = Boolean(session);
+  const lastRecordedRef = useRef<number | null>(null);
+  const isTerminatingRef = useRef(false);
+
   const onTimeoutRef = useRef(onTimeout);
   const onActivityRef = useRef(onActivity);
 
@@ -53,9 +49,26 @@ export function useInactivityTimeout(
     onActivityRef.current = onActivity;
   }, [onTimeout, onActivity]);
 
+  const recordUserActivity = useCallback(() => {
+    isTerminatingRef.current = false;
+    const now = Date.now();
+    lastRecordedRef.current = now;
+    setLastActivity(now, storageKey);
+    if (onActivityRef.current) {
+      void onActivityRef.current();
+    }
+  }, [storageKey]);
+
+  useActivityListeners({
+    enabled: isSessionActive,
+    throttleMs,
+    onActivity: recordUserActivity,
+  });
+
   useEffect(() => {
-    if (!session) {
+    if (!isSessionActive) {
       clearLastActivity(storageKey);
+      lastRecordedRef.current = null;
       return;
     }
 
@@ -63,52 +76,39 @@ export function useInactivityTimeout(
     const now = Date.now();
     if (!existing || existing > now + 60000) {
       setLastActivity(now, storageKey);
+      lastRecordedRef.current = now;
+    } else {
+      lastRecordedRef.current = existing;
     }
 
-    let lastRecordedActivity = existing ?? now;
-    let isTerminating = false;
-
     const performTimeout = async () => {
-      if (isTerminating) return;
-      isTerminating = true;
+      if (isTerminatingRef.current) return;
+      isTerminatingRef.current = true;
       setLogoutReason('inactivity');
       clearLastActivity(storageKey);
-      if (onTimeoutRef.current) {
-        await onTimeoutRef.current();
-      } else {
-        await supabase.auth.signOut();
-      }
+      lastRecordedRef.current = null;
+      await onTimeoutRef.current();
     };
 
     const checkTimeout = () => {
-      if (isTerminating) return;
-      const currentLast = getLastActivity(storageKey) ?? lastRecordedActivity;
+      if (isTerminatingRef.current) return;
+      const currentLast = getLastActivity(storageKey) ?? lastRecordedRef.current;
+      if (!currentLast) return;
       if (Date.now() - currentLast >= timeoutMs) {
         void performTimeout();
       }
     };
 
-    checkTimeout();
-
-    const recordUserActivity = () => {
-      isTerminating = false;
-      const currentTime = Date.now();
-      if (currentTime - lastRecordedActivity >= throttleMs) {
-        lastRecordedActivity = currentTime;
-        setLastActivity(currentTime, storageKey);
-        if (onActivityRef.current) {
-          void onActivityRef.current();
-        }
-      }
-    };
-
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === storageKey && e.newValue) {
-        const parsed = Number.parseInt(e.newValue, 10);
-        if (Number.isFinite(parsed)) {
-          lastRecordedActivity = parsed;
-          isTerminating = false;
-        }
+      if (e.key !== storageKey) return;
+      if (!e.newValue) {
+        lastRecordedRef.current = null;
+        return;
+      }
+      const parsed = Number.parseInt(e.newValue, 10);
+      if (Number.isFinite(parsed)) {
+        lastRecordedRef.current = parsed;
+        isTerminatingRef.current = false;
       }
     };
 
@@ -118,9 +118,7 @@ export function useInactivityTimeout(
       }
     };
 
-    ACTIVITY_EVENTS.forEach((event) => {
-      window.addEventListener(event, recordUserActivity, { passive: true });
-    });
+    checkTimeout();
 
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('focus', checkTimeout);
@@ -129,13 +127,10 @@ export function useInactivityTimeout(
     const intervalId = window.setInterval(checkTimeout, checkIntervalMs);
 
     return () => {
-      ACTIVITY_EVENTS.forEach((event) => {
-        window.removeEventListener(event, recordUserActivity);
-      });
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('focus', checkTimeout);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.clearInterval(intervalId);
     };
-  }, [session, timeoutMs, storageKey, checkIntervalMs, throttleMs]);
+  }, [isSessionActive, timeoutMs, storageKey, checkIntervalMs]);
 }
