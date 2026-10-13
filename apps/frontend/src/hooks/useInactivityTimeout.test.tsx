@@ -81,12 +81,12 @@ describe('useInactivityTimeout and activity utilities', () => {
     expect(getLastActivity()).toBeNull();
   });
 
-  it('does not monitor activity or set storage if session is null', () => {
+  it('does not wipe persisted activity when session is null', () => {
     const onTimeout = vi.fn();
     setLastActivity(5000);
     renderHook(() => useInactivityTimeout(null, { onTimeout }));
 
-    expect(getLastActivity()).toBeNull();
+    expect(getLastActivity()).toBe(5000);
   });
 
   it('initializes last activity timestamp when session is present', () => {
@@ -172,6 +172,34 @@ describe('useInactivityTimeout and activity utilities', () => {
     expect(onTimeout).toHaveBeenCalledTimes(1);
     expect(sessionStore[LOGOUT_REASON_KEY]).toBe('inactivity');
     expect(getLastActivity()).toBeNull();
+  });
+
+  it('resets termination flag on new session and triggers timeout after second idle period', () => {
+    const start = 1000000;
+    vi.setSystemTime(start);
+    const onTimeout = vi.fn();
+
+    const { rerender } = renderHook(
+      ({ session }) =>
+        useInactivityTimeout(session, {
+          timeoutMs: 3000,
+          checkIntervalMs: 1000,
+          onTimeout,
+        }),
+      { initialProps: { session: mockSession as Session | null } },
+    );
+
+    vi.advanceTimersByTime(3500);
+    expect(onTimeout).toHaveBeenCalledTimes(1);
+
+    rerender({ session: null });
+
+    const newStart = 2000000;
+    vi.setSystemTime(newStart);
+    rerender({ session: { ...mockSession, user: { ...mockSession.user, id: 'user-2' } } });
+
+    vi.advanceTimersByTime(3500);
+    expect(onTimeout).toHaveBeenCalledTimes(2);
   });
 
   it('synchronizes last activity timestamp from other tabs via storage event', () => {

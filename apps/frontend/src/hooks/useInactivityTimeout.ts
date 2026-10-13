@@ -22,6 +22,7 @@ export interface UseInactivityTimeoutOptions {
   checkIntervalMs?: number;
   throttleMs?: number;
   onActivity?: () => void | Promise<void>;
+  enabled?: boolean;
 }
 
 export function useInactivityTimeout(
@@ -35,11 +36,13 @@ export function useInactivityTimeout(
     throttleMs = ACTIVITY_THROTTLE_MS,
     onTimeout,
     onActivity,
+    enabled,
   } = options;
 
-  const isSessionActive = Boolean(session);
+  const isSessionActive = enabled ?? Boolean(session);
   const lastRecordedRef = useRef<number | null>(null);
   const isTerminatingRef = useRef(false);
+  const prevActiveRef = useRef(false);
 
   const onTimeoutRef = useRef(onTimeout);
   const onActivityRef = useRef(onActivity);
@@ -67,9 +70,14 @@ export function useInactivityTimeout(
 
   useEffect(() => {
     if (!isSessionActive) {
-      clearLastActivity(storageKey);
+      prevActiveRef.current = false;
       lastRecordedRef.current = null;
       return;
+    }
+
+    if (!prevActiveRef.current) {
+      isTerminatingRef.current = false;
+      prevActiveRef.current = true;
     }
 
     const existing = getLastActivity(storageKey);

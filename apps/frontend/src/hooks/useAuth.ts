@@ -6,6 +6,7 @@ import {
   isSessionInactive,
   isTokenExpiringSoon,
   PROACTIVE_REFRESH_THRESHOLD_MS,
+  setLastActivity,
   setLogoutReason,
   useInactivityTimeout,
   VISIBILITY_REFRESH_THRESHOLD_MS,
@@ -33,6 +34,7 @@ export function useAuth() {
   }, []);
 
   useInactivityTimeout(session, {
+    enabled: !loading && Boolean(session),
     onTimeout: handleTimeout,
     onActivity: handleUserActivity,
   });
@@ -77,6 +79,9 @@ export function useAuth() {
       if (event === 'SIGNED_OUT') {
         setIsRecoveringPassword(false);
         clearLastActivity();
+      }
+      if (event === 'SIGNED_IN') {
+        setLastActivity(Date.now());
       }
       setSession(nextSession);
     });

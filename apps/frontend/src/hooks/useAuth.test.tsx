@@ -24,10 +24,25 @@ const mockSession: Session = {
 
 describe('useAuth hook', () => {
   let authEventCallback: AuthStateCallback | null = null;
+  let localStore: Record<string, string> = {};
 
   beforeEach(() => {
     vi.restoreAllMocks();
     authEventCallback = null;
+    localStore = {};
+
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn((key: string) => localStore[key] ?? null),
+      setItem: vi.fn((key: string, val: string) => {
+        localStore[key] = String(val);
+      }),
+      removeItem: vi.fn((key: string) => {
+        delete localStore[key];
+      }),
+      clear: vi.fn(() => {
+        localStore = {};
+      }),
+    });
 
     vi.spyOn(supabase.auth, 'getSession').mockResolvedValue({
       data: { session: mockSession },
@@ -50,6 +65,7 @@ describe('useAuth hook', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('loads initial session and sets loading to false', async () => {
@@ -92,6 +108,24 @@ describe('useAuth hook', () => {
     });
 
     expect(result.current.isRecoveringPassword).toBe(false);
+  });
+
+  it('signs out automatically when restoring a session after 61 minutes of inactivity', async () => {
+    const now = 10000000;
+    vi.setSystemTime(now);
+    const sixtyOneMinutesAgo = now - 61 * 60 * 1000;
+    localStore[inactivityModule.ACTIVITY_STORAGE_KEY] = String(sixtyOneMinutesAgo);
+
+    const signOutSpy = vi.spyOn(supabase.auth, 'signOut').mockResolvedValue({ error: null });
+
+    const { result } = renderHook(() => useAuth());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(signOutSpy).toHaveBeenCalledTimes(1);
+    expect(localStore[inactivityModule.ACTIVITY_STORAGE_KEY]).toBeUndefined();
   });
 
   it('signs out and prevents session refresh on tab visibility change if session is inactive', async () => {
