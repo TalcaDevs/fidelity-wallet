@@ -112,9 +112,11 @@ function PlanCard({ plan, isAnnual, isCurrent }: { plan: Plan; isAnnual: boolean
 export function Billing({
   brandId,
   isSuspended = false,
+  suspensionReason = null,
 }: {
   brandId: string | null;
   isSuspended?: boolean;
+  suspensionReason?: string | null;
 }) {
   const [isAnnual, setIsAnnual] = useState(false);
   const { subscription, trialDaysLeft, loading, error } = useSubscription(brandId);
@@ -124,9 +126,13 @@ export function Billing({
     return <div className="animate-pulse h-64 bg-panel-soft rounded-2xl max-w-7xl mx-auto" />;
   }
 
+  const isMora = isSuspended && (suspensionReason === 'mora' || subscription.status === 'PAST_DUE');
+
   const currentPlan = getPlan(subscription.planId);
   const periodText = isSuspended
-    ? 'Servicio pausado por suspensión. Contacta a soporte para reactivarlo.'
+    ? isMora
+      ? 'Servicio pausado por mora. Regulariza tu situación para reactivarlo.'
+      : 'Servicio pausado por suspensión. Contacta a soporte para reactivarlo.'
     : subscription.status === 'TRIALING'
       ? `Te ${trialDaysLeft === 1 ? 'queda 1 día' : `quedan ${trialDaysLeft} días`} de prueba (hasta el ${formatDate(subscription.trialEndsAt ?? subscription.currentPeriodEnd)}).`
       : `Período actual hasta el ${formatDate(subscription.currentPeriodEnd)}.`;
@@ -152,10 +158,12 @@ export function Billing({
             </div>
             <div className="flex-1 space-y-2">
               <h2 className="text-lg sm:text-xl font-bold text-red-600 dark:text-red-400">
-                Tu cuenta se encuentra suspendida por mora
+                {isMora ? 'Tu cuenta se encuentra suspendida por mora' : 'Tu cuenta se encuentra suspendida'}
               </h2>
               <p className="text-sm sm:text-base text-panel-muted leading-relaxed">
-                El acceso a las funciones operativas (escáner, clientes, métricas y locales) ha sido pausado temporalmente debido a pagos pendientes. Tus datos y clientes permanecen completamente seguros y guardados.
+                {isMora
+                  ? 'El acceso a las funciones operativas (escáner, clientes, métricas y locales) ha sido pausado temporalmente debido a pagos pendientes. Tus datos y clientes permanecen completamente seguros y guardados.'
+                  : 'El acceso a las funciones operativas (escáner, clientes, métricas y locales) ha sido pausado temporalmente. Tus datos y clientes permanecen completamente seguros y guardados.'}
               </p>
               <div className="pt-2 flex flex-wrap items-center gap-3">
                 <Link
@@ -168,7 +176,9 @@ export function Billing({
                   <span>Contactar a Soporte</span>
                 </Link>
                 <span className="text-xs text-panel-muted">
-                  Escríbenos para regularizar tu situación y reactivar tu servicio de inmediato.
+                  {isMora
+                    ? 'Escríbenos para regularizar tu situación y reactivar tu servicio de inmediato.'
+                    : 'Escríbenos a soporte para conocer el estado de tu cuenta y reactivar tu servicio.'}
                 </span>
               </div>
             </div>
@@ -187,7 +197,9 @@ export function Billing({
                   ? 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/20'
                   : 'bg-panel-soft text-panel-muted font-medium'
               }`}>
-                {isSuspended ? 'Suspendido por mora' : STATUS_LABELS[subscription.status]}
+                {isSuspended
+                  ? (isMora ? 'Suspendido por mora' : 'Cuenta suspendida')
+                  : STATUS_LABELS[subscription.status]}
               </span>
             </div>
             <p className="text-panel-muted mt-2">{periodText}</p>
