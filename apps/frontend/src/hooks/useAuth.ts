@@ -1,14 +1,43 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import {
+  clearLastActivity,
+  isSessionInactive,
+  isTokenExpiringSoon,
+  PROACTIVE_REFRESH_THRESHOLD_MS,
+  setLastActivity,
+  setLogoutReason,
+  useInactivityTimeout,
+  VISIBILITY_REFRESH_THRESHOLD_MS,
+} from './useInactivityTimeout';
 
 export function useAuth() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  // Al abrir el enlace del correo de recuperación, Supabase crea una sesión y
-  // emite PASSWORD_RECOVERY. Sin esta bandera el usuario entraría al panel sin
-  // llegar nunca a fijar su nueva contraseña.
   const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
+
+  const handleTimeout = useCallback(async () => {
+    await supabase.auth.signOut();
+  }, []);
+
+  const handleUserActivity = useCallback(async () => {
+    try {
+      const { data } = await supabase.auth.getSession();
+      const currentSession = data?.session;
+      if (isTokenExpiringSoon(currentSession?.expires_at, PROACTIVE_REFRESH_THRESHOLD_MS)) {
+        await supabase.auth.refreshSession();
+      }
+    } catch (error) {
+      console.error('Error refreshing session on activity:', error);
+    }
+  }, []);
+
+  useInactivityTimeout(session, {
+    enabled: !loading && Boolean(session),
+    onTimeout: handleTimeout,
+    onActivity: handleUserActivity,
+  });
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data, error }) => {
@@ -21,6 +50,13 @@ export function useAuth() {
 
     const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible' && navigator.onLine) {
+        if (isSessionInactive()) {
+          setLogoutReason('inactivity');
+          clearLastActivity();
+          await supabase.auth.signOut();
+          return;
+        }
+
         if (refreshTimeout) return;
         refreshTimeout = window.setTimeout(() => { refreshTimeout = null; }, 5000);
         
@@ -28,11 +64,8 @@ export function useAuth() {
           const { data, error } = await supabase.auth.getSession();
           if (error || !data || !data.session) return;
           const session = data.session;
-          if (session && session.expires_at) {
-            const timeToExpiry = session.expires_at * 1000 - Date.now();
-            if (timeToExpiry < 300000) { // 5 minutos
-              await supabase.auth.refreshSession();
-            }
+          if (isTokenExpiringSoon(session.expires_at, VISIBILITY_REFRESH_THRESHOLD_MS)) {
+            await supabase.auth.refreshSession();
           }
         } catch (error) {
           console.error('Error refreshing session:', error);
@@ -43,7 +76,13 @@ export function useAuth() {
 
     const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (event === 'PASSWORD_RECOVERY') setIsRecoveringPassword(true);
-      if (event === 'SIGNED_OUT') setIsRecoveringPassword(false);
+      if (event === 'SIGNED_OUT') {
+        setIsRecoveringPassword(false);
+        clearLastActivity();
+      }
+      if (event === 'SIGNED_IN') {
+        setLastActivity(Date.now());
+      }
       setSession(nextSession);
     });
 
