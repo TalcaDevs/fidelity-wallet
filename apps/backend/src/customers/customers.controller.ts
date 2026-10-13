@@ -38,6 +38,7 @@ import { CreateCustomerDto, CustomerResponseDto } from './dto/create-customer.dt
 import { DeleteCustomerResponseDto } from './dto/deletion.dto.js';
 import { CustomerHistoryQueryDto } from './dto/history.dto.js';
 import { PanelStampsDto } from './dto/panel-stamps.dto.js';
+import { VoidScanRequestDto, VoidScanResponseDto } from './dto/void-scan.dto.js';
 
 @ApiTags('Customers')
 @Controller('customers')
@@ -139,6 +140,37 @@ export class CustomersController {
       throw new UnauthorizedException('Usuario no autenticado');
     }
     return this.scanService.addStampsFromPanel(customerId, dto, user.id, receipt);
+  }
+
+  @Post(':customerId/scans/:scanId/void')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @UseGuards(SupabaseAuthGuard)
+  @ApiOperation({
+    summary: 'Anular un sello o carga mal dada (solo el dueño)',
+    description:
+      'Permite al dueño de la marca anular una carga previa de sellos o puntos indicando el motivo obligatorio. Descuenta el saldo no consumido, registra la anulación en AuditLog y actualiza la billetera digital.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Carga anulada exitosamente',
+    type: VoidScanResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Motivo inválido o tipo de carga no anulable' })
+  @ApiResponse({ status: 401, description: 'No autorizado / falta token de sesión' })
+  @ApiResponse({ status: 403, description: 'Solo el dueño de la marca puede anular cargas' })
+  @ApiResponse({ status: 404, description: 'Carga, cliente o tarjeta no encontrada' })
+  @ApiResponse({ status: 409, description: 'Carga ya anulada o sellos ya consumidos' })
+  async voidScan(
+    @Param('customerId', new ParseUUIDPipe({ version: '4' })) customerId: string,
+    @Param('scanId', new ParseUUIDPipe({ version: '4' })) scanId: string,
+    @Body() dto: VoidScanRequestDto,
+    @CurrentUser() user?: AuthenticatedUser,
+  ): Promise<VoidScanResponseDto> {
+    if (!user?.id) {
+      throw new UnauthorizedException('Usuario no autenticado');
+    }
+    return this.scanService.voidScan(customerId, scanId, dto, user.id);
   }
 
   @Delete(':customerId')

@@ -80,7 +80,7 @@ export class CustomerHistoryService {
     }
 
     const now = new Date();
-    const [scans, totalsByType, balances] = await Promise.all([
+    const [scans, totalCount, totalsByType, balances] = await Promise.all([
       this.prisma.scan.findMany({
         where: { passId: pass.id },
         orderBy: { createdAt: 'desc' },
@@ -92,16 +92,17 @@ export class CustomerHistoryService {
           receipt: { select: { storagePath: true } },
         },
       }),
+      this.prisma.scan.count({ where: { passId: pass.id } }),
       this.prisma.scan.groupBy({
         by: ['type', 'method'],
-        where: { passId: pass.id },
+        where: { passId: pass.id, voidedAt: null },
         _count: { _all: true },
         _sum: { purchaseAmount: true },
       }),
       readCardBalance(this.prisma, pass.id, toCardView(program), now),
     ]);
 
-    const total = totalsByType.reduce((sum, g) => sum + g._count._all, 0);
+    const total = totalCount;
     // El saldo de bienvenida no es una visita ni una compra.
     const purchases = totalsByType.filter(
       (g) => g.type === ScanType.STAMP_ADDED && g.method !== ScanMethod.WELCOME,
@@ -138,6 +139,8 @@ export class CustomerHistoryService {
       note: s.note,
       rewardName: s.promotion?.rewardName ?? null,
       receiptUrl: s.receipt ? (receiptUrls.get(s.receipt.storagePath) ?? null) : null,
+      voidedAt: s.voidedAt ? s.voidedAt.toISOString() : null,
+      voidReason: s.voidReason ?? null,
     }));
 
     return {

@@ -246,11 +246,15 @@ model Scan {
   pointsEarned    Int            @default(0)
   note            String?
   receipt         ScanReceipt?
+  voidedAt        DateTime?
+  voidedByUserId  String?        @db.Uuid
+  voidReason      String?
   createdAt       DateTime       @default(now())
 
   @@index([promotionId])
   @@index([brandId, createdAt])
   @@index([merchantId, createdAt])
+  @@index([voidedAt])
 }
 
 /// Foto de la boleta en el bucket privado purchase-receipts. Va aparte de Scan porque el STAFF

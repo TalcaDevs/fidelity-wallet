@@ -55,6 +55,10 @@ export interface PurchaseHistoryEntryDto {
   rewardName: string | null;
   /** URL firmada de la foto de la boleta; vence en 5 minutos. */
   receiptUrl: string | null;
+  /** Fecha en que la carga fue anulada por el dueño, si aplica. */
+  voidedAt?: string | null;
+  /** Motivo de anulación registrado en auditoría. */
+  voidReason?: string | null;
 }
 
 export interface CustomerProfileDto {
@@ -95,4 +99,20 @@ export interface PanelStampsResultDto {
   pointsAdded?: number;
   currency?: CardType;
   rewardUnlocked: boolean;
+}
+
+/** Petición para anular una carga de sellos o puntos (solo dueño). */
+export interface VoidScanDto {
+  brandId: string;
+  reason: string;
+}
+
+/** Respuesta de POST /api/customers/:id/scans/:scanId/void. */
+export interface VoidScanResultDto {
+  scanId: string;
+  voidedAt: string;
+  activeStamps: number;
+  activePoints: number;
+  stampsDeducted: number;
+  pointsDeducted: number;
 }

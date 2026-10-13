@@ -42,6 +42,7 @@ import { ConfigService } from '@nestjs/config';
 import { PassesService } from '../passes/passes.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { PanelStampsDto } from '../customers/dto/panel-stamps.dto.js';
+import type { VoidScanRequestDto, VoidScanResponseDto } from '../customers/dto/void-scan.dto.js';
 import {
   MaskedCustomerDto,
   PromotionOptionDto,
@@ -421,6 +422,123 @@ export class ScanService {
     };
   }
 
+  /**
+   * El dueño anula una carga de sellos o puntos mal ingresada (HANDOFF §5).
+   * Solo el OWNER puede anular. Exige motivo obligatorio, descuenta el saldo no consumido,
+   * audita el cambio en AuditLog y notifica a las billeteras digitales.
+   */
+  async voidScan(
+    customerId: string,
+    scanId: string,
+    dto: VoidScanRequestDto,
+    callerUserId: string,
+  ): Promise<VoidScanResponseDto> {
+    await requireActiveBrandOwner(this.prisma, callerUserId, dto.brandId);
+
+    const program = await findBrandProgram(this.prisma, dto.brandId);
+    if (!program) {
+      throw new NotFoundException('La marca no tiene un programa de fidelización');
+    }
+
+    const pass = await this.prisma.pass.findUnique({
+      where: { customerId_programId: { customerId, programId: program.id } },
+    });
+    if (!pass) {
+      throw new NotFoundException('El cliente no tiene una tarjeta en esta marca');
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Bloqueo pesimista del contexto (FOR UPDATE en Pass, FOR SHARE en LoyaltyProgram) sin exigir promociones activas
+      const { card } = await this.lockPassContext(tx, pass.id, program.id, dto.brandId);
+      const now = new Date();
+
+      // Releer el scan dentro de la transacción con bloqueo para evitar carreras de anulación concurrente
+      const scan = await tx.scan.findUnique({
+        where: { id: scanId },
+      });
+      if (!scan || scan.passId !== pass.id || scan.brandId !== dto.brandId) {
+        throw new NotFoundException('Carga no encontrada para este cliente');
+      }
+
+      if (scan.type !== ScanType.STAMP_ADDED) {
+        throw new BadRequestException('Solo se pueden anular cargas de sellos o puntos, no canjes de recompensas');
+      }
+
+      if (scan.voidedAt) {
+        throw new ConflictException('Esta carga ya fue anulada previamente');
+      }
+
+      // 1. ¿Algún sello/punto de esta carga ya fue consumido en un canje posterior?
+      const consumedStampsCount = await tx.stamp.count({
+        where: { sourceScanId: scan.id, consumedAt: { not: null } },
+      });
+      if (consumedStampsCount > 0) {
+        throw new ConflictException(
+          'No se puede anular la carga: los sellos o puntos ya fueron utilizados en un canje',
+        );
+      }
+
+      // 2. Marcar Scan como anulado
+      await tx.scan.update({
+        where: { id: scan.id },
+        data: {
+          voidedAt: now,
+          voidedByUserId: callerUserId,
+          voidReason: dto.reason,
+        },
+      });
+
+      // 3. Eliminar del libro las filas de Stamp no consumidas creadas por este scan
+      await tx.stamp.deleteMany({
+        where: { sourceScanId: scan.id, consumedAt: null },
+      });
+
+      // 4. Registrar en AuditLog
+      await recordAudit(tx, {
+        actorUserId: callerUserId,
+        actorType: 'OWNER',
+        action: 'scan.void',
+        entity: 'Scan',
+        entityId: scan.id,
+        before: { voidedAt: null },
+        after: {
+          voidedAt: now.toISOString(),
+          voidReason: dto.reason,
+          stampCount: scan.stampCount,
+          pointsEarned: scan.pointsEarned,
+          passId: pass.id,
+          customerId,
+          brandId: dto.brandId,
+        },
+        reason: dto.reason,
+      });
+
+      // 5. Recalcular saldo final
+      const newBalance = await readCardBalance(tx, pass.id, card, now);
+
+      // 6. Encolar actualización durable en la billetera antes del commit
+      await this.passesService.enqueuePassUpdate(pass.id, tx);
+
+      return {
+        scanId: scan.id,
+        voidedAt: now.toISOString(),
+        activeStamps: newBalance.activeStamps,
+        activePoints: newBalance.activePoints,
+        stampsDeducted: scan.stampCount,
+        pointsDeducted: scan.pointsEarned,
+      };
+    });
+
+    // 7. Notificar a Google Wallet / Apple Pass tras el commit
+    void this.passesService
+      .notifyPassUpdate(pass.id)
+      .catch((err) =>
+        this.logger.warn(`Error al notificar actualización de pase tras anulación: ${err}`),
+      );
+
+    return result;
+  }
+
   private async requireActiveProgram(brandId: string): Promise<BrandCard> {
     const program = await findBrandProgram(this.prisma, brandId);
     if (!program || !program.isActive) {
@@ -678,13 +796,14 @@ export class ScanService {
 
   private async findLatestScans(db: Tx, passId: string): Promise<{ latestStamp: Scan | null; latestPoints: Scan | null }> {
     // El saldo de bienvenida no es una visita: no bloquea el primer sello en caja.
+    // Las cargas anuladas tampoco bloquean nuevas cargas ni activan cooldown (§5).
     const [latestStamp, latestPoints] = await Promise.all([
       db.scan.findFirst({
-        where: { passId, type: ScanType.STAMP_ADDED, method: { not: ScanMethod.WELCOME }, stampCount: { gt: 0 } },
+        where: { passId, type: ScanType.STAMP_ADDED, method: { not: ScanMethod.WELCOME }, stampCount: { gt: 0 }, voidedAt: null },
         orderBy: { createdAt: 'desc' },
       }),
       db.scan.findFirst({
-        where: { passId, type: ScanType.STAMP_ADDED, method: { not: ScanMethod.WELCOME }, pointsEarned: { gt: 0 } },
+        where: { passId, type: ScanType.STAMP_ADDED, method: { not: ScanMethod.WELCOME }, pointsEarned: { gt: 0 }, voidedAt: null },
         orderBy: { createdAt: 'desc' },
       }),
     ]);
@@ -767,13 +886,19 @@ export class ScanService {
     return result;
   }
 
-  /** Programa antes que pase: el editor espera a caja y ambas operaciones releen el mismo contexto. */
-  private async lockCurrentContext(tx: Tx, passId: string, programId: string, brandId: string) {
+  /** Bloquea programa (SHARE) y pase (UPDATE) garantizando orden determinista y consistencia sin exigir promociones. */
+  private async lockPassContext(tx: Tx, passId: string, programId: string, brandId: string) {
     await tx.$queryRaw`SELECT id FROM "LoyaltyProgram" WHERE id = ${programId}::uuid FOR SHARE`;
     await tx.$queryRaw`SELECT id FROM "Pass" WHERE id = ${passId}::uuid FOR UPDATE`;
     const program = await tx.loyaltyProgram.findFirst({ where: { id: programId, brandId, isActive: true } });
     if (!program) throw new BadRequestException('La tarjeta ya no está activa');
     const card = toCardView(program);
+    return { program, card };
+  }
+
+  /** Programa antes que pase: el editor espera a caja y ambas operaciones releen el mismo contexto y promociones activas. */
+  private async lockCurrentContext(tx: Tx, passId: string, programId: string, brandId: string) {
+    const { program, card } = await this.lockPassContext(tx, passId, programId, brandId);
     const promotions = await this.findActivePromotions(program.id, card, tx);
     return { program, card, promotions };
   }

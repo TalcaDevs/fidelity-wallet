@@ -65,6 +65,7 @@ describe('CustomerHistoryService', () => {
       },
       scan: {
         findMany: vi.fn().mockResolvedValue([redeemScan, stampScan]),
+        count: vi.fn().mockResolvedValue(2),
         groupBy: vi.fn().mockResolvedValue([
           { type: 'STAMP_ADDED', _count: { _all: 1 }, _sum: { purchaseAmount: 12500 } },
           { type: 'REWARD_REDEEMED', _count: { _all: 1 }, _sum: { purchaseAmount: null } },
@@ -155,5 +156,29 @@ describe('CustomerHistoryService', () => {
     const result = await service.forOwner(customerId, query, ownerId);
 
     expect(result.history.items[1].receiptUrl).toBeNull();
+  });
+
+  it('maps voidedAt and voidReason, and filters voided scans in groupBy query', async () => {
+    const voidedScan = {
+      ...stampScan,
+      id: 'scan-voided-1',
+      voidedAt: new Date('2026-10-04T12:00:00Z'),
+      voidReason: 'Error en caja al cargar sello duplicado',
+    };
+    prisma.scan.findMany.mockResolvedValue([voidedScan]);
+    prisma.scan.count.mockResolvedValue(1);
+
+    const result = await service.forOwner(customerId, query, ownerId);
+
+    expect(prisma.scan.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { passId: 'p-1', voidedAt: null },
+      }),
+    );
+    expect(result.history.items[0]).toMatchObject({
+      id: 'scan-voided-1',
+      voidedAt: '2026-10-04T12:00:00.000Z',
+      voidReason: 'Error en caja al cargar sello duplicado',
+    });
   });
 });

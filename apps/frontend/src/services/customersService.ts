@@ -1,4 +1,4 @@
-import type { CustomerHistoryDto, PanelStampsResultDto } from '@fidelity/shared';
+import type { CustomerHistoryDto, PanelStampsResultDto, VoidScanResultDto } from '@fidelity/shared';
 import { supabase } from '../lib/supabase';
 import { apiUrl } from '../lib/api';
 import { extractApiError } from '../lib/apiError';
@@ -179,5 +179,22 @@ export function addStampsFromPanel(customerId: string, input: PanelStampsInput):
     `/api/customers/${encodeURIComponent(customerId)}/stamps`,
     init,
     'No pudimos sumar los sellos.',
+  );
+}
+
+/** El dueño anula una carga de sellos o puntos mal ingresada (solo OWNER). */
+export function voidCustomerScan(
+  customerId: string,
+  scanId: string,
+  brandId: string,
+  reason: string,
+): Promise<VoidScanResultDto> {
+  return requestJson(
+    `/api/customers/${encodeURIComponent(customerId)}/scans/${encodeURIComponent(scanId)}/void`,
+    {
+      method: 'POST',
+      ...jsonBody({ brandId, reason }),
+    },
+    'No pudimos anular la carga.',
   );
 }
