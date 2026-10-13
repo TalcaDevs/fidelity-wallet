@@ -97,4 +97,28 @@ describe('Owner panel navigation and motion', () => {
     expect(screen.queryByRole('button', { name: 'Reducir animaciones' })).not.toBeInTheDocument();
     expect(screen.getByRole('textbox')).toBeEnabled();
   });
+
+  it('renders suspended state with paused scanner and locked operational nav items', () => {
+    preference.mobile = false;
+    render(
+      <MemoryRouter initialEntries={['/admin/billing']}>
+        <Routes>
+          <Route element={<Layout session={null} role="OWNER" brandId={null} isSuspended={true} />}>
+            <Route path="/admin/billing" element={<h1>Facturación</h1>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Escáner pausado')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Abrir Escáner' })).not.toBeInTheDocument();
+
+    // Facturación y Soporte deben ser links accesibles
+    expect(screen.getByRole('link', { name: 'Facturación' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Soporte' })).toBeInTheDocument();
+
+    // Clientes y Métricas no deben ser enlaces cuando la cuenta está suspendida
+    expect(screen.queryByRole('link', { name: 'Clientes' })).not.toBeInTheDocument();
+    expect(screen.getByText('Clientes')).toBeInTheDocument();
+  });
 });

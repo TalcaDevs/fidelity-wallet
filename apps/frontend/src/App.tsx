@@ -18,7 +18,7 @@ import { Join } from './pages/public/Join';
 import { Terms } from './pages/public/Terms';
 import { Scan } from './pages/scanner/Scan';
 import { ToastProvider } from './components/ui/ToastProvider';
-import { AccessDenied, RecoveryGate, RedirectIfAuthenticated, RequirePlatformAdmin, RequireRole } from './components/routing/RouteGuards';
+import { AccessDenied, RecoveryGate, RedirectIfAuthenticated, RequireActiveSubscription, RequirePlatformAdmin, RequireRole } from './components/routing/RouteGuards';
 import { PasswordResetRoute } from './components/routing/PasswordResetRoute';
 import { ROUTES } from './components/routing/routePaths';
 import { useAuth } from './hooks/useAuth';
@@ -64,34 +64,44 @@ export default function App() {
 
           {/* Scanner: requiere sesión y rol OWNER o STAFF */}
           <Route element={<RequireRole session={session} membership={membership} allow={['OWNER', 'STAFF']} platformAdmin={platformAdmin} />}>
-            <Route
-              path={ROUTES.scan}
-              element={
-                session && membership.merchantId ? (
-                  <Scan merchantId={membership.merchantId} session={session} role={membership.role} brandId={membership.brandId} />
-                ) : (
-                  <AccessDenied reason="Tu usuario no tiene un local activo asignado." />
-                )
-              }
-            />
+            <Route element={<RequireActiveSubscription membership={membership} />}>
+              <Route
+                path={ROUTES.scan}
+                element={
+                  session && membership.merchantId ? (
+                    <Scan merchantId={membership.merchantId} session={session} role={membership.role} brandId={membership.brandId} />
+                  ) : (
+                    <AccessDenied reason="Tu usuario no tiene un local activo asignado." />
+                  )
+                }
+              />
+            </Route>
           </Route>
 
           {/* Panel: requiere sesión y rol OWNER */}
           <Route element={<RequireRole session={session} membership={membership} allow={ADMIN_ROLES} platformAdmin={platformAdmin} />}>
-            <Route element={<Layout session={session} role={membership.role} brandId={membership.brandId} />}>
-              <Route path={ROUTES.admin} element={<Navigate to={ROUTES.dashboard} replace />} />
-              <Route path={ROUTES.dashboard} element={<Dashboard session={session} brandId={membership.brandId} />} />
-              <Route path={ROUTES.analytics} element={<Analytics merchantId={membership.merchantId} />} />
-              <Route path={ROUTES.team} element={<Team brandId={membership.brandId} />} />
-              <Route path={ROUTES.locations} element={<Suspense fallback={null}><Locations brandId={membership.brandId} /></Suspense>} />
-              {isBillingEnabled && <Route path={ROUTES.billing} element={<Billing brandId={membership.brandId} />} />}
+            <Route element={<Layout session={session} role={membership.role} brandId={membership.brandId} isSuspended={membership.isSuspended} />}>
+              {/* Rutas siempre accesibles para el dueño (incluso con cuenta suspendida por mora) */}
+              {(isBillingEnabled || membership.isSuspended) && (
+                <Route path={ROUTES.billing} element={<Billing brandId={membership.brandId} isSuspended={membership.isSuspended} />} />
+              )}
               <Route path={ROUTES.support} element={<Support brandId={membership.brandId} />} />
-              <Route path={ROUTES.card} element={<CardEditor brandId={membership.brandId} />} />
-              {/* Las promociones ahora son las recompensas del editor de la tarjeta. */}
-              <Route path={ROUTES.promotions} element={<Navigate to={ROUTES.card} replace />} />
-              <Route path={ROUTES.customers} element={<Customers brandId={membership.brandId} merchantId={membership.merchantId} />} />
-              <Route path={ROUTES.customerDetail} element={<CustomerDetail brandId={membership.brandId} />} />
-              <Route path={ROUTES.settings} element={<Settings session={session} brandId={membership.brandId} />} />
+
+              {/* Rutas operativas: bloqueadas por Route Guard si la suscripción está suspendida */}
+              <Route element={<RequireActiveSubscription membership={membership} />}>
+                <Route path={ROUTES.admin} element={<Navigate to={ROUTES.dashboard} replace />} />
+                <Route path={ROUTES.dashboard} element={<Dashboard session={session} brandId={membership.brandId} />} />
+                <Route path={ROUTES.analytics} element={<Analytics merchantId={membership.merchantId} />} />
+                <Route path={ROUTES.team} element={<Team brandId={membership.brandId} />} />
+                <Route path={ROUTES.locations} element={<Suspense fallback={null}><Locations brandId={membership.brandId} /></Suspense>} />
+                <Route path={ROUTES.card} element={<CardEditor brandId={membership.brandId} />} />
+                {/* Las promociones ahora son las recompensas del editor de la tarjeta. */}
+                <Route path={ROUTES.promotions} element={<Navigate to={ROUTES.card} replace />} />
+                <Route path={ROUTES.customers} element={<Customers brandId={membership.brandId} merchantId={membership.merchantId} />} />
+                <Route path={ROUTES.customerDetail} element={<CustomerDetail brandId={membership.brandId} />} />
+                <Route path={ROUTES.settings} element={<Settings session={session} brandId={membership.brandId} />} />
+              </Route>
+
               {/* Un 404 dentro del panel conserva la navegación lateral */}
               <Route path="/admin/*" element={<NotFound />} />
             </Route>
