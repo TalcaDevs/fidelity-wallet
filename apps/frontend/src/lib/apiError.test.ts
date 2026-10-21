@@ -18,4 +18,13 @@ describe('extractApiError', () => {
     expect(extractApiError({ error: 'Bad Request' })).toBeUndefined();
     expect(extractApiError({ message: [] })).toBeUndefined();
   });
+
+  it('translates 429 and ThrottlerException messages to Spanish', () => {
+    expect(extractApiError({ statusCode: 429, message: 'ThrottlerException: Too Many Requests' })).toBe(
+      'Demasiadas solicitudes. Por favor, espera un momento antes de intentar de nuevo.',
+    );
+    expect(extractApiError({ message: 'ThrottlerException: Too Many Requests' })).toBe(
+      'Demasiadas solicitudes. Por favor, espera un momento antes de intentar de nuevo.',
+    );
+  });
 });

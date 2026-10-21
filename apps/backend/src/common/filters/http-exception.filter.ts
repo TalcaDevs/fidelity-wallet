@@ -33,6 +33,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
         const body = res as Record<string, unknown>;
         message = (body.message as string | object) ?? exception.message;
         error = (body.error as string) ?? exception.name;
+        if (status === HttpStatus.TOO_MANY_REQUESTS) {
+          if (typeof message === 'string' && (message.includes('Too Many Requests') || message.includes('ThrottlerException'))) {
+            message = 'Demasiadas solicitudes. Por favor, espera un momento antes de intentar de nuevo.';
+          }
+        }
         for (const key of EXPOSED_KEYS) {
           if (body[key] !== undefined) extra[key] = body[key];
         }

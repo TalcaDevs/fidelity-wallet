@@ -2,6 +2,9 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CUSTOMER_EMAIL_MAX, CUSTOMER_NAME_MAX } from '@fidelity/shared';
 import { Transform } from 'class-transformer';
 import {
+  registerDecorator,
+  ValidationArguments,
+  ValidationOptions,
   Equals,
   IsBoolean,
   IsInt,
@@ -22,6 +25,42 @@ const optionalText = ({ value }: { value: unknown }) => {
 };
 
 const CONTACT_REQUIRED = 'Ingresa tu teléfono o tu correo';
+
+function IsOptionalMaxLength(max: number, validationOptions?: ValidationOptions) {
+  return function (object: object, propertyName: string) {
+    registerDecorator({
+      name: 'isOptionalMaxLength',
+      target: object.constructor,
+      propertyName: propertyName,
+      constraints: [max],
+      options: validationOptions,
+      validator: {
+        validate(value: any, args: ValidationArguments) {
+          if (value === undefined || value === null) return true;
+          const [maxLength] = args.constraints;
+          return typeof value === 'string' && value.length <= maxLength;
+        },
+      },
+    });
+  };
+}
+
+function IsOptionalString(validationOptions?: ValidationOptions) {
+  return function (object: object, propertyName: string) {
+    registerDecorator({
+      name: 'isOptionalString',
+      target: object.constructor,
+      propertyName: propertyName,
+      options: validationOptions,
+      validator: {
+        validate(value: any) {
+          if (value === undefined || value === null) return true;
+          return typeof value === 'string';
+        },
+      },
+    });
+  };
+}
 
 export class CreateCustomerDto {
   @ApiProperty({
@@ -45,9 +84,9 @@ export class CreateCustomerDto {
     example: '+56912345678',
   })
   @Transform(optionalText)
-  @ValidateIf((o: CreateCustomerDto) => !o.email)
-  @IsString({ message: 'El teléfono debe ser una cadena de texto' })
+  @ValidateIf((o: CreateCustomerDto) => !o.email || Boolean(o.phone))
   @IsNotEmpty({ message: CONTACT_REQUIRED })
+  @IsOptionalString({ message: 'El teléfono debe ser una cadena de texto' })
   phone?: string;
 
   @ApiPropertyOptional({
@@ -55,10 +94,10 @@ export class CreateCustomerDto {
     example: 'maria@gmail.com',
   })
   @Transform(optionalText)
-  @ValidateIf((o: CreateCustomerDto) => !o.phone)
-  @IsString({ message: 'El correo debe ser una cadena de texto' })
+  @ValidateIf((o: CreateCustomerDto) => !o.phone || Boolean(o.email))
   @IsNotEmpty({ message: CONTACT_REQUIRED })
-  @MaxLength(CUSTOMER_EMAIL_MAX, { message: 'El correo es demasiado largo' })
+  @IsOptionalString({ message: 'El correo debe ser una cadena de texto' })
+  @IsOptionalMaxLength(CUSTOMER_EMAIL_MAX, { message: 'El correo es demasiado largo' })
   email?: string;
 
   @ApiPropertyOptional({ description: 'Nombre del cliente. Opcional', example: 'María Pérez' })
