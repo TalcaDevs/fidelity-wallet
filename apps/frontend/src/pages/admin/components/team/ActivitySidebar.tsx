@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import type { StaffActivityDto, StaffMemberDto, StaffScanType } from '@fidelity/shared';
+import { customerDetailPath } from '../../../../components/routing/routePaths';
 import { ErrorAlert } from '../../../../components/ui/ErrorAlert';
 import { useAsyncData } from '../../../../hooks/useAsyncData';
 import { formatDateTime } from '../../../../lib/formatDate';
@@ -50,10 +53,10 @@ const TYPE_CONFIG: Record<
 };
 
 /**
- * Panel lateral de auditoría de actividad para el dueño del local.
- * Proporciona métricas rápidas (Sellos, Canjes, % Manual), filtro por tipo de operación,
- * detección visual de clientes recurrentes (útil para corroborar alertas antifraude)
- * y distinción clara entre escaneo de tarjeta Wallet y tipeo manual.
+ * Modal de auditoría de actividad del personal para el dueño del local.
+ * Se monta mediante Portal en document.body para evitar solapamientos con la barra superior.
+ * Incluye mini-KPIs, filtros de operación, detección visual de clientes recurrentes y
+ * navegación directa a la ficha/historial de compras del cliente.
  */
 export function ActivitySidebar({
   member,
@@ -64,10 +67,11 @@ export function ActivitySidebar({
   onClose: () => void;
   onLoadActivity: (userId: string) => Promise<StaffActivityDto[]>;
 }) {
+  const navigate = useNavigate();
   const fetcher = useCallback(() => onLoadActivity(member.userId), [onLoadActivity, member.userId]);
   const { data, loading, error } = useAsyncData(fetcher);
   const activity = data ?? [];
-  const dialogRef = useRef<HTMLElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   useDialogFocus(true, dialogRef);
 
   const [filter, setFilter] = useState<FilterType>('ALL');
@@ -107,19 +111,31 @@ export function ActivitySidebar({
     return activity;
   }, [activity, filter]);
 
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-panel-muted/20 backdrop-blur-sm">
-      <aside
+  const handleNavigateToCustomer = (customerId: string | null | undefined) => {
+    if (!customerId) return;
+    onClose();
+    navigate(customerDetailPath(customerId));
+  };
+
+  const modalContent = (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-sm"
+      onClick={(e) => {
+        // Cierra al hacer clic en el fondo oscuro
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
         ref={dialogRef}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="activity-title"
-        className="bg-panel-surface w-full max-w-md h-full shadow-2xl border-l border-panel-border flex flex-col"
+        className="bg-panel-surface w-full max-w-2xl max-h-[88vh] rounded-3xl shadow-2xl border border-panel-border flex flex-col overflow-hidden relative motion-safe:animate-[fw-panel-enter_200ms_ease-out]"
       >
-        {/* Cabecera de auditoría con datos del miembro */}
-        <div className="p-6 border-b border-panel-border flex items-start justify-between gap-3 shrink-0">
-          <div className="min-w-0">
+        {/* Cabecera del modal */}
+        <div className="p-5 sm:p-6 border-b border-panel-border flex items-start justify-between gap-3 shrink-0 bg-panel-surface">
+          <div className="min-w-0 pr-6">
             <div className="flex items-center gap-2 mb-1">
               <h2 id="activity-title" className="text-xl font-bold text-panel-text">
                 Auditoría de Actividad
@@ -136,19 +152,19 @@ export function ActivitySidebar({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Cerrar panel de actividad"
+            aria-label="Cerrar modal de actividad"
             className="p-2 text-panel-muted hover:text-panel-text rounded-full hover:bg-panel-soft transition-colors shrink-0"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        {/* Cuerpo scrollable */}
-        <div className="flex-1 overflow-y-auto p-6">
+        {/* Cuerpo del modal */}
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6">
           {loading ? (
-            <div className="flex justify-center py-10" aria-label="Cargando actividad">
+            <div className="flex justify-center py-12" aria-label="Cargando actividad">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-panel-accent" />
             </div>
           ) : error ? (
@@ -252,7 +268,7 @@ export function ActivitySidebar({
                 )}
               </div>
 
-              {/* Lista de operaciones en formato tarjetas */}
+              {/* Lista de operaciones en formato tarjetas interactivas */}
               {filteredActivity.length === 0 ? (
                 <div className="text-center py-8 px-4">
                   <p className="font-semibold text-panel-text text-sm">Sin resultados para este filtro</p>
@@ -268,11 +284,28 @@ export function ActivitySidebar({
                     const phone = scan.customerPhone;
                     const visitsCount = phone ? customerCounts.get(phone) ?? 0 : 0;
                     const isHighRecurrence = visitsCount >= 4;
+                    const hasCustomerLink = Boolean(scan.customerId);
 
                     return (
                       <li
                         key={scan.id}
-                        className={`rounded-2xl border p-4 shadow-sm transition-all ${
+                        role={hasCustomerLink ? 'button' : undefined}
+                        tabIndex={hasCustomerLink ? 0 : undefined}
+                        onClick={hasCustomerLink ? () => handleNavigateToCustomer(scan.customerId) : undefined}
+                        onKeyDown={
+                          hasCustomerLink
+                            ? (e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  handleNavigateToCustomer(scan.customerId);
+                                }
+                              }
+                            : undefined
+                        }
+                        title={hasCustomerLink ? 'Clic para ver ficha e historial de compras de este cliente' : undefined}
+                        className={`group rounded-2xl border p-4 shadow-sm transition-all text-left ${
+                          hasCustomerLink ? 'cursor-pointer hover:border-panel-accent hover:shadow-md' : ''
+                        } ${
                           isHighRecurrence
                             ? 'border-amber-500/40 bg-amber-500/[0.04] dark:bg-amber-500/[0.08]'
                             : 'border-panel-border bg-panel-surface/80 hover:border-panel-border/80'
@@ -331,15 +364,25 @@ export function ActivitySidebar({
                           </div>
                         )}
 
-                        {/* Footer con el método de escaneo */}
-                        <div className="mt-3 pt-2.5 border-t border-panel-border/60 flex items-center justify-between">
-                          <span className="text-[11px] text-panel-muted">Método:</span>
-                          <span
-                            className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md border ${methodInfo.badgeClass}`}
-                          >
-                            <span>{methodInfo.icon}</span>
-                            <span>{methodInfo.label}</span>
-                          </span>
+                        {/* Footer con el método de escaneo y enlace a compras */}
+                        <div className="mt-3 pt-2.5 border-t border-panel-border/60 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] text-panel-muted">Método:</span>
+                            <span
+                              className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md border ${methodInfo.badgeClass}`}
+                            >
+                              <span>{methodInfo.icon}</span>
+                              <span>{methodInfo.label}</span>
+                            </span>
+                          </div>
+                          {hasCustomerLink && (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-panel-accent group-hover:underline">
+                              <span>Ver compras</span>
+                              <svg className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" />
+                              </svg>
+                            </span>
+                          )}
                         </div>
                       </li>
                     );
@@ -349,7 +392,23 @@ export function ActivitySidebar({
             </>
           )}
         </div>
-      </aside>
+
+        {/* Footer del modal con botón de cierre */}
+        <div className="p-4 sm:p-5 border-t border-panel-border bg-panel-soft/40 flex items-center justify-between shrink-0">
+          <p className="text-xs text-panel-muted">
+            {activity.length > 0 ? `${activity.length} operaciones registradas` : ''}
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2.5 rounded-xl border border-panel-border bg-panel-surface hover:bg-panel-soft text-panel-text font-bold text-xs sm:text-sm transition-colors shadow-sm"
+          >
+            Cerrar
+          </button>
+        </div>
+      </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }

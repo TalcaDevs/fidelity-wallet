@@ -327,7 +327,7 @@ export class StaffService {
         createdAt: true,
         merchant: { select: { name: true } },
         promotion: { select: { name: true } },
-        pass: { select: { customer: { select: { phone: true } } } },
+        pass: { select: { customerId: true, customer: { select: { phone: true } } } },
       },
     });
 
@@ -340,7 +340,7 @@ export class StaffService {
         createdAt: s.createdAt.toISOString(),
         locationName: s.merchant.name,
         customerPhone: phone ? maskPhone(phone) : null,
-        promotionName: s.promotion?.name ?? null,
+        promotionName: s.promotion?.name ?? null, customerId: s.pass.customerId,
       };
     });
   }

@@ -46,6 +46,7 @@ export interface StaffActivityDto {
   /** Enmascarado en el backend (§7.2). */
   customerPhone: string | null;
   promotionName: string | null;
+  customerId?: string | null;
 }
 
 /** Escaneos más recientes que devuelve la actividad de un miembro. */

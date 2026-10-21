@@ -1,8 +1,18 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { StaffActivityDto, StaffMemberDto } from '@fidelity/shared';
 import { ActivitySidebar } from './ActivitySidebar';
+
+const mockNavigate = vi.fn();
+
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom');
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
 
 const mockMember: StaffMemberDto = {
   userId: 'user-cajero-1',
@@ -25,6 +35,7 @@ const mockScans: StaffActivityDto[] = [
     locationName: 'Sucursal Central',
     customerPhone: '+56 9 **** 1111',
     promotionName: null,
+    customerId: 'cust-uuid-1',
   },
   {
     id: 'scan-2',
@@ -34,6 +45,7 @@ const mockScans: StaffActivityDto[] = [
     locationName: 'Sucursal Central',
     customerPhone: '+56 9 **** 1111',
     promotionName: null,
+    customerId: 'cust-uuid-1',
   },
   {
     id: 'scan-3',
@@ -43,6 +55,7 @@ const mockScans: StaffActivityDto[] = [
     locationName: 'Sucursal Central',
     customerPhone: '+56 9 **** 1111',
     promotionName: null,
+    customerId: 'cust-uuid-1',
   },
   {
     id: 'scan-4',
@@ -52,6 +65,7 @@ const mockScans: StaffActivityDto[] = [
     locationName: 'Sucursal Central',
     customerPhone: '+56 9 **** 1111',
     promotionName: null,
+    customerId: 'cust-uuid-1',
   },
   {
     id: 'scan-5',
@@ -61,10 +75,15 @@ const mockScans: StaffActivityDto[] = [
     locationName: 'Sucursal Central',
     customerPhone: '+56 9 **** 2222',
     promotionName: 'Café Gratis',
+    customerId: 'cust-uuid-2',
   },
 ];
 
-describe('ActivitySidebar', () => {
+describe('ActivitySidebar (Modal)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('renders loading spinner and member header information', () => {
     const onLoadActivity = vi.fn(() => new Promise<StaffActivityDto[]>(() => {}));
     render(<ActivitySidebar member={mockMember} onClose={vi.fn()} onLoadActivity={onLoadActivity} />);
@@ -84,7 +103,7 @@ describe('ActivitySidebar', () => {
     expect(screen.getByText(/Este miembro del equipo aún no ha registrado escaneos/i)).toBeInTheDocument();
   });
 
-  it('renders mini-KPIs and scan cards with recurrence warnings', async () => {
+  it('renders mini-KPIs, recurrence warnings, and customer links', async () => {
     const onLoadActivity = vi.fn().mockResolvedValue(mockScans);
     render(<ActivitySidebar member={mockMember} onClose={vi.fn()} onLoadActivity={onLoadActivity} />);
 
@@ -100,6 +119,23 @@ describe('ActivitySidebar', () => {
     expect(screen.getByText('Ingreso manual')).toBeInTheDocument();
     expect(screen.getAllByText('QR Wallet')).toHaveLength(4);
     expect(screen.getByText('Café Gratis')).toBeInTheDocument();
+
+    // Customer history links
+    expect(screen.getAllByText('Ver compras')).toHaveLength(5);
+  });
+
+  it('navigates to customer history when an operation card is clicked', async () => {
+    const onClose = vi.fn();
+    const onLoadActivity = vi.fn().mockResolvedValue(mockScans);
+    render(<ActivitySidebar member={mockMember} onClose={onClose} onLoadActivity={onLoadActivity} />);
+
+    const list = await screen.findByRole('list', { name: 'Lista de operaciones' });
+    const items = within(list).getAllByRole('button');
+
+    // Click on the first card
+    await userEvent.click(items[0]);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenCalledWith('/admin/customers/cust-uuid-1');
   });
 
   it('filters activity by type when filter buttons are clicked', async () => {
@@ -108,34 +144,44 @@ describe('ActivitySidebar', () => {
 
     await screen.findByText('Auditoría de Actividad');
 
-    // Initially 5 cards
     const list = await screen.findByRole('list', { name: 'Lista de operaciones' });
-    expect(within(list).getAllByRole('listitem')).toHaveLength(5);
+    expect(within(list).getAllByRole('button')).toHaveLength(5);
 
     // Filter by Canjes
     await userEvent.click(screen.getByRole('button', { name: /Canjes \(1\)/i }));
-    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    expect(within(list).getAllByRole('button')).toHaveLength(1);
     expect(within(list).getByText('Premio canjeado')).toBeInTheDocument();
 
     // Filter by Manuales
     await userEvent.click(screen.getByRole('button', { name: /Manuales \(1\)/i }));
-    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    expect(within(list).getAllByRole('button')).toHaveLength(1);
     expect(within(list).getByText('Ingreso manual')).toBeInTheDocument();
 
     // Filter by Sellos
     await userEvent.click(screen.getByRole('button', { name: /Sellos \(4\)/i }));
-    expect(within(list).getAllByRole('listitem')).toHaveLength(4);
+    expect(within(list).getAllByRole('button')).toHaveLength(4);
   });
 
-  it('calls onClose when close button is clicked or Escape is pressed', async () => {
+  it('can be closed via close icon, footer button, backdrop click, or Escape key', async () => {
     const onClose = vi.fn();
     const onLoadActivity = vi.fn().mockResolvedValue(mockScans);
     render(<ActivitySidebar member={mockMember} onClose={onClose} onLoadActivity={onLoadActivity} />);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Cerrar panel de actividad' }));
+    // 1. Close icon in header
+    await userEvent.click(screen.getByRole('button', { name: 'Cerrar modal de actividad' }));
     expect(onClose).toHaveBeenCalledTimes(1);
 
-    await userEvent.keyboard('{Escape}');
+    // 2. Footer "Cerrar" button
+    await userEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
     expect(onClose).toHaveBeenCalledTimes(2);
+
+    // 3. Escape key
+    await userEvent.keyboard('{Escape}');
+    expect(onClose).toHaveBeenCalledTimes(3);
+
+    // 4. Backdrop click (the outer portal container)
+    const backdrop = document.body.querySelector('.fixed.inset-0.z-50')!;
+    await userEvent.click(backdrop);
+    expect(onClose).toHaveBeenCalledTimes(4);
   });
 });

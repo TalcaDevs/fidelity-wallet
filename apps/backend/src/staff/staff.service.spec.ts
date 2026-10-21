@@ -453,7 +453,7 @@ describe('StaffService', () => {
           createdAt: new Date('2026-09-30T12:00:00Z'),
           merchant: { name: 'Centro' },
           promotion: null,
-          pass: { customer: { phone: '+56912345678' } },
+          pass: { customerId: 'cust-1', customer: { phone: '+56912345678' } },
         },
       ]);
 
@@ -467,7 +467,7 @@ describe('StaffService', () => {
           createdAt: '2026-09-30T12:00:00.000Z',
           locationName: 'Centro',
           customerPhone: '+56 9 **** 5678',
-          promotionName: null,
+          promotionName: null, customerId: 'cust-1',
         },
       ]);
       expect(prisma.scan.findMany).toHaveBeenCalledWith(
