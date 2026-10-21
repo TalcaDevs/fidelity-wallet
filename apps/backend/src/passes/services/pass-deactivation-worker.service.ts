@@ -339,8 +339,15 @@ export class PassDeactivationWorkerService
 
       let processed = 0;
       for (const task of tasks) {
-        const success = await this.processSingleTask(task);
-        if (success) processed++;
+        try {
+          const success = await this.processSingleTask(task);
+          if (success) processed++;
+        } catch (taskErr: unknown) {
+          const msg = taskErr instanceof Error ? taskErr.message : String(taskErr);
+          this.logger.error(
+            `[PassDeactivationWorker] Error no fatal procesando tarea ${task.id} (${task.passId}): ${msg}`,
+          );
+        }
       }
 
       return processed;

@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 
 export type MerchantRole = 'OWNER' | 'STAFF';
+export type BrandStatus = 'ACTIVE' | 'SUSPENDED';
 
 export interface Membership {
   brandId: string;
@@ -9,6 +10,29 @@ export interface Membership {
   merchantId: string;
   programId: string | null;
   role: MerchantRole;
+  brandStatus: BrandStatus;
+}
+
+export const MEMBERSHIP_INVALIDATED_EVENT = 'fidelity:membership-invalidated';
+
+export function isBrandSuspended(brandStatus: BrandStatus | null | undefined): boolean {
+  return brandStatus === 'SUSPENDED';
+}
+
+export function isMembershipSuspended(
+  membership: { brandStatus?: BrandStatus | null; isSuspended?: boolean } | null | undefined,
+): boolean {
+  if (!membership) return false;
+  if (membership.brandStatus !== undefined && membership.brandStatus !== null) {
+    return isBrandSuspended(membership.brandStatus);
+  }
+  return Boolean(membership.isSuspended);
+}
+
+export function invalidateMemberships(): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(MEMBERSHIP_INVALIDATED_EVENT));
+  }
 }
 
 interface BrandMemberRow {
@@ -31,19 +55,29 @@ export async function fetchMemberships(userId: string): Promise<Membership[]> {
   return Promise.all(rows.map(resolveMembership));
 }
 
-export const SUSPENDED_ACCOUNT_MESSAGE =
-  'Tu cuenta está suspendida. Escríbenos a soporte para reactivarla: tus datos siguen guardados.';
-
 async function resolveMembership(row: BrandMemberRow): Promise<Membership> {
-  // Con la marca suspendida el RLS oculta todo menos esta fila: sin este chequeo el panel
-  // diría "sin locales" en vez de explicar la suspensión.
   const { data: brand, error: brandError } = await supabase
     .from('Brand')
     .select('status')
     .eq('id', row.brandId)
     .maybeSingle();
   if (brandError) throw brandError;
-  if (brand?.status === 'SUSPENDED') throw new Error(SUSPENDED_ACCOUNT_MESSAGE);
+
+  const brandStatus: BrandStatus = brand?.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE';
+
+  if (isBrandSuspended(brandStatus)) {
+    // Si la marca está suspendida, las políticas RLS ocultan las tablas operativas (LoyaltyProgram, etc.).
+    // Retornamos de inmediato con programId: null. El enrutamiento protege las rutas operativas
+    // mediante RequireActiveSubscription y restringe al usuario a Billing y Support, las cuales
+    // dependen únicamente de brandId y son completamente seguras contra valores nulos.
+    return {
+      brandId: row.brandId,
+      merchantId: row.merchantId ?? '',
+      programId: null,
+      role: row.role,
+      brandStatus: 'SUSPENDED',
+    };
+  }
 
   const [locationRes, programRes] = await Promise.all([
     row.merchantId
@@ -71,5 +105,6 @@ async function resolveMembership(row: BrandMemberRow): Promise<Membership> {
     merchantId: locationRes.data.id,
     programId: programRes.data?.id ?? null,
     role: row.role,
+    brandStatus: 'ACTIVE',
   };
 }

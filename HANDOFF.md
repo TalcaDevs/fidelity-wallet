@@ -109,7 +109,7 @@
 - El permiso del `STAFF` se aplica en **RLS y en el backend**, no escondiendo botones.
 - `/internal/*` solo lee desde `/api/internal/*` (guard `PlatformAdminGuard` + `@PlatformRoles`). **Nunca políticas RLS "para admins".** Cada escritura interna y cada vista de un dato completo quedan en `AuditLog`.
 - Datos de clientes **enmascarados** en caja, reportes y panel interno. Borrado por Ley 19.628: `DELETE /api/customers/:id` (funciona aunque la marca esté suspendida).
-- **Marca suspendida:** sin acceso al panel ni a `/scan`, `/join` responde "no disponible", los datos se conservan y las tarjetas en la billetera no se invalidan. La prueba vencida no suspende sola (queda `PAST_DUE`).
+- **Marca suspendida:** el dueño solo accede a Facturación y Soporte; el personal no accede al panel ni a `/scan`; `/join` responde "no disponible"; los datos se conservan y las tarjetas en la billetera no se invalidan. La prueba vencida no suspende sola (queda `PAST_DUE`).
 - **Límites del plan:** el backend bloquea crecer más allá (locales, meseros, clientes en la prueba) con 403 `PLAN_LIMIT`; lo que ya existe no se borra.
 - Imágenes subidas: se validan por contenido y se **recodifican con sharp** (sin metadatos ni contenido oculto).
 - Si cambian los términos, subir `TERMS_VERSION` en `apps/frontend/src/pages/public/Terms.tsx` **y** en `apps/backend/src/customers/terms.ts` en el mismo PR (hay un test que lo verifica).

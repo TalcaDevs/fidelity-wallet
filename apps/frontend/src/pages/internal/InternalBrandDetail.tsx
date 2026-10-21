@@ -185,7 +185,7 @@ function AccountEditor({ brand, onSaved }: { brand: InternalBrandDetailDto; onSa
           title={suspending ? '¿Suspender la marca?' : '¿Reactivar la marca?'}
           description={
             suspending
-              ? 'El dueño y los meseros pierden el acceso, /join deja de funcionar y no se sella ni se canjea. Los datos se conservan (HANDOFF §8.12).'
+              ? 'El dueño solo puede acceder a Facturación y Soporte, los meseros pierden el acceso, /join deja de funcionar y no se sella ni se canjea. Los datos se conservan (HANDOFF §4).'
               : 'La marca vuelve a operar con normalidad.'
           }
           onClose={() => setConfirmStatus(false)}
