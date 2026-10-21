@@ -388,6 +388,42 @@ describe('GoogleWalletService', () => {
       });
     });
 
+    it('sets "Vencen a los 30 días de obtenerlos" for points-only cards when nextExpiryAt is null and stampValidityDays is 30', async () => {
+      const mockFetch = stubWalletApi({ ok: true, status: 200 });
+      await service.updateLoyaltyObject(
+        passData(
+          { nextExpiryAt: null, stampsEnabled: false, pointsEnabled: true, rewardCurrency: 'POINTS' },
+          { stampsEnabled: false, pointsEnabled: true, stampValidityDays: 30 },
+        ),
+      );
+      const calls = walletCalls(mockFetch);
+      const callWithBody = calls.find((c) => c[1]?.body);
+      const body = JSON.parse(callWithBody![1].body);
+      expect(body.textModulesData).toContainEqual({
+        id: 'balance_expiry',
+        header: 'Próximo vencimiento',
+        body: 'Vencen a los 30 días de obtenerlos',
+      });
+    });
+
+    it('sets "Tus puntos no vencen" for points-only cards when stampValidityDays is null', async () => {
+      const mockFetch = stubWalletApi({ ok: true, status: 200 });
+      await service.updateLoyaltyObject(
+        passData(
+          { nextExpiryAt: null, stampsEnabled: false, pointsEnabled: true, rewardCurrency: 'POINTS' },
+          { stampsEnabled: false, pointsEnabled: true, stampValidityDays: null },
+        ),
+      );
+      const calls = walletCalls(mockFetch);
+      const callWithBody = calls.find((c) => c[1]?.body);
+      const body = JSON.parse(callWithBody![1].body);
+      expect(body.textModulesData).toContainEqual({
+        id: 'balance_expiry',
+        header: 'Próximo vencimiento',
+        body: 'Tus puntos no vencen',
+      });
+    });
+
     it('handles 404 gracefully without throwing error when user has not saved pass yet', async () => {
       stubWalletApi({ ok: false, status: 404, text: async () => '{"error":{"message":"Object not found"}}' });
       await expect(service.updateLoyaltyObject(passData())).resolves.not.toThrow();

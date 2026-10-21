@@ -61,7 +61,7 @@ export class ApplePassService {
         label: 'VIGENCIA',
         value: data.nextExpiryAt
           ? `Próximo vencimiento: ${data.nextExpiryAt.toLocaleDateString('es-CL')}`
-          : card.stampsEnabled && card.stampValidityDays && card.stampValidityDays > 0
+          : (card.stampsEnabled || card.pointsEnabled) && card.stampValidityDays && card.stampValidityDays > 0
             ? (card.stampValidityDays === 1 ? 'Vencen a 1 día de obtenerlos.' : `Vencen a los ${card.stampValidityDays} días de obtenerlos.`)
             : (data.stampsEnabled && data.pointsEnabled ? 'Tus sellos y puntos no vencen.' : `Tus ${unit} no vencen.`),
       },

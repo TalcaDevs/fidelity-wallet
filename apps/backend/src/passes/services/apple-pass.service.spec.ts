@@ -118,5 +118,41 @@ describe('ApplePassService', () => {
       expect(expiryField).toBeDefined();
       expect(expiryField.value).toBe('Tus sellos y puntos no vencen.');
     });
+
+    it('sets "Vencen a los 30 días de obtenerlos." for points-only cards when nextExpiryAt is null and stampValidityDays is 30', () => {
+      const data = createPassData(
+        { nextExpiryAt: null, stampsEnabled: false, pointsEnabled: true, rewardCurrency: 'POINTS' },
+        { stampsEnabled: false, pointsEnabled: true, stampValidityDays: 30 },
+      );
+      const pass = service.buildPassJson(data) as any;
+
+      const expiryField = pass.storeCard.backFields.find((f: any) => f.key === 'expiryInfo');
+      expect(expiryField).toBeDefined();
+      expect(expiryField.value).toBe('Vencen a los 30 días de obtenerlos.');
+    });
+
+    it('sets "Tus puntos no vencen." for points-only cards when stampValidityDays is null', () => {
+      const data = createPassData(
+        { nextExpiryAt: null, stampsEnabled: false, pointsEnabled: true, rewardCurrency: 'POINTS' },
+        { stampsEnabled: false, pointsEnabled: true, stampValidityDays: null },
+      );
+      const pass = service.buildPassJson(data) as any;
+
+      const expiryField = pass.storeCard.backFields.find((f: any) => f.key === 'expiryInfo');
+      expect(expiryField).toBeDefined();
+      expect(expiryField.value).toBe('Tus puntos no vencen.');
+    });
+
+    it('sets "Vencen a los 30 días de obtenerlos." for coexistence cards when nextExpiryAt is null and stampValidityDays is 30', () => {
+      const data = createPassData(
+        { nextExpiryAt: null, stampsEnabled: true, pointsEnabled: true },
+        { stampsEnabled: true, pointsEnabled: true, stampValidityDays: 30 },
+      );
+      const pass = service.buildPassJson(data) as any;
+
+      const expiryField = pass.storeCard.backFields.find((f: any) => f.key === 'expiryInfo');
+      expect(expiryField).toBeDefined();
+      expect(expiryField.value).toBe('Vencen a los 30 días de obtenerlos.');
+    });
   });
 });

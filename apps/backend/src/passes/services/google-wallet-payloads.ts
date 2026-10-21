@@ -139,7 +139,7 @@ function textModules(data: PassData) {
         let expiryBody: string;
         if (data.nextExpiryAt) {
           expiryBody = formatDate(data.nextExpiryAt);
-        } else if (card.stampsEnabled && card.stampValidityDays && card.stampValidityDays > 0) {
+        } else if ((card.stampsEnabled || card.pointsEnabled) && card.stampValidityDays && card.stampValidityDays > 0) {
           expiryBody = card.stampValidityDays === 1 ? 'Vencen a 1 día de obtenerlos' : `Vencen a los ${card.stampValidityDays} días de obtenerlos`;
         } else if (data.stampsEnabled && data.pointsEnabled) {
           expiryBody = 'Tus sellos y puntos no vencen';
