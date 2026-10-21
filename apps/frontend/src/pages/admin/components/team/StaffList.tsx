@@ -34,8 +34,8 @@ function StatusBadge({ status }: { status: StaffStatus }) {
 function MemberIdentity({ member }: { member: StaffMemberDto }) {
   const email = member.email ?? 'Cuenta no disponible';
   const fullName =
+    [member.firstName, member.lastName].filter(Boolean).join(' ').trim() ||
     member.name ||
-    [member.firstName, member.lastName].filter(Boolean).join(' ') ||
     null;
   const initial = (fullName || email).charAt(0).toUpperCase();
 
@@ -45,17 +45,15 @@ function MemberIdentity({ member }: { member: StaffMemberDto }) {
         {initial}
       </div>
       <div className="min-w-0">
-        {fullName ? (
-          <>
-            <p className="font-bold text-panel-text truncate">{fullName}</p>
-            <p className="text-xs text-panel-muted truncate">{email}</p>
-          </>
-        ) : (
-          <p className="font-bold text-panel-text truncate">{email}</p>
-        )}
-        {member.role === 'OWNER' && (
-          <span className="text-xs text-panel-accent bg-panel-accent/10 px-2 py-0.5 rounded-md mt-1 inline-block">Dueño</span>
-        )}
+        <div className="flex items-center gap-2">
+          <p className="font-bold text-panel-text truncate">{fullName || email}</p>
+          {member.role === 'OWNER' && (
+            <span className="text-xs text-panel-accent bg-panel-accent/10 px-2 py-0.5 rounded-md shrink-0">
+              Dueño
+            </span>
+          )}
+        </div>
+        {fullName && <p className="text-xs text-panel-muted truncate">{email}</p>}
       </div>
     </div>
   );

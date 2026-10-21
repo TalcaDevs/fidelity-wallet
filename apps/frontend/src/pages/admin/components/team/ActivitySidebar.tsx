@@ -144,9 +144,11 @@ export function ActivitySidebar({
                 {member.role === 'OWNER' ? 'Dueño' : 'Cajero'}
               </span>
             </div>
-            {member.name ? (
+            {([member.firstName, member.lastName].filter(Boolean).join(' ').trim() || member.name) ? (
               <>
-                <p className="text-base font-bold text-panel-text truncate">{member.name}</p>
+                <p className="text-base font-bold text-panel-text truncate">
+                  {[member.firstName, member.lastName].filter(Boolean).join(' ').trim() || member.name}
+                </p>
                 <p className="text-xs font-semibold text-panel-accent truncate">{member.email}</p>
               </>
             ) : (

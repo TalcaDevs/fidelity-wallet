@@ -61,4 +61,34 @@ describe('StaffList', () => {
     ]);
     expect(within(table).getAllByText('Reenviar invitación')).toHaveLength(1);
   });
+
+  it('renders first and last name on top with email below for staff members', () => {
+    const { actions } = recorder();
+    const teamWithNames = [
+      member({
+        userId: 'staff-with-name',
+        firstName: 'Camila',
+        lastName: 'Reyes',
+        email: 'camila@cafedemo.cl',
+        role: 'STAFF',
+      }),
+      member({
+        userId: 'owner-with-name',
+        name: 'Dueño Café Demo',
+        email: 'owner@cafedemo.cl',
+        role: 'OWNER',
+      }),
+    ];
+    render(<StaffList staff={teamWithNames} actions={actions} />);
+
+    const table = screen.getByRole('table');
+    const staffRow = within(table).getByText('Camila Reyes').closest('tr')!;
+    expect(within(staffRow).getByText('Camila Reyes')).toBeInTheDocument();
+    expect(within(staffRow).getByText('camila@cafedemo.cl')).toBeInTheDocument();
+
+    const ownerRow = within(table).getByText('Dueño Café Demo').closest('tr')!;
+    expect(within(ownerRow).getByText('Dueño Café Demo')).toBeInTheDocument();
+    expect(within(ownerRow).getByText('owner@cafedemo.cl')).toBeInTheDocument();
+    expect(within(ownerRow).getByText('Dueño')).toBeInTheDocument();
+  });
 });
