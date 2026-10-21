@@ -11,3 +11,12 @@ scratch_triggers.sql
 .claude/
 skills
 scratch/
+
+# SonarQube & herramientas locales de calidad
+sonar-project.properties
+.scannerwork/
+scripts/
+apps/backend/scripts/
+
+# Reportes locales de simulación y pruebas
+REPORTE_SIMULACION_E2E.md
