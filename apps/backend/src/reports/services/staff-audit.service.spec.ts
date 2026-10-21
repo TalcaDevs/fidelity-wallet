@@ -83,4 +83,23 @@ describe('StaffAuditService', () => {
     expect(result.staff[1].staffName).toBe('Cajero Bajo');
     expect(result.staff[1].stampsCount).toBe(1);
   });
+  it('genera alerta EXCESSIVE_STAMPS_SAME_CUSTOMER con el nombre del cajero', async () => {
+    (prisma.brandMember.findMany as any).mockResolvedValue([
+      { userId: 'user-high', role: 'STAFF' },
+    ]);
+    const baseDate = new Date('2026-09-01T12:00:00Z');
+    (prisma.scan.findMany as any).mockResolvedValue([
+      { id: 's-1', type: 'STAMP_ADDED', method: 'QR', passId: 'p-1', createdByUserId: 'user-high', createdAt: new Date(baseDate.getTime() + 1000), stampCount: 1 },
+      { id: 's-2', type: 'STAMP_ADDED', method: 'QR', passId: 'p-1', createdByUserId: 'user-high', createdAt: new Date(baseDate.getTime() + 2000), stampCount: 1 },
+      { id: 's-3', type: 'STAMP_ADDED', method: 'QR', passId: 'p-1', createdByUserId: 'user-high', createdAt: new Date(baseDate.getTime() + 3000), stampCount: 1 },
+      { id: 's-4', type: 'STAMP_ADDED', method: 'QR', passId: 'p-1', createdByUserId: 'user-high', createdAt: new Date(baseDate.getTime() + 4000), stampCount: 1 },
+    ]);
+
+    const result = await service.getStaffActivity(scope, {});
+    expect(result.staff[0].alerts).toHaveLength(1);
+    expect(result.staff[0].alerts[0].type).toBe('EXCESSIVE_STAMPS_SAME_CUSTOMER');
+    expect(result.staff[0].alerts[0].description).toBe(
+      'Cajero Alto entregó 4 o más sellos al mismo cliente en menos de 7 días. Verifica si corresponde a compras reales.',
+    );
+  });
 });

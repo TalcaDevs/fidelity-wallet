@@ -146,12 +146,11 @@ export class StaffAuditService {
       if (times.length >= 4) {
         for (let i = 0; i <= times.length - 4; i++) {
           if (times[i + 3] - times[i] <= 7 * 24 * 60 * 60 * 1000) {
+            const cashierText = staffName ? staffName : 'Un miembro del equipo';
             alerts.push({
               type: 'EXCESSIVE_STAMPS_SAME_CUSTOMER',
               severity: 'high',
-              description: `Se registraron 4 o más sellos otorgados al mismo cliente en menos de 7 días${
-                staffName ? ` (${staffName})` : ''
-              }.`,
+              description: `${cashierText} entregó 4 o más sellos al mismo cliente en menos de 7 días. Verifica si corresponde a compras reales.`,
             });
             break;
           }

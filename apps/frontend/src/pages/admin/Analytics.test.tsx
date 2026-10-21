@@ -88,7 +88,7 @@ describe('Analytics Page', () => {
           {
             type: 'EXCESSIVE_STAMPS_SAME_CUSTOMER',
             severity: 'high' as const,
-            description: '4 o más sellos otorgados al mismo cliente en menos de 7 días.',
+            description: 'Carlos Equipo entregó 4 o más sellos al mismo cliente en menos de 7 días. Verifica si corresponde a compras reales.',
           },
         ],
       },
@@ -171,7 +171,7 @@ describe('Analytics Page', () => {
       expect(screen.getAllByText('Actividad de Equipo').length).toBe(2);
       expect(screen.getByText('Carlos Equipo')).toBeInTheDocument();
       expect(screen.getByText('45')).toBeInTheDocument();
-      expect(screen.getByText(/4 o más sellos otorgados al mismo cliente/)).toBeInTheDocument();
+      expect(screen.getByText(/entregó 4 o más sellos al mismo cliente/)).toBeInTheDocument();
       expect(screen.getByText(/Severidad Alta/i)).toBeInTheDocument();
     });
   });
