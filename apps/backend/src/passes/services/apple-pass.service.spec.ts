@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ConfigService } from '@nestjs/config';
-import { ApplePassService } from './apple-pass.service';
-import type { PassData } from '../interfaces/pass-data.interface';
+import { ApplePassService } from './apple-pass.service.js';
+import type { PassData } from '../interfaces/pass-data.interface.js';
 import { DEFAULT_CARD_DESIGN, DEFAULT_CARD_DETAILS, DEFAULT_REGISTRATION } from '@fidelity/shared';
 
 describe('ApplePassService', () => {
