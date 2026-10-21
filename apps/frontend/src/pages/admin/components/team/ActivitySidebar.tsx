@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import type { StaffActivityDto, StaffMemberDto, StaffScanType } from '@fidelity/shared';
 import { customerDetailPath } from '../../../../components/routing/routePaths';
 import { ErrorAlert } from '../../../../components/ui/ErrorAlert';
+import { WALLET_THEME } from '../../../../components/ui/walletTheme';
 import { useAsyncData } from '../../../../hooks/useAsyncData';
 import { formatDateTime } from '../../../../lib/formatDate';
 import { useDialogFocus } from '../../../../hooks/useDialogFocus';
@@ -54,9 +55,8 @@ const TYPE_CONFIG: Record<
 
 /**
  * Modal de auditoría de actividad del personal para el dueño del local.
- * Se monta mediante Portal en document.body para evitar solapamientos con la barra superior.
- * Incluye mini-KPIs, filtros de operación, detección visual de clientes recurrentes y
- * navegación directa a la ficha/historial de compras del cliente.
+ * Renderizado vía portal en document.body con soporte completo de modo oscuro (WALLET_THEME),
+ * estados de carga skeleton, filtros rápidos de operaciones y navegación al historial de compras del cliente.
  */
 export function ActivitySidebar({
   member,
@@ -121,7 +121,7 @@ export function ActivitySidebar({
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-sm"
       onClick={(e) => {
-        // Cierra al hacer clic en el fondo oscuro
+        // Cierra al hacer clic en el fondo oscuro exterior
         if (e.target === e.currentTarget) onClose();
       }}
     >
@@ -131,7 +131,7 @@ export function ActivitySidebar({
         role="dialog"
         aria-modal="true"
         aria-labelledby="activity-title"
-        className="bg-panel-surface w-full max-w-2xl max-h-[88vh] rounded-3xl shadow-2xl border border-panel-border flex flex-col overflow-hidden relative motion-safe:animate-[fw-panel-enter_200ms_ease-out]"
+        className={`${WALLET_THEME} bg-panel-surface w-full max-w-2xl max-h-[88vh] rounded-3xl shadow-2xl border border-panel-border flex flex-col overflow-hidden relative motion-safe:animate-[fw-panel-enter_200ms_ease-out]`}
       >
         {/* Cabecera del modal */}
         <div className="p-5 sm:p-6 border-b border-panel-border flex items-start justify-between gap-3 shrink-0 bg-panel-surface">
@@ -164,8 +164,41 @@ export function ActivitySidebar({
         {/* Cuerpo del modal */}
         <div className="flex-1 overflow-y-auto p-5 sm:p-6">
           {loading ? (
-            <div className="flex justify-center py-12" aria-label="Cargando actividad">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-panel-accent" />
+            /* Skeleton Loading State: reproduce la estructura real de la interfaz */
+            <div className="space-y-5 animate-pulse" aria-label="Cargando actividad">
+              {/* Skeleton Mini-KPIs */}
+              <div className="grid grid-cols-3 gap-2.5">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-20 rounded-xl bg-panel-soft border border-panel-border/60" />
+                ))}
+              </div>
+
+              {/* Skeleton Filtros rápidos */}
+              <div className="flex gap-2">
+                <div className="h-7 w-20 bg-panel-soft rounded-lg" />
+                <div className="h-7 w-20 bg-panel-soft rounded-lg" />
+                <div className="h-7 w-20 bg-panel-soft rounded-lg" />
+              </div>
+
+              {/* Skeleton Tarjetas de Operación */}
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="rounded-2xl border border-panel-border/60 bg-panel-soft/30 p-4 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <div className="h-5 w-32 bg-panel-soft rounded-lg" />
+                      <div className="h-4 w-24 bg-panel-soft rounded-md" />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="h-4 w-48 bg-panel-soft rounded-md" />
+                      <div className="h-4 w-36 bg-panel-soft rounded-md" />
+                    </div>
+                    <div className="pt-2.5 border-t border-panel-border/40 flex justify-between items-center">
+                      <div className="h-4 w-24 bg-panel-soft rounded-md" />
+                      <div className="h-4 w-24 bg-panel-soft rounded-md" />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : error ? (
             <ErrorAlert message={error} />
