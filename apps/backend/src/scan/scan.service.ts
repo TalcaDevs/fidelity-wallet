@@ -741,7 +741,7 @@ export class ScanService {
     const minutesLeft = Math.max(1, Math.ceil((block.until.getTime() - now.getTime()) / 60000));
     
     if (block.cause === 'STAMP') {
-      if (card.dailyStampLimit && minutesLeft > 180) {
+      if (card.dailyStampLimit) {
         return isOwner
           ? 'Este cliente ya alcanzó el límite diario de sellos. Para sumar más indica el motivo'
           : 'Este cliente ya alcanzó el límite diario de sellos. Podrá sumar más mañana';
@@ -999,8 +999,8 @@ export class ScanService {
     const isPlural = msgParts.length > 1 || options.stampCount > 1 || options.pointsEarned > 1;
     const added = `${msgParts.join(' y ')} agregado${isPlural ? 's' : ''}`;
     const balances = [];
-    if (card.stampsEnabled) balances.push(`${activeStamps} sellos`);
-    if (card.pointsEnabled) balances.push(`${clp.format(activePoints)} puntos`);
+    if (card.stampsEnabled) balances.push(`${activeStamps} sello${activeStamps === 1 ? '' : 's'}`);
+    if (card.pointsEnabled) balances.push(`${clp.format(activePoints)} punto${activePoints === 1 ? '' : 's'}`);
     const balanceStr = balances.join(' / ');
 
     return {
