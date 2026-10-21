@@ -10,8 +10,29 @@ export interface Membership {
   merchantId: string;
   programId: string | null;
   role: MerchantRole;
-  brandStatus?: BrandStatus;
-  isSuspended?: boolean;
+  brandStatus: BrandStatus;
+}
+
+export const MEMBERSHIP_INVALIDATED_EVENT = 'fidelity:membership-invalidated';
+
+export function isBrandSuspended(brandStatus: BrandStatus | null | undefined): boolean {
+  return brandStatus === 'SUSPENDED';
+}
+
+export function isMembershipSuspended(
+  membership: { brandStatus?: BrandStatus | null; isSuspended?: boolean } | null | undefined,
+): boolean {
+  if (!membership) return false;
+  if (membership.brandStatus !== undefined && membership.brandStatus !== null) {
+    return isBrandSuspended(membership.brandStatus);
+  }
+  return Boolean(membership.isSuspended);
+}
+
+export function invalidateMemberships(): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(MEMBERSHIP_INVALIDATED_EVENT));
+  }
 }
 
 interface BrandMemberRow {
@@ -42,10 +63,9 @@ async function resolveMembership(row: BrandMemberRow): Promise<Membership> {
     .maybeSingle();
   if (brandError) throw brandError;
 
-  const brandStatus = (brand?.status as BrandStatus) ?? 'ACTIVE';
-  const isSuspended = brandStatus === 'SUSPENDED';
+  const brandStatus: BrandStatus = brand?.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE';
 
-  if (isSuspended) {
+  if (isBrandSuspended(brandStatus)) {
     // Si la marca está suspendida, las políticas RLS ocultan las tablas operativas (LoyaltyProgram, etc.).
     // Retornamos de inmediato con programId: null. El enrutamiento protege las rutas operativas
     // mediante RequireActiveSubscription y restringe al usuario a Billing y Support, las cuales
@@ -56,7 +76,6 @@ async function resolveMembership(row: BrandMemberRow): Promise<Membership> {
       programId: null,
       role: row.role,
       brandStatus: 'SUSPENDED',
-      isSuspended: true,
     };
   }
 
@@ -87,6 +106,5 @@ async function resolveMembership(row: BrandMemberRow): Promise<Membership> {
     programId: programRes.data?.id ?? null,
     role: row.role,
     brandStatus: 'ACTIVE',
-    isSuspended: false,
   };
 }

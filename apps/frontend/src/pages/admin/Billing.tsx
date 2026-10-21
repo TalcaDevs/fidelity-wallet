@@ -126,16 +126,26 @@ export function Billing({
     return <div className="animate-pulse h-64 bg-panel-soft rounded-2xl max-w-7xl mx-auto" />;
   }
 
-  const isMora = isSuspended && (suspensionReason === 'mora' || subscription.status === 'PAST_DUE');
+  // Solo atribuimos mora cuando una fuente autoritativa confirma 'mora' como motivo de suspensión.
+  // PAST_DUE en el modelo actual representa vencimiento de prueba gratuita y no implica deuda.
+  const isMora = isSuspended && suspensionReason === 'mora';
 
   const currentPlan = getPlan(subscription.planId);
+  const trialOrPeriodEnd = formatDate(subscription.trialEndsAt ?? subscription.currentPeriodEnd);
+  const basePeriodText =
+    subscription.status === 'TRIALING'
+      ? `Te ${trialDaysLeft === 1 ? 'queda 1 día' : `quedan ${trialDaysLeft} días`} de prueba (hasta el ${trialOrPeriodEnd}).`
+      : subscription.status === 'PAST_DUE'
+        ? `Prueba vencida el ${trialOrPeriodEnd}.`
+        : `Período actual hasta el ${formatDate(subscription.currentPeriodEnd)}.`;
+
   const periodText = isSuspended
     ? isMora
       ? 'Servicio pausado por mora. Regulariza tu situación para reactivarlo.'
-      : 'Servicio pausado por suspensión. Contacta a soporte para reactivarlo.'
-    : subscription.status === 'TRIALING'
-      ? `Te ${trialDaysLeft === 1 ? 'queda 1 día' : `quedan ${trialDaysLeft} días`} de prueba (hasta el ${formatDate(subscription.trialEndsAt ?? subscription.currentPeriodEnd)}).`
-      : `Período actual hasta el ${formatDate(subscription.currentPeriodEnd)}.`;
+      : subscription.status === 'PAST_DUE'
+        ? `${basePeriodText} Servicio pausado por suspensión. Contacta a soporte para reactivarlo.`
+        : 'Servicio pausado por suspensión. Contacta a soporte para reactivarlo.'
+    : basePeriodText;
 
   return (
     <div className="space-y-10 max-w-7xl mx-auto">

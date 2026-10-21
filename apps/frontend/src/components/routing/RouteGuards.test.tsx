@@ -71,7 +71,7 @@ describe('RequireRole', () => {
 
   it('redirige al OWNER suspendido a /admin/billing si intenta acceder al dashboard', () => {
     renderGuard(
-      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'OWNER', isSuspended: true, loading: false, error: null },
+      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'OWNER', brandStatus: 'SUSPENDED', isSuspended: true, loading: false, error: null },
       undefined,
       '/admin/dashboard',
     );
@@ -81,7 +81,7 @@ describe('RequireRole', () => {
 
   it('permite al OWNER suspendido acceder a /admin/billing', () => {
     renderGuard(
-      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'OWNER', isSuspended: true, loading: false, error: null },
+      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'OWNER', brandStatus: 'SUSPENDED', isSuspended: true, loading: false, error: null },
       undefined,
       '/admin/billing',
     );
@@ -90,7 +90,7 @@ describe('RequireRole', () => {
 
   it('permite al OWNER suspendido acceder a /admin/support', () => {
     renderGuard(
-      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'OWNER', isSuspended: true, loading: false, error: null },
+      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'OWNER', brandStatus: 'SUSPENDED', isSuspended: true, loading: false, error: null },
       undefined,
       '/admin/support',
     );
@@ -99,7 +99,7 @@ describe('RequireRole', () => {
 
   it('muestra acceso denegado con mensaje explicativo al STAFF de una marca suspendida', () => {
     renderGuard(
-      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'STAFF', isSuspended: true, loading: false, error: null },
+      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'STAFF', brandStatus: 'SUSPENDED', isSuspended: true, loading: false, error: null },
     );
     expect(screen.queryByText('panel privado')).not.toBeInTheDocument();
     expect(screen.queryByText('escaner')).not.toBeInTheDocument();
@@ -172,6 +172,7 @@ describe('RedirectIfAuthenticated', () => {
           <Route path="/admin/support" element={<p>pantalla soporte</p>} />
           <Route path="/admin/team" element={<p>pantalla equipo</p>} />
           <Route path="/internal" element={<p>pantalla interna</p>} />
+          <Route path="*" element={<p>no encontrado</p>} />
         </Routes>
       </MemoryRouter>,
     );
@@ -207,7 +208,7 @@ describe('RedirectIfAuthenticated', () => {
 
   it('manda al OWNER suspendido a /admin/billing al autenticarse', () => {
     renderRedirect(
-      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'OWNER', isSuspended: true, loading: false, error: null },
+      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'OWNER', brandStatus: 'SUSPENDED', isSuspended: true, loading: false, error: null },
       ['/admin/login'],
     );
     expect(screen.getByText('pantalla facturacion')).toBeInTheDocument();
@@ -215,7 +216,7 @@ describe('RedirectIfAuthenticated', () => {
 
   it('manda al OWNER suspendido a /admin/billing incluso si traía redirect a otra ruta no permitida', () => {
     renderRedirect(
-      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'OWNER', isSuspended: true, loading: false, error: null },
+      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'OWNER', brandStatus: 'SUSPENDED', isSuspended: true, loading: false, error: null },
       ['/admin/login?redirect=%2Fadmin%2Fteam'],
     );
     expect(screen.getByText('pantalla facturacion')).toBeInTheDocument();
@@ -223,15 +224,24 @@ describe('RedirectIfAuthenticated', () => {
 
   it('permite redirigir al OWNER suspendido a soporte si el redirect era a /admin/support', () => {
     renderRedirect(
-      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'OWNER', isSuspended: true, loading: false, error: null },
+      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'OWNER', brandStatus: 'SUSPENDED', isSuspended: true, loading: false, error: null },
       ['/admin/login?redirect=%2Fadmin%2Fsupport'],
     );
     expect(screen.getByText('pantalla soporte')).toBeInTheDocument();
   });
 
+  it('rechaza prefijos falsos como /admin/support-inexistente y redirige al OWNER suspendido a /admin/billing', () => {
+    renderRedirect(
+      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'OWNER', brandStatus: 'SUSPENDED', isSuspended: true, loading: false, error: null },
+      ['/admin/login?redirect=%2Fadmin%2Fsupport-inexistente'],
+    );
+    expect(screen.queryByText('no encontrado')).not.toBeInTheDocument();
+    expect(screen.getByText('pantalla facturacion')).toBeInTheDocument();
+  });
+
   it('muestra acceso denegado al STAFF suspendido al autenticarse', () => {
     renderRedirect(
-      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'STAFF', isSuspended: true, loading: false, error: null },
+      { brandId: 'b1', programId: null, merchantId: 'm1', role: 'STAFF', brandStatus: 'SUSPENDED', isSuspended: true, loading: false, error: null },
       ['/admin/login'],
     );
     expect(screen.getByText('Tu local se encuentra temporalmente suspendido. Contacta al administrador del comercio.')).toBeInTheDocument();
@@ -261,7 +271,7 @@ describe('RequireActiveSubscription', () => {
     render(
       <MemoryRouter initialEntries={['/admin/dashboard']}>
         <Routes>
-          <Route element={<RequireActiveSubscription membership={{ ...LOADED, isSuspended: false }} />}>
+          <Route element={<RequireActiveSubscription membership={{ ...LOADED, brandStatus: 'ACTIVE', isSuspended: false }} />}>
             <Route path="/admin/dashboard" element={<p>panel activo</p>} />
           </Route>
           <Route path="/admin/billing" element={<p>pantalla facturacion</p>} />
@@ -276,7 +286,7 @@ describe('RequireActiveSubscription', () => {
     render(
       <MemoryRouter initialEntries={['/admin/dashboard']}>
         <Routes>
-          <Route element={<RequireActiveSubscription membership={{ ...LOADED, isSuspended: true }} />}>
+          <Route element={<RequireActiveSubscription membership={{ ...LOADED, brandStatus: 'SUSPENDED', isSuspended: true }} />}>
             <Route path="/admin/dashboard" element={<p>panel activo</p>} />
           </Route>
           <Route path="/admin/billing" element={<p>pantalla facturacion</p>} />

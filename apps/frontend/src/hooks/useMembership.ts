@@ -2,12 +2,24 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import {
   fetchMemberships,
+  invalidateMemberships,
+  isBrandSuspended,
+  isMembershipSuspended,
+  MEMBERSHIP_INVALIDATED_EVENT,
   type BrandStatus,
   type MerchantRole,
   type Membership,
 } from '../services/membershipService';
 
-export type { MerchantRole, BrandStatus, Membership };
+export {
+  invalidateMemberships,
+  isBrandSuspended,
+  isMembershipSuspended,
+  MEMBERSHIP_INVALIDATED_EVENT,
+  type MerchantRole,
+  type BrandStatus,
+  type Membership,
+};
 
 export const ACTIVE_BRAND_STORAGE_KEY = 'fidelity_active_brand_id';
 
@@ -20,11 +32,12 @@ export interface MembershipState {
   isSuspended?: boolean;
   memberships?: Membership[];
   selectMembership?: (brandId: string) => void;
+  refreshMembership?: () => void;
   loading: boolean;
   error: string | null;
 }
 
-interface InternalState extends MembershipState {
+interface InternalState extends Omit<MembershipState, 'isSuspended'> {
   userId: string | null;
 }
 
@@ -34,9 +47,9 @@ const EMPTY: Omit<InternalState, 'userId'> = {
   programId: null,
   role: null,
   brandStatus: null,
-  isSuspended: false,
   memberships: [],
   selectMembership: () => {},
+  refreshMembership: () => {},
   loading: false,
   error: null,
 };
@@ -81,6 +94,7 @@ function initialState(userId: string | null): InternalState {
 export function useMembership(session: Session | null): MembershipState {
   const userId = session?.user?.id ?? null;
   const [state, setState] = useState<InternalState>(() => initialState(userId));
+  const [refreshTick, setRefreshTick] = useState(0);
 
   // Si cambia el usuario, el estado se reinicia durante el render (mismo patrón
   // que useMediaQuery) en vez de hacerlo en un efecto, para no encadenar un
@@ -88,6 +102,10 @@ export function useMembership(session: Session | null): MembershipState {
   if (state.userId !== userId) {
     setState(initialState(userId));
   }
+
+  const refreshMembership = useCallback(() => {
+    setRefreshTick((tick) => tick + 1);
+  }, []);
 
   const selectMembership = useCallback((targetBrandId: string) => {
     setState((prev) => {
@@ -103,6 +121,33 @@ export function useMembership(session: Session | null): MembershipState {
   }, []);
 
   useEffect(() => {
+    if (!userId || typeof window === 'undefined') return;
+
+    const handleFocus = () => {
+      refreshMembership();
+    };
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        refreshMembership();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener(MEMBERSHIP_INVALIDATED_EVENT, handleFocus);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener(MEMBERSHIP_INVALIDATED_EVENT, handleFocus);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
+    };
+  }, [userId, refreshMembership]);
+
+  useEffect(() => {
     if (!userId) return;
 
     let active = true;
@@ -116,6 +161,7 @@ export function useMembership(session: Session | null): MembershipState {
             ...EMPTY,
             memberships: [],
             selectMembership,
+            refreshMembership,
             error: 'Tu usuario no está asociado a ningún local.',
           });
           return;
@@ -132,6 +178,7 @@ export function useMembership(session: Session | null): MembershipState {
           ...(activeMembership ?? EMPTY),
           memberships,
           selectMembership,
+          refreshMembership,
           loading: false,
           error: null,
         });
@@ -147,6 +194,7 @@ export function useMembership(session: Session | null): MembershipState {
           ...EMPTY,
           memberships: [],
           selectMembership,
+          refreshMembership,
           error: err instanceof Error ? err.message : 'No pudimos verificar tu acceso.',
         });
       });
@@ -154,8 +202,11 @@ export function useMembership(session: Session | null): MembershipState {
     return () => {
       active = false;
     };
-  }, [userId, selectMembership]);
+  }, [userId, selectMembership, refreshMembership, refreshTick]);
 
   const { userId: _userId, ...membership } = state;
-  return membership;
+  return {
+    ...membership,
+    isSuspended: isBrandSuspended(state.brandStatus),
+  };
 }

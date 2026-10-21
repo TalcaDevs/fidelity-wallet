@@ -3,7 +3,7 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import type { PlatformRole } from '@fidelity/shared';
 import type { PlatformAdminState } from '../../hooks/usePlatformAdmin';
-import type { MembershipState, MerchantRole } from '../../hooks/useMembership';
+import { isMembershipSuspended, type MembershipState, type MerchantRole } from '../../hooks/useMembership';
 import { supabase } from '../../lib/supabase';
 import { ROUTES, buildLoginUrl, isReturnableRoute, resolveRedirectTarget } from './routePaths';
 import { WalletLoading } from '../ui/WalletLoading';
@@ -99,7 +99,7 @@ export function RequireRole({
   // Si la marca está suspendida (por mora o decisión interna):
   // El STAFF queda bloqueado inmediatamente ya que no puede operar el escáner.
   // La restricción de rutas operativas del OWNER se maneja de forma declarativa con RequireActiveSubscription.
-  if (membership.isSuspended && membership.role === 'STAFF') {
+  if (isMembershipSuspended(membership) && membership.role === 'STAFF') {
     return (
       <AccessDenied
         reason="Tu local se encuentra temporalmente suspendido. Contacta al administrador del comercio."
@@ -116,7 +116,7 @@ export function RequireRole({
 
 /**
  * Guard para rutas operativas del panel:
- * Si la suscripción de la marca está suspendida (por mora), intercepta la navegación
+ * Si la suscripción de la marca está suspendida, intercepta la navegación
  * y redirige automáticamente al dueño a Facturación (/admin/billing).
  */
 export function RequireActiveSubscription({
@@ -124,7 +124,7 @@ export function RequireActiveSubscription({
 }: {
   membership: MembershipState;
 }) {
-  if (membership.isSuspended) {
+  if (isMembershipSuspended(membership)) {
     return <Navigate to={ROUTES.billing} replace />;
   }
   return <Outlet />;
@@ -176,8 +176,10 @@ export function RedirectIfAuthenticated({
     return <Navigate to={ROUTES.internal} replace />;
   }
 
+  const suspended = isMembershipSuspended(membership);
+
   if (membership.role === 'STAFF') {
-    if (membership.isSuspended) {
+    if (suspended) {
       return (
         <AccessDenied
           reason="Tu local se encuentra temporalmente suspendido. Contacta al administrador del comercio."
@@ -195,10 +197,10 @@ export function RedirectIfAuthenticated({
   const fromQuery = new URLSearchParams(location.search).get('redirect');
   const candidate = fromState ?? fromQuery;
 
-  if (membership.isSuspended) {
+  if (suspended) {
     const candidatePath = candidate ? candidate.split('?')[0].split('#')[0] : '';
     const isAllowedSuspended =
-      candidate && (candidatePath === ROUTES.billing || candidatePath.startsWith(ROUTES.support));
+      candidate && (candidatePath === ROUTES.billing || candidatePath === ROUTES.support);
     return <Navigate to={isAllowedSuspended ? candidate : ROUTES.billing} replace />;
   }
 

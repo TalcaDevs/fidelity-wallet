@@ -21,6 +21,7 @@ import type {
   UpdateTicketInput,
 } from '@fidelity/shared';
 import { jsonBody, requestJson } from './httpJson';
+import { invalidateMemberships } from './membershipService';
 
 // API del panel interno (HANDOFF §11.5). Todo pasa por /api/internal/*, nunca por supabase-js.
 
@@ -63,11 +64,17 @@ export function getBrand(brandId: string): Promise<InternalBrandDetailDto> {
   return requestJson(`/api/internal/brands/${brandId}`, undefined, 'No se pudo cargar la marca');
 }
 
-export function updateBrand(
+export async function updateBrand(
   brandId: string,
   input: InternalBrandUpdateInput & { reason?: string },
 ): Promise<InternalBrandDetailDto> {
-  return requestJson(`/api/internal/brands/${brandId}`, { method: 'PATCH', ...jsonBody(input) }, 'No se pudo guardar la marca');
+  const updated = await requestJson<InternalBrandDetailDto>(
+    `/api/internal/brands/${brandId}`,
+    { method: 'PATCH', ...jsonBody(input) },
+    'No se pudo guardar la marca',
+  );
+  invalidateMemberships();
+  return updated;
 }
 
 export function updateLocationInternal(locationId: string, input: LocationUpdateInput): Promise<LocationDto> {

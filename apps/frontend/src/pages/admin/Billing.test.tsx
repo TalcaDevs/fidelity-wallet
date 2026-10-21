@@ -77,7 +77,7 @@ describe('Billing component', () => {
     expect(screen.queryByText(/regularizar tu situación/i)).not.toBeInTheDocument();
   });
 
-  it('renders mora suspension banner when suspended with past due status', () => {
+  it('renders neutral suspension banner and separates trial expiration when PAST_DUE with administrative suspension', () => {
     mockUseSubscription.mockReturnValue({
       subscription: { ...baseSubscription, status: 'PAST_DUE' },
       trialDaysLeft: 0,
@@ -93,14 +93,17 @@ describe('Billing component', () => {
 
     const alert = screen.getByRole('alert');
     expect(alert).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Tu cuenta se encuentra suspendida por mora' })).toBeInTheDocument();
-    expect(screen.getByText('Suspendido por mora')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Tu cuenta se encuentra suspendida' })).toBeInTheDocument();
+    expect(screen.getByText('Cuenta suspendida')).toBeInTheDocument();
+    expect(screen.getByText(/Prueba vencida el/i)).toBeInTheDocument();
+    expect(screen.getByText(/Servicio pausado por suspensión/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/pausado temporalmente debido a pagos pendientes/i),
+      screen.getByText('Escríbenos a soporte para conocer el estado de tu cuenta y reactivar tu servicio.'),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/escríbenos para regularizar tu situación y reactivar tu servicio/i),
-    ).toBeInTheDocument();
+
+    expect(screen.queryByText(/por mora/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/pagos pendientes/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/regularizar tu situación/i)).not.toBeInTheDocument();
   });
 
   it('renders mora suspension banner when explicit suspensionReason is mora', () => {
@@ -119,5 +122,9 @@ describe('Billing component', () => {
 
     expect(screen.getByRole('heading', { name: 'Tu cuenta se encuentra suspendida por mora' })).toBeInTheDocument();
     expect(screen.getByText('Suspendido por mora')).toBeInTheDocument();
+    expect(screen.getByText(/pausado temporalmente debido a pagos pendientes/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/escríbenos para regularizar tu situación y reactivar tu servicio/i),
+    ).toBeInTheDocument();
   });
 });
