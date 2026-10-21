@@ -80,6 +80,7 @@ describe('Analytics Page', () => {
       {
         userId: 'staff-uuid-1',
         staffName: 'Carlos Equipo',
+        staffEmail: 'carlos@cafedemo.cl',
         role: 'STAFF',
         stampsCount: 45,
         redeemsCount: 8,
@@ -88,7 +89,7 @@ describe('Analytics Page', () => {
           {
             type: 'EXCESSIVE_STAMPS_SAME_CUSTOMER',
             severity: 'high' as const,
-            description: 'Carlos Equipo entregó 4 o más sellos al mismo cliente en menos de 7 días. Verifica si corresponde a compras reales.',
+            description: 'carlos@cafedemo.cl (Carlos Equipo) entregó 4 o más sellos al mismo cliente en menos de 7 días. Verifica si corresponde a compras reales.',
           },
         ],
       },
@@ -169,6 +170,7 @@ describe('Analytics Page', () => {
 
     await waitFor(() => {
       expect(screen.getAllByText('Actividad de Equipo').length).toBe(2);
+      expect(screen.getByText('carlos@cafedemo.cl')).toBeInTheDocument();
       expect(screen.getByText('Carlos Equipo')).toBeInTheDocument();
       expect(screen.getByText('45')).toBeInTheDocument();
       expect(screen.getByText(/entregó 4 o más sellos al mismo cliente/)).toBeInTheDocument();

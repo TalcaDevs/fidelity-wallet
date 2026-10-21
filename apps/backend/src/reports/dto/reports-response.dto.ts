@@ -231,6 +231,9 @@ export class StaffMemberMetricDto {
   @ApiProperty({ description: 'Nombre del miembro del equipo si está registrado', example: 'Juan Pérez', nullable: true, required: false })
   staffName?: string | null;
 
+  @ApiProperty({ description: 'Correo del miembro del equipo', example: 'carlos@cafedemo.cl', nullable: true, required: false })
+  staffEmail?: string | null;
+
   @ApiProperty({ description: 'Rol del usuario en el comercio (OWNER o STAFF)', example: 'STAFF' })
   role: string;
 

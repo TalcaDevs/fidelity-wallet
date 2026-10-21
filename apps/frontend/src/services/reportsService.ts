@@ -104,6 +104,7 @@ export interface StaffAlert {
 export interface StaffMemberMetric {
   userId: string;
   staffName?: string | null;
+  staffEmail?: string | null;
   role: string;
   stampsCount: number;
   redeemsCount: number;

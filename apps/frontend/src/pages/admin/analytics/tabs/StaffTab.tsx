@@ -97,8 +97,11 @@ export function StaffTab({ staff }: StaffTabProps) {
                   <tr key={m.userId}>
                     <td className="py-4">
                       <span className="font-semibold text-panel-text block">
-                        {m.staffName || 'Miembro del equipo'}
+                        {m.staffEmail || m.staffName || 'Miembro del equipo'}
                       </span>
+                      {m.staffName && m.staffEmail && (
+                        <span className="text-xs text-panel-muted block">{m.staffName}</span>
+                      )}
                     </td>
                     <td className="py-4 text-center">
                       <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-panel-soft text-panel-muted">

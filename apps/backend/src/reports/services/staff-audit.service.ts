@@ -87,7 +87,8 @@ export class StaffAuditService {
       const role: string = membership?.role ?? 'STAFF';
       const userScans = scans.filter((s) => s.createdByUserId === uid);
       const userInfo = usersMap.get(uid);
-      const staffName = userInfo?.name || userInfo?.email || null;
+      const staffName = userInfo?.name || null;
+      const staffEmail = userInfo?.email || null;
 
       const stampsCount = userScans
         .filter((s) => s.type === 'STAMP_ADDED')
@@ -101,7 +102,7 @@ export class StaffAuditService {
       const alerts: StaffAlertDto[] = [];
 
       // Heurística 1: Mismo miembro del equipo da >= 4 sellos al mismo cliente/pase en 7 días
-      alerts.push(...this.detectExcessiveStamps(userScans, staffName));
+      alerts.push(...this.detectExcessiveStamps(userScans, staffEmail, staffName));
 
       // Heurística 2: Miembro del equipo con > 50% de sellos MANUAL con al menos 20 operaciones
       const highManualAlert = this.detectHighManualScanRatio(totalOps, manualOps, manualPercentage);
@@ -112,6 +113,7 @@ export class StaffAuditService {
       staffMetrics.push({
         userId: uid,
         staffName,
+        staffEmail,
         role,
         stampsCount,
         redeemsCount,
@@ -130,6 +132,7 @@ export class StaffAuditService {
    */
   private detectExcessiveStamps(
     userScans: Array<{ type: string; passId: string; createdAt: Date }>,
+    staffEmail?: string | null,
     staffName?: string | null,
   ): StaffAlertDto[] {
     const alerts: StaffAlertDto[] = [];
@@ -142,11 +145,14 @@ export class StaffAuditService {
       }
     }
 
+    const cashierText = staffEmail
+      ? (staffName ? `${staffEmail} (${staffName})` : staffEmail)
+      : (staffName || 'Un miembro del equipo');
+
     for (const times of Object.values(passStampTimes)) {
       if (times.length >= 4) {
         for (let i = 0; i <= times.length - 4; i++) {
           if (times[i + 3] - times[i] <= 7 * 24 * 60 * 60 * 1000) {
-            const cashierText = staffName ? staffName : 'Un miembro del equipo';
             alerts.push({
               type: 'EXCESSIVE_STAMPS_SAME_CUSTOMER',
               severity: 'high',

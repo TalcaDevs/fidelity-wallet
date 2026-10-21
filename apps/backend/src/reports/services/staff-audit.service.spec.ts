@@ -78,6 +78,7 @@ describe('StaffAuditService', () => {
     expect(result.staff).toHaveLength(2);
     expect(result.staff[0].userId).toBe('user-high');
     expect(result.staff[0].staffName).toBe('Cajero Alto');
+    expect(result.staff[0].staffEmail).toBe('high@test.cl');
     expect(result.staff[0].stampsCount).toBe(3); // 2 + 1
     expect(result.staff[1].userId).toBe('user-low');
     expect(result.staff[1].staffName).toBe('Cajero Bajo');
@@ -99,7 +100,7 @@ describe('StaffAuditService', () => {
     expect(result.staff[0].alerts).toHaveLength(1);
     expect(result.staff[0].alerts[0].type).toBe('EXCESSIVE_STAMPS_SAME_CUSTOMER');
     expect(result.staff[0].alerts[0].description).toBe(
-      'Cajero Alto entregó 4 o más sellos al mismo cliente en menos de 7 días. Verifica si corresponde a compras reales.',
+      'high@test.cl (Cajero Alto) entregó 4 o más sellos al mismo cliente en menos de 7 días. Verifica si corresponde a compras reales.',
     );
   });
 });
