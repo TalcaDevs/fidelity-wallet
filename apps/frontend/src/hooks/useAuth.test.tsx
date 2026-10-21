@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
-import type { Session } from '@supabase/supabase-js';
+import type { AuthError, Session } from '@supabase/supabase-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
@@ -64,6 +64,7 @@ describe('useAuth hook', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -110,7 +111,7 @@ describe('useAuth hook', () => {
     expect(result.current.isRecoveringPassword).toBe(false);
   });
 
-  it('signs out automatically when restoring a session after 61 minutes of inactivity', async () => {
+  it('signs out automatically with local scope when restoring a session after 61 minutes of inactivity', async () => {
     const now = 10000000;
     vi.setSystemTime(now);
     const sixtyOneMinutesAgo = now - 61 * 60 * 1000;
@@ -125,7 +126,150 @@ describe('useAuth hook', () => {
     });
 
     expect(signOutSpy).toHaveBeenCalledTimes(1);
+    expect(signOutSpy).toHaveBeenCalledWith({ scope: 'local' });
+    expect(result.current.session).toBeNull();
     expect(localStore[inactivityModule.ACTIVITY_STORAGE_KEY]).toBeUndefined();
+  });
+
+  it('does not reset expired activity when SIGNED_IN is emitted without user interaction during restoration', async () => {
+    const now = 10000000;
+    vi.setSystemTime(now);
+    const sixtyOneMinutesAgo = now - 61 * 60 * 1000;
+    localStore[inactivityModule.ACTIVITY_STORAGE_KEY] = String(sixtyOneMinutesAgo);
+
+    const signOutSpy = vi.spyOn(supabase.auth, 'signOut').mockResolvedValue({ error: null });
+
+    const { result } = renderHook(() => useAuth());
+
+    act(() => {
+      authEventCallback?.('SIGNED_IN', mockSession);
+    });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(signOutSpy).toHaveBeenCalledTimes(1);
+    expect(signOutSpy).toHaveBeenCalledWith({ scope: 'local' });
+    expect(result.current.session).toBeNull();
+    expect(localStore[inactivityModule.ACTIVITY_STORAGE_KEY]).toBeUndefined();
+  });
+
+  it('preserves existing activity timestamp when SIGNED_IN reconfirms an active session without interaction', async () => {
+    const now = 10000000;
+    vi.setSystemTime(now);
+    const twentyMinutesAgo = now - 20 * 60 * 1000;
+    localStore[inactivityModule.ACTIVITY_STORAGE_KEY] = String(twentyMinutesAgo);
+
+    const { result } = renderHook(() => useAuth());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    act(() => {
+      authEventCallback?.('SIGNED_IN', mockSession);
+    });
+
+    expect(localStore[inactivityModule.ACTIVITY_STORAGE_KEY]).toBe(String(twentyMinutesAgo));
+    expect(result.current.session).toEqual(mockSession);
+  });
+
+  it('preserves expired timestamp, blocks local session access, and retries when signOut returns an error', async () => {
+    const now = 10000000;
+    vi.setSystemTime(now);
+    const sixtyOneMinutesAgo = now - 61 * 60 * 1000;
+    localStore[inactivityModule.ACTIVITY_STORAGE_KEY] = String(sixtyOneMinutesAgo);
+
+    const signOutSpy = vi
+      .spyOn(supabase.auth, 'signOut')
+      .mockResolvedValueOnce({ error: { message: 'SignOut failed' } as AuthError })
+      .mockResolvedValueOnce({ error: null });
+
+    const { result } = renderHook(() => useAuth());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(signOutSpy).toHaveBeenCalledTimes(1);
+    expect(signOutSpy).toHaveBeenCalledWith({ scope: 'local' });
+    expect(result.current.session).toBeNull();
+    expect(localStore[inactivityModule.ACTIVITY_STORAGE_KEY]).toBe(String(sixtyOneMinutesAgo));
+    expect(inactivityModule.isSessionInactive()).toBe(true);
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect(signOutSpy).toHaveBeenCalledTimes(2);
+    expect(signOutSpy).toHaveBeenLastCalledWith({ scope: 'local' });
+    expect(localStore[inactivityModule.ACTIVITY_STORAGE_KEY]).toBeUndefined();
+  });
+
+  it('preserves expired timestamp, blocks local session access, and retries when signOut rejects', async () => {
+    const now = 10000000;
+    vi.setSystemTime(now);
+    const sixtyOneMinutesAgo = now - 61 * 60 * 1000;
+    localStore[inactivityModule.ACTIVITY_STORAGE_KEY] = String(sixtyOneMinutesAgo);
+
+    const signOutSpy = vi
+      .spyOn(supabase.auth, 'signOut')
+      .mockRejectedValueOnce(new Error('Network offline'))
+      .mockResolvedValueOnce({ error: null });
+
+    const { result } = renderHook(() => useAuth());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(signOutSpy).toHaveBeenCalledTimes(1);
+    expect(signOutSpy).toHaveBeenCalledWith({ scope: 'local' });
+    expect(result.current.session).toBeNull();
+    expect(localStore[inactivityModule.ACTIVITY_STORAGE_KEY]).toBe(String(sixtyOneMinutesAgo));
+    expect(inactivityModule.isSessionInactive()).toBe(true);
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect(signOutSpy).toHaveBeenCalledTimes(2);
+    expect(signOutSpy).toHaveBeenLastCalledWith({ scope: 'local' });
+    expect(localStore[inactivityModule.ACTIVITY_STORAGE_KEY]).toBeUndefined();
+  });
+
+  it('signs out once with local scope and prevents session refresh on visibilitychange when activity is expired', async () => {
+    const now = 10000000;
+    vi.setSystemTime(now);
+
+    const signOutSpy = vi.spyOn(supabase.auth, 'signOut').mockResolvedValue({ error: null });
+    const refreshSpy = vi.spyOn(supabase.auth, 'refreshSession').mockResolvedValue({
+      data: { session: mockSession, user: mockSession.user },
+      error: null,
+    });
+
+    const { result } = renderHook(() => useAuth());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    expect(result.current.session).toEqual(mockSession);
+
+    // Advance system clock past 60 minutes without running intervals
+    vi.setSystemTime(now + 61 * 60 * 1000);
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect(signOutSpy).toHaveBeenCalledTimes(1);
+    expect(signOutSpy).toHaveBeenCalledWith({ scope: 'local' });
+    expect(refreshSpy).not.toHaveBeenCalled();
+    expect(result.current.session).toBeNull();
   });
 
   it('signs out and prevents session refresh on tab visibility change if session is inactive', async () => {
@@ -144,7 +288,8 @@ describe('useAuth hook', () => {
       document.dispatchEvent(new Event('visibilitychange'));
     });
 
-    expect(signOutSpy).toHaveBeenCalled();
+    expect(signOutSpy).toHaveBeenCalledTimes(1);
+    expect(signOutSpy).toHaveBeenCalledWith({ scope: 'local' });
     expect(refreshSpy).not.toHaveBeenCalled();
   });
 

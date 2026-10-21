@@ -1,7 +1,7 @@
 import { useEffect, useState, type SubmitEvent } from 'react';
 import { supabase } from '../lib/supabase';
 import { ROUTES, passwordResetUrl } from '../components/routing/routePaths';
-import { consumeLogoutReason } from '../utils/sessionActivity';
+import { clearLastActivity, consumeLogoutReason, setLastActivity } from '../utils/sessionActivity';
 import { AuthFrame } from './AuthFrame';
 
 const INACTIVITY_LOGOUT_MESSAGE =
@@ -62,6 +62,7 @@ export function SupabaseAuth() {
     setIsGoogleLoading(true);
     setErrorMsg('');
     try {
+      clearLastActivity();
       const redirectTarget = window.location.search
         ? `${ROUTES.admin}${window.location.search}`
         : ROUTES.admin;
@@ -71,7 +72,11 @@ export function SupabaseAuth() {
           redirectTo: `${window.location.origin}${redirectTarget}`,
         },
       });
-      if (error) setErrorMsg(error.message);
+      if (error) {
+        setErrorMsg(error.message);
+      } else {
+        setLastActivity(Date.now());
+      }
     } catch {
       setErrorMsg('No pudimos conectar con Google. Revisa tu conexión e intenta de nuevo.');
     } finally {
@@ -84,8 +89,13 @@ export function SupabaseAuth() {
     setIsLoading(true);
     setErrorMsg('');
     try {
+      clearLastActivity();
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) setErrorMsg(error.message);
+      if (error) {
+        setErrorMsg(error.message);
+      } else {
+        setLastActivity(Date.now());
+      }
     } catch {
       setErrorMsg('No pudimos conectar. Revisa tu conexión e intenta de nuevo.');
     } finally {

@@ -6,6 +6,7 @@ import {
   DEFAULT_INACTIVITY_TIMEOUT_MS,
   getLastActivity,
   INACTIVITY_CHECK_INTERVAL_MS,
+  isSessionInactive,
   setLastActivity,
   setLogoutReason,
 } from '../utils/sessionActivity';
@@ -23,12 +24,18 @@ export interface UseInactivityTimeoutOptions {
   throttleMs?: number;
   onActivity?: () => void | Promise<void>;
   enabled?: boolean;
+  isInactive?: (timeoutMs?: number, storageKey?: string, now?: number) => boolean;
+}
+
+export interface InactivityTimeoutCoordinator {
+  checkTimeout: () => boolean;
+  isTerminating: () => boolean;
 }
 
 export function useInactivityTimeout(
   session: unknown | null,
   options: UseInactivityTimeoutOptions,
-) {
+): InactivityTimeoutCoordinator {
   const {
     timeoutMs = DEFAULT_INACTIVITY_TIMEOUT_MS,
     storageKey = ACTIVITY_STORAGE_KEY,
@@ -37,30 +44,107 @@ export function useInactivityTimeout(
     onTimeout,
     onActivity,
     enabled,
+    isInactive = isSessionInactive,
   } = options;
 
   const isSessionActive = enabled ?? Boolean(session);
+  const isSessionActiveRef = useRef(isSessionActive);
+  isSessionActiveRef.current = isSessionActive;
+
   const lastRecordedRef = useRef<number | null>(null);
   const isTerminatingRef = useRef(false);
+  const terminatingPromiseRef = useRef<Promise<void> | null>(null);
   const prevActiveRef = useRef(false);
+  const checkedBeforeMountEffectRef = useRef(false);
 
   const onTimeoutRef = useRef(onTimeout);
   const onActivityRef = useRef(onActivity);
+  const isInactiveRef = useRef(isInactive);
 
-  useEffect(() => {
-    onTimeoutRef.current = onTimeout;
-    onActivityRef.current = onActivity;
-  }, [onTimeout, onActivity]);
+  onTimeoutRef.current = onTimeout;
+  onActivityRef.current = onActivity;
+  isInactiveRef.current = isInactive;
+
+  const hasActivityExpired = useCallback(
+    (now = Date.now()): boolean => {
+      if (isInactiveRef.current(timeoutMs, storageKey, now)) {
+        return true;
+      }
+      const currentLast = getLastActivity(storageKey) ?? lastRecordedRef.current;
+      if (currentLast === null) return false;
+      return now - currentLast >= timeoutMs;
+    },
+    [timeoutMs, storageKey],
+  );
+
+  const performTimeout = useCallback((): Promise<void> => {
+    if (isTerminatingRef.current) {
+      return terminatingPromiseRef.current ?? Promise.resolve();
+    }
+    isTerminatingRef.current = true;
+    setLogoutReason('inactivity');
+
+    const finalizeSuccess = () => {
+      clearLastActivity(storageKey);
+      lastRecordedRef.current = null;
+      terminatingPromiseRef.current = null;
+      if (!isSessionActiveRef.current) {
+        isTerminatingRef.current = false;
+      }
+    };
+
+    const finalizeFailure = () => {
+      isTerminatingRef.current = false;
+      terminatingPromiseRef.current = null;
+    };
+
+    try {
+      const result = onTimeoutRef.current();
+      if (result && typeof (result as Promise<void>).then === 'function') {
+        const promise = (result as Promise<void>).then(
+          () => {
+            finalizeSuccess();
+          },
+          () => {
+            finalizeFailure();
+          },
+        );
+        terminatingPromiseRef.current = promise;
+        return promise;
+      }
+      finalizeSuccess();
+      return Promise.resolve();
+    } catch {
+      finalizeFailure();
+      return Promise.resolve();
+    }
+  }, [storageKey]);
+
+  const checkTimeout = useCallback((): boolean => {
+    if (isTerminatingRef.current) return true;
+    if (hasActivityExpired(Date.now())) {
+      if (!prevActiveRef.current) {
+        checkedBeforeMountEffectRef.current = true;
+      }
+      void performTimeout();
+      return true;
+    }
+    return false;
+  }, [hasActivityExpired, performTimeout]);
+
+  const isTerminating = useCallback((): boolean => isTerminatingRef.current, []);
 
   const recordUserActivity = useCallback(() => {
-    isTerminatingRef.current = false;
+    if (checkTimeout()) {
+      return;
+    }
     const now = Date.now();
     lastRecordedRef.current = now;
     setLastActivity(now, storageKey);
     if (onActivityRef.current) {
       void onActivityRef.current();
     }
-  }, [storageKey]);
+  }, [checkTimeout, storageKey]);
 
   useActivityListeners({
     enabled: isSessionActive,
@@ -71,41 +155,29 @@ export function useInactivityTimeout(
   useEffect(() => {
     if (!isSessionActive) {
       prevActiveRef.current = false;
+      checkedBeforeMountEffectRef.current = false;
       lastRecordedRef.current = null;
+      if (!terminatingPromiseRef.current) {
+        isTerminatingRef.current = false;
+      }
       return;
     }
 
     if (!prevActiveRef.current) {
-      isTerminatingRef.current = false;
+      if (!terminatingPromiseRef.current) {
+        isTerminatingRef.current = false;
+      }
       prevActiveRef.current = true;
     }
 
     const existing = getLastActivity(storageKey);
     const now = Date.now();
-    if (!existing || existing > now + 60000) {
+    if (!isTerminatingRef.current && (!existing || existing > now + 60000)) {
       setLastActivity(now, storageKey);
       lastRecordedRef.current = now;
-    } else {
+    } else if (existing) {
       lastRecordedRef.current = existing;
     }
-
-    const performTimeout = async () => {
-      if (isTerminatingRef.current) return;
-      isTerminatingRef.current = true;
-      setLogoutReason('inactivity');
-      clearLastActivity(storageKey);
-      lastRecordedRef.current = null;
-      await onTimeoutRef.current();
-    };
-
-    const checkTimeout = () => {
-      if (isTerminatingRef.current) return;
-      const currentLast = getLastActivity(storageKey) ?? lastRecordedRef.current;
-      if (!currentLast) return;
-      if (Date.now() - currentLast >= timeoutMs) {
-        void performTimeout();
-      }
-    };
 
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key !== storageKey) return;
@@ -116,7 +188,9 @@ export function useInactivityTimeout(
       const parsed = Number.parseInt(e.newValue, 10);
       if (Number.isFinite(parsed)) {
         lastRecordedRef.current = parsed;
-        isTerminatingRef.current = false;
+        if (Date.now() - parsed < timeoutMs && !terminatingPromiseRef.current) {
+          isTerminatingRef.current = false;
+        }
       }
     };
 
@@ -126,7 +200,11 @@ export function useInactivityTimeout(
       }
     };
 
-    checkTimeout();
+    const shouldRunInitialCheck = !checkedBeforeMountEffectRef.current;
+    checkedBeforeMountEffectRef.current = false;
+    if (shouldRunInitialCheck) {
+      checkTimeout();
+    }
 
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('focus', checkTimeout);
@@ -140,5 +218,7 @@ export function useInactivityTimeout(
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.clearInterval(intervalId);
     };
-  }, [isSessionActive, timeoutMs, storageKey, checkIntervalMs]);
+  }, [isSessionActive, timeoutMs, storageKey, checkIntervalMs, checkTimeout]);
+
+  return { checkTimeout, isTerminating };
 }

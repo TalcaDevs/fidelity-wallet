@@ -152,6 +152,34 @@ describe('useInactivityTimeout and activity utilities', () => {
     expect(onActivity).toHaveBeenCalledTimes(1);
   });
 
+  it('checks expiration before recording activity when clock advances past limit without interval', () => {
+    const start = 1000000;
+    vi.setSystemTime(start);
+    const onActivity = vi.fn();
+    const onTimeout = vi.fn();
+
+    renderHook(() =>
+      useInactivityTimeout(mockSession, {
+        throttleMs: 1000,
+        timeoutMs: 5000,
+        checkIntervalMs: 60000,
+        onTimeout,
+        onActivity,
+      }),
+    );
+
+    // Advance system clock past timeoutMs without firing interval timers
+    vi.setSystemTime(start + 6000);
+
+    act(() => {
+      window.dispatchEvent(new Event('keydown'));
+    });
+
+    expect(onTimeout).toHaveBeenCalledTimes(1);
+    expect(onActivity).not.toHaveBeenCalled();
+    expect(getLastActivity()).toBeNull();
+  });
+
   it('triggers onTimeout and sets reason in sessionStorage when idle exceeds timeout', async () => {
     const start = 1000000;
     vi.setSystemTime(start);
@@ -171,6 +199,38 @@ describe('useInactivityTimeout and activity utilities', () => {
 
     expect(onTimeout).toHaveBeenCalledTimes(1);
     expect(sessionStore[LOGOUT_REASON_KEY]).toBe('inactivity');
+    expect(getLastActivity()).toBeNull();
+  });
+
+  it('preserves expired timestamp and retries when onTimeout rejects', async () => {
+    const start = 1000000;
+    vi.setSystemTime(start);
+    const onTimeout = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error('Network failure'))
+      .mockResolvedValueOnce(undefined);
+
+    renderHook(() =>
+      useInactivityTimeout(mockSession, {
+        timeoutMs: 3000,
+        checkIntervalMs: 1000,
+        onTimeout,
+      }),
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    expect(onTimeout).toHaveBeenCalledTimes(1);
+    expect(getLastActivity()).toBe(start);
+    expect(isSessionInactive(3000)).toBe(true);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(onTimeout).toHaveBeenCalledTimes(2);
     expect(getLastActivity()).toBeNull();
   });
 
