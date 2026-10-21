@@ -46,12 +46,12 @@ export class ApplePassService {
     const unit = balanceUnit(card.stampsEnabled ? 'STAMPS' : 'POINTS');
     const { details } = card;
     const backFields = [
-      ...details.sections.map((section, i) => ({
+      ...(details?.sections ?? []).map((section, i) => ({
         key: `section_${i}`,
         label: section.header.toUpperCase(),
         value: section.body,
       })),
-      ...details.links.map((link, i) => ({
+      ...(details?.links ?? []).map((link, i) => ({
         key: `link_${i}`,
         label: link.label.toUpperCase(),
         value: linkUri(link),
@@ -61,7 +61,9 @@ export class ApplePassService {
         label: 'VIGENCIA',
         value: data.nextExpiryAt
           ? `Próximo vencimiento: ${data.nextExpiryAt.toLocaleDateString('es-CL')}`
-          : (data.stampsEnabled && data.pointsEnabled ? 'Tus sellos y puntos no vencen.' : `Tus ${unit} no vencen.`),
+          : card.stampsEnabled && card.stampValidityDays && card.stampValidityDays > 0
+            ? (card.stampValidityDays === 1 ? 'Vencen a 1 día de obtenerlos.' : `Vencen a los ${card.stampValidityDays} días de obtenerlos.`)
+            : (data.stampsEnabled && data.pointsEnabled ? 'Tus sellos y puntos no vencen.' : `Tus ${unit} no vencen.`),
       },
     ];
 

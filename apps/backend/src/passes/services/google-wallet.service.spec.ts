@@ -366,6 +366,28 @@ describe('GoogleWalletService', () => {
       expect(body.textModulesData).toContainEqual({ id: 'progress', header: 'Estado', body: '¡Premio desbloqueado!' });
     });
 
+    it('sets "Vencen a los X días de obtenerlos" when nextExpiryAt is null and stampValidityDays is configured', async () => {
+      const mockFetch = stubWalletApi({ ok: true, status: 200 });
+      await service.updateLoyaltyObject(passData({ nextExpiryAt: null }, { stampValidityDays: 30 }));
+      const body = JSON.parse(walletCalls(mockFetch)[0][1].body);
+      expect(body.textModulesData).toContainEqual({
+        id: 'balance_expiry',
+        header: 'Próximo vencimiento',
+        body: 'Vencen a los 30 días de obtenerlos',
+      });
+    });
+
+    it('sets "Vencen a 1 día de obtenerlos" when nextExpiryAt is null and stampValidityDays is 1', async () => {
+      const mockFetch = stubWalletApi({ ok: true, status: 200 });
+      await service.updateLoyaltyObject(passData({ nextExpiryAt: null }, { stampValidityDays: 1 }));
+      const body = JSON.parse(walletCalls(mockFetch)[0][1].body);
+      expect(body.textModulesData).toContainEqual({
+        id: 'balance_expiry',
+        header: 'Próximo vencimiento',
+        body: 'Vencen a 1 día de obtenerlos',
+      });
+    });
+
     it('handles 404 gracefully without throwing error when user has not saved pass yet', async () => {
       stubWalletApi({ ok: false, status: 404, text: async () => '{"error":{"message":"Object not found"}}' });
       await expect(service.updateLoyaltyObject(passData())).resolves.not.toThrow();
