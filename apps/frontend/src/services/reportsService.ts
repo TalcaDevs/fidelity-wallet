@@ -119,11 +119,13 @@ export interface ReportQueryParams {
   from?: string;
   to?: string;
   tz?: string;
+  merchantId?: string;
 }
 
 export interface RetentionQueryParams {
   dormantDays?: number;
   tz?: string;
+  merchantId?: string;
 }
 
 function buildQueryString(params: Record<string, string | number | undefined>): string {
@@ -152,45 +154,53 @@ async function getReport<T>(
 }
 
 export async function fetchOverviewReport(
-  merchantId: string,
+  id: string,
   params: ReportQueryParams = {},
+  isBrand = false,
 ): Promise<OverviewReport> {
+  const prefix = isBrand ? `/api/brands/${id}` : `/api/merchants/${id}`;
   return getReport<OverviewReport>(
-    `/api/merchants/${merchantId}/reports/overview`,
-    { from: params.from, to: params.to, tz: params.tz },
+    `${prefix}/reports/overview`,
+    { from: params.from, to: params.to, tz: params.tz, merchantId: params.merchantId },
     'No se pudo obtener el reporte general',
   );
 }
 
 export async function fetchRetentionReport(
-  merchantId: string,
+  id: string,
   params: RetentionQueryParams = {},
+  isBrand = false,
 ): Promise<RetentionReport> {
+  const prefix = isBrand ? `/api/brands/${id}` : `/api/merchants/${id}`;
   return getReport<RetentionReport>(
-    `/api/merchants/${merchantId}/reports/retention`,
-    { dormantDays: params.dormantDays, tz: params.tz },
+    `${prefix}/reports/retention`,
+    { dormantDays: params.dormantDays, tz: params.tz, merchantId: params.merchantId },
     'No se pudo obtener el reporte de retención',
   );
 }
 
 export async function fetchPromotionsReport(
-  merchantId: string,
+  id: string,
   params: ReportQueryParams = {},
+  isBrand = false,
 ): Promise<PromotionPerformanceReport> {
+  const prefix = isBrand ? `/api/brands/${id}` : `/api/merchants/${id}`;
   return getReport<PromotionPerformanceReport>(
-    `/api/merchants/${merchantId}/reports/promotions`,
-    { from: params.from, to: params.to, tz: params.tz },
+    `${prefix}/reports/promotions`,
+    { from: params.from, to: params.to, tz: params.tz, merchantId: params.merchantId },
     'No se pudo obtener el reporte de promociones',
   );
 }
 
 export async function fetchStaffActivityReport(
-  merchantId: string,
+  id: string,
   params: ReportQueryParams = {},
+  isBrand = false,
 ): Promise<StaffActivityReport> {
+  const prefix = isBrand ? `/api/brands/${id}` : `/api/merchants/${id}`;
   return getReport<StaffActivityReport>(
-    `/api/merchants/${merchantId}/reports/staff`,
-    { from: params.from, to: params.to, tz: params.tz },
+    `${prefix}/reports/staff`,
+    { from: params.from, to: params.to, tz: params.tz, merchantId: params.merchantId },
     'No se pudo obtener el reporte de personal',
   );
 }

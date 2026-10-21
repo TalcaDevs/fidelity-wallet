@@ -2,6 +2,7 @@ import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Analytics } from './Analytics';
 import * as reportsService from '../../services/reportsService';
+import * as locationsService from '../../services/locationsService';
 
 describe('Analytics Page', () => {
   const merchantId = 'merchant-test-uuid';
@@ -296,5 +297,40 @@ describe('Analytics Page', () => {
       expect(screen.getByText('Sin datos registrados para el período seleccionado')).toBeInTheDocument();
     });
   });
-});
+  it('renders branch selector when brand has multiple locations and filters reports by selected branch', async () => {
+    const brandId = 'brand-uuid-1';
+    vi.spyOn(locationsService, 'listBrandLocations').mockResolvedValue([
+      { id: 'loc-1', name: 'Sucursal Centro', isActive: true },
+      { id: 'loc-2', name: 'Sucursal Norte', isActive: true },
+    ]);
 
+    const fetchOverviewSpy = vi.spyOn(reportsService, 'fetchOverviewReport').mockResolvedValue(mockOverview as any);
+
+    render(<Analytics brandId={brandId} merchantId={merchantId} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Clientes Nuevos')).toBeInTheDocument();
+      expect(screen.getByLabelText('Filtrar por sucursal')).toBeInTheDocument();
+    });
+
+    expect(fetchOverviewSpy).toHaveBeenCalledWith(
+      brandId,
+      expect.objectContaining({ tz: expect.any(String) }),
+      true,
+    );
+    expect(fetchOverviewSpy.mock.calls[0][1]).not.toHaveProperty('merchantId');
+
+    const select = screen.getByLabelText('Filtrar por sucursal');
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'loc-2' } });
+    });
+
+    await waitFor(() => {
+      expect(fetchOverviewSpy).toHaveBeenCalledWith(
+        brandId,
+        expect.objectContaining({ merchantId: 'loc-2' }),
+        true,
+      );
+    });
+  });
+});
