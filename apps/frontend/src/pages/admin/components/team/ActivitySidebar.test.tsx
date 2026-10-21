@@ -184,4 +184,35 @@ describe('ActivitySidebar (Modal)', () => {
     await userEvent.click(backdrop);
     expect(onClose).toHaveBeenCalledTimes(4);
   });
+
+  it('groups recurrence strictly by customerId and not by masked phone', async () => {
+    // 4 scans from 4 DIFFERENT customers who happen to share the same masked phone
+    const scansWithDifferentCustomers: StaffActivityDto[] = [
+      { id: 's1', type: 'STAMP_ADDED', method: 'QR', createdAt: '2026-10-21T10:00:00Z', locationName: 'Central', customerPhone: '+56 9 **** 5678', promotionName: null, customerId: 'cust-1' },
+      { id: 's2', type: 'STAMP_ADDED', method: 'QR', createdAt: '2026-10-21T10:05:00Z', locationName: 'Central', customerPhone: '+56 9 **** 5678', promotionName: null, customerId: 'cust-2' },
+      { id: 's3', type: 'STAMP_ADDED', method: 'QR', createdAt: '2026-10-21T10:10:00Z', locationName: 'Central', customerPhone: '+56 9 **** 5678', promotionName: null, customerId: 'cust-3' },
+      { id: 's4', type: 'STAMP_ADDED', method: 'QR', createdAt: '2026-10-21T10:15:00Z', locationName: 'Central', customerPhone: '+56 9 **** 5678', promotionName: null, customerId: 'cust-4' },
+    ];
+    const onLoadActivity = vi.fn().mockResolvedValue(scansWithDifferentCustomers);
+    render(<ActivitySidebar member={mockMember} onClose={vi.fn()} onLoadActivity={onLoadActivity} />);
+
+    await screen.findByText('Auditoría de Actividad');
+    expect(screen.queryByText(/Cliente frecuente/i)).toBeNull();
+    expect(screen.queryByText(/visitas en este historial/i)).toBeNull();
+  });
+
+  it('tracks recurrence for the same customerId even when phone is absent', async () => {
+    // 4 scans from the SAME customer without phone (registered via email)
+    const emailOnlyCustomerScans: StaffActivityDto[] = [
+      { id: 'se1', type: 'STAMP_ADDED', method: 'QR', createdAt: '2026-10-21T10:00:00Z', locationName: 'Central', customerPhone: null, promotionName: null, customerId: 'cust-email-only' },
+      { id: 'se2', type: 'STAMP_ADDED', method: 'QR', createdAt: '2026-10-21T10:05:00Z', locationName: 'Central', customerPhone: null, promotionName: null, customerId: 'cust-email-only' },
+      { id: 'se3', type: 'STAMP_ADDED', method: 'QR', createdAt: '2026-10-21T10:10:00Z', locationName: 'Central', customerPhone: null, promotionName: null, customerId: 'cust-email-only' },
+      { id: 'se4', type: 'STAMP_ADDED', method: 'QR', createdAt: '2026-10-21T10:15:00Z', locationName: 'Central', customerPhone: null, promotionName: null, customerId: 'cust-email-only' },
+    ];
+    const onLoadActivity = vi.fn().mockResolvedValue(emailOnlyCustomerScans);
+    render(<ActivitySidebar member={mockMember} onClose={vi.fn()} onLoadActivity={onLoadActivity} />);
+
+    await screen.findByText('Auditoría de Actividad');
+    expect(screen.getAllByText('Cliente frecuente (4 visitas en este historial)')).toHaveLength(4);
+  });
 });

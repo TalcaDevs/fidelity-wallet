@@ -93,12 +93,12 @@ export function ActivitySidebar({
     return { stamps, rewards, manual, manualPct };
   }, [activity]);
 
-  // Frecuencia por teléfono para detectar clientes recurrentes que coinciden con alertas antifraude
+  // Frecuencia por customerId para detectar clientes recurrentes que coinciden con alertas antifraude
   const customerCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const scan of activity) {
-      if (scan.customerPhone) {
-        counts.set(scan.customerPhone, (counts.get(scan.customerPhone) ?? 0) + 1);
+      if (scan.customerId) {
+        counts.set(scan.customerId, (counts.get(scan.customerId) ?? 0) + 1);
       }
     }
     return counts;
@@ -324,9 +324,10 @@ export function ActivitySidebar({
                     const typeInfo = TYPE_CONFIG[scan.type];
                     const methodInfo = METHOD_CONFIG[scan.method];
                     const phone = scan.customerPhone;
-                    const visitsCount = phone ? customerCounts.get(phone) ?? 0 : 0;
+                    const customerId = scan.customerId;
+                    const visitsCount = customerId ? customerCounts.get(customerId) ?? 0 : 0;
                     const isHighRecurrence = visitsCount >= 4;
-                    const hasCustomerLink = Boolean(scan.customerId);
+                    const hasCustomerLink = Boolean(customerId);
 
                     return (
                       <li

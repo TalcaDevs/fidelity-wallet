@@ -94,7 +94,7 @@ export class StaffAuditService {
         .filter((s) => s.type === 'STAMP_ADDED')
         .reduce((sum, s) => sum + (s.stampCount ?? 1), 0);
       const redeemsCount = userScans.filter((s) => s.type === 'REWARD_REDEEMED').length;
-      const totalOps = stampsCount + redeemsCount;
+      const totalOps = userScans.length;
 
       const manualOps = userScans.filter((s) => s.method === 'MANUAL').length;
       const manualPercentage = totalOps > 0 ? Math.round((manualOps / totalOps) * 1000) / 10 : 0;
