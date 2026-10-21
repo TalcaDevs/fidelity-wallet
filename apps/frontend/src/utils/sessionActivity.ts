@@ -6,6 +6,20 @@ export const INACTIVITY_CHECK_INTERVAL_MS = 30 * 1000;
 export const PROACTIVE_REFRESH_THRESHOLD_MS = 10 * 60 * 1000;
 export const VISIBILITY_REFRESH_THRESHOLD_MS = 5 * 60 * 1000;
 
+let explicitSignInPendingCount = 0;
+
+export function beginExplicitSignIn(): void {
+  explicitSignInPendingCount += 1;
+}
+
+export function endExplicitSignIn(): void {
+  explicitSignInPendingCount = Math.max(0, explicitSignInPendingCount - 1);
+}
+
+export function isExplicitSignInPending(): boolean {
+  return explicitSignInPendingCount > 0;
+}
+
 export function getLastActivity(storageKey = ACTIVITY_STORAGE_KEY): number | null {
   try {
     const raw = localStorage.getItem(storageKey);

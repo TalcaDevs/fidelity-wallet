@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import {
   clearLastActivity,
   getLastActivity,
+  isExplicitSignInPending,
   isSessionInactive,
   isTokenExpiringSoon,
   PROACTIVE_REFRESH_THRESHOLD_MS,
@@ -19,17 +20,24 @@ export function useAuth() {
   const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
 
   const hasActiveSessionRef = useRef(false);
+  const blockedAccessTokenRef = useRef<string | null>(null);
   const authGenerationRef = useRef(0);
   const checkTimeoutRef = useRef<() => boolean>(() => false);
+  const resetTerminationRef = useRef<(timestamp?: number) => void>(() => {});
 
   const handleTimeout = useCallback(async () => {
+    const timeoutGeneration = authGenerationRef.current;
     setIsBlockedByInactivity(true);
     const { error } = await supabase.auth.signOut({ scope: 'local' });
     if (error) {
       throw error;
     }
+    if (authGenerationRef.current !== timeoutGeneration) {
+      return;
+    }
     authGenerationRef.current += 1;
     hasActiveSessionRef.current = false;
+    blockedAccessTokenRef.current = null;
     setAuthSession(null);
     setIsBlockedByInactivity(false);
   }, []);
@@ -52,7 +60,7 @@ export function useAuth() {
     }
   }, []);
 
-  const { checkTimeout } = useInactivityTimeout(authSession, {
+  const { checkTimeout, resetTermination } = useInactivityTimeout(authSession, {
     enabled: !loading && Boolean(authSession),
     onTimeout: handleTimeout,
     onActivity: handleUserActivity,
@@ -60,6 +68,7 @@ export function useAuth() {
   });
 
   checkTimeoutRef.current = checkTimeout;
+  resetTerminationRef.current = resetTermination;
 
   useEffect(() => {
     const bootstrapGeneration = authGenerationRef.current;
@@ -76,6 +85,7 @@ export function useAuth() {
         hasActiveSessionRef.current = true;
         setAuthSession(restoredSession);
         if (checkTimeoutRef.current()) {
+          blockedAccessTokenRef.current = restoredSession.access_token;
           setIsBlockedByInactivity(true);
         }
       } else if (!hasActiveSessionRef.current) {
@@ -116,6 +126,7 @@ export function useAuth() {
       if (event === 'SIGNED_OUT') {
         authGenerationRef.current += 1;
         hasActiveSessionRef.current = false;
+        blockedAccessTokenRef.current = null;
         setIsRecoveringPassword(false);
         setIsBlockedByInactivity(false);
         setAuthSession(null);
@@ -123,7 +134,25 @@ export function useAuth() {
         return;
       }
 
+      if (
+        event === 'SIGNED_IN' &&
+        nextSession &&
+        isExplicitSignInPending() &&
+        (!blockedAccessTokenRef.current ||
+          nextSession.access_token !== blockedAccessTokenRef.current)
+      ) {
+        authGenerationRef.current += 1;
+        blockedAccessTokenRef.current = null;
+        hasActiveSessionRef.current = true;
+        resetTerminationRef.current(Date.now());
+        setIsBlockedByInactivity(false);
+        setAuthSession(nextSession);
+        setLoading(false);
+        return;
+      }
+
       if (nextSession && checkTimeoutRef.current()) {
+        blockedAccessTokenRef.current = nextSession.access_token;
         hasActiveSessionRef.current = true;
         setAuthSession(nextSession);
         setIsBlockedByInactivity(true);

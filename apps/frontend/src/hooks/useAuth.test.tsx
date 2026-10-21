@@ -1,6 +1,8 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import type { AuthError, Session } from '@supabase/supabase-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SupabaseAuth } from '../auth/SupabaseAuth';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import * as inactivityModule from './useInactivityTimeout';
@@ -239,6 +241,96 @@ describe('useAuth hook', () => {
     expect(signOutSpy).toHaveBeenCalledTimes(2);
     expect(signOutSpy).toHaveBeenLastCalledWith({ scope: 'local' });
     expect(localStore[inactivityModule.ACTIVITY_STORAGE_KEY]).toBeUndefined();
+  });
+
+  it('preserves inactivity lock when login fails while signOut is still pending, preventing session recovery on reload', async () => {
+    const now = 10000000;
+    vi.setSystemTime(now);
+    const sixtyOneMinutesAgo = now - 61 * 60 * 1000;
+    localStore[inactivityModule.ACTIVITY_STORAGE_KEY] = String(sixtyOneMinutesAgo);
+
+    // 1. Keep logout request pending while old session remains persisted in Supabase
+    const signOutSpy = vi
+      .spyOn(supabase.auth, 'signOut')
+      .mockImplementation(() => new Promise(() => {}));
+
+    const firstHook = renderHook(() => useAuth());
+
+    await waitFor(() => {
+      expect(firstHook.result.current.loading).toBe(false);
+    });
+
+    expect(firstHook.result.current.session).toBeNull();
+    expect(signOutSpy).toHaveBeenCalledTimes(1);
+    expect(localStore[inactivityModule.ACTIVITY_STORAGE_KEY]).toBe(String(sixtyOneMinutesAgo));
+
+    // 2. Attempt login with invalid credentials via SupabaseAuth while logout is pending
+    vi.spyOn(supabase.auth, 'signInWithPassword').mockResolvedValueOnce({
+      data: { user: null, session: null },
+      error: { message: 'Invalid login credentials' } as AuthError,
+    });
+
+    const { container, unmount: unmountAuthForm } = render(
+      <MemoryRouter>
+        <SupabaseAuth />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText('Correo electrónico'), {
+      target: { value: 'owner@comercio.cl' },
+    });
+    fireEvent.change(screen.getByLabelText('Contraseña'), {
+      target: { value: 'wrong-password' },
+    });
+    fireEvent.submit(container.querySelector('form')!);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid login credentials');
+    expect(localStore[inactivityModule.ACTIVITY_STORAGE_KEY]).toBe(String(sixtyOneMinutesAgo));
+
+    // 3. Simulate page reload before logout finishes: old session is still returned by getSession()
+    unmountAuthForm();
+    firstHook.unmount();
+
+    const reloadedHook = renderHook(() => useAuth());
+
+    await waitFor(() => {
+      expect(reloadedHook.result.current.loading).toBe(false);
+    });
+
+    expect(reloadedHook.result.current.session).toBeNull();
+    expect(signOutSpy).toHaveBeenCalledTimes(2);
+    expect(localStore[inactivityModule.ACTIVITY_STORAGE_KEY]).toBe(String(sixtyOneMinutesAgo));
+
+    // 4. Subsequent valid login creates a new session and renews activity timestamp
+    const newSession: Session = {
+      ...mockSession,
+      access_token: 'fresh-jwt-token',
+    };
+    vi.spyOn(supabase.auth, 'signInWithPassword').mockImplementationOnce(async () => {
+      authEventCallback?.('SIGNED_IN', newSession);
+      return {
+        data: { user: newSession.user, session: newSession },
+        error: null,
+      };
+    });
+
+    const { container: validFormContainer } = render(
+      <MemoryRouter>
+        <SupabaseAuth />
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByLabelText('Correo electrónico'), {
+      target: { value: 'owner@comercio.cl' },
+    });
+    fireEvent.change(screen.getByLabelText('Contraseña'), {
+      target: { value: 'correct-password' },
+    });
+    await act(async () => {
+      fireEvent.submit(validFormContainer.querySelector('form')!);
+    });
+
+    expect(reloadedHook.result.current.session).toEqual(newSession);
+    expect(localStore[inactivityModule.ACTIVITY_STORAGE_KEY]).toBe(String(now));
   });
 
   it('signs out once with local scope and prevents session refresh on visibilitychange when activity is expired', async () => {

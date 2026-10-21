@@ -30,6 +30,7 @@ export interface UseInactivityTimeoutOptions {
 export interface InactivityTimeoutCoordinator {
   checkTimeout: () => boolean;
   isTerminating: () => boolean;
+  resetTermination: (timestamp?: number) => void;
 }
 
 export function useInactivityTimeout(
@@ -54,6 +55,7 @@ export function useInactivityTimeout(
   const lastRecordedRef = useRef<number | null>(null);
   const isTerminatingRef = useRef(false);
   const terminatingPromiseRef = useRef<Promise<void> | null>(null);
+  const generationRef = useRef(0);
   const prevActiveRef = useRef(false);
   const checkedBeforeMountEffectRef = useRef(false);
 
@@ -77,14 +79,28 @@ export function useInactivityTimeout(
     [timeoutMs, storageKey],
   );
 
+  const resetTermination = useCallback(
+    (timestamp = Date.now()): void => {
+      generationRef.current += 1;
+      isTerminatingRef.current = false;
+      terminatingPromiseRef.current = null;
+      checkedBeforeMountEffectRef.current = false;
+      lastRecordedRef.current = timestamp;
+      setLastActivity(timestamp, storageKey);
+    },
+    [storageKey],
+  );
+
   const performTimeout = useCallback((): Promise<void> => {
     if (isTerminatingRef.current) {
       return terminatingPromiseRef.current ?? Promise.resolve();
     }
+    const currentGeneration = generationRef.current;
     isTerminatingRef.current = true;
     setLogoutReason('inactivity');
 
     const finalizeSuccess = () => {
+      if (generationRef.current !== currentGeneration) return;
       clearLastActivity(storageKey);
       lastRecordedRef.current = null;
       terminatingPromiseRef.current = null;
@@ -94,6 +110,7 @@ export function useInactivityTimeout(
     };
 
     const finalizeFailure = () => {
+      if (generationRef.current !== currentGeneration) return;
       isTerminatingRef.current = false;
       terminatingPromiseRef.current = null;
     };
@@ -220,5 +237,5 @@ export function useInactivityTimeout(
     };
   }, [isSessionActive, timeoutMs, storageKey, checkIntervalMs, checkTimeout]);
 
-  return { checkTimeout, isTerminating };
+  return { checkTimeout, isTerminating, resetTermination };
 }
