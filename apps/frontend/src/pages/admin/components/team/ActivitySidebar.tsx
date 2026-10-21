@@ -144,7 +144,14 @@ export function ActivitySidebar({
                 {member.role === 'OWNER' ? 'Dueño' : 'Cajero'}
               </span>
             </div>
-            <p className="text-sm font-semibold text-panel-accent truncate">{member.email ?? 'Sin correo'}</p>
+            {member.name ? (
+              <>
+                <p className="text-base font-bold text-panel-text truncate">{member.name}</p>
+                <p className="text-xs font-semibold text-panel-accent truncate">{member.email}</p>
+              </>
+            ) : (
+              <p className="text-sm font-semibold text-panel-accent truncate">{member.email ?? 'Sin correo'}</p>
+            )}
             <p className="text-xs text-panel-muted mt-0.5">
               {member.locationName ? `Sucursal: ${member.locationName}` : 'Acceso general'}
             </p>

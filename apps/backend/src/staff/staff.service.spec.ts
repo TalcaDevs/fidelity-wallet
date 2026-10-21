@@ -204,6 +204,33 @@ describe('StaffService', () => {
       expect(prisma.brandMember.create).toHaveBeenCalled();
     });
 
+    it('attaches first_name, last_name and full_name to user_metadata when provided', async () => {
+      supabase.auth.admin.createUser.mockResolvedValue({
+        data: { user: { id: 'new-user', email: 'cajero@cafeteria.cl' } },
+        error: null,
+      });
+
+      await invite({
+        email: 'cajero@cafeteria.cl',
+        firstName: 'Juan',
+        lastName: 'Pérez',
+        password: 'ClaveSegura2026!',
+      });
+
+      expect(supabase.auth.admin.createUser).toHaveBeenCalledWith({
+        email: 'cajero@cafeteria.cl',
+        password: 'ClaveSegura2026!',
+        email_confirm: true,
+        user_metadata: {
+          merchant_id: mainId,
+          first_name: 'Juan',
+          last_name: 'Pérez',
+          full_name: 'Juan Pérez',
+          name: 'Juan Pérez',
+        },
+      });
+    });
+
     it('rejects moving an existing member silently (409), but is idempotent for the same local', async () => {
       supabase.auth.admin.inviteUserByEmail.mockResolvedValue({
         data: { user: { id: staffId, email: 'mesero@cafeteria.cl' } },

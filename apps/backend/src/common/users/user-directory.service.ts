@@ -8,6 +8,9 @@ export interface UserInfo {
 
 /** Lo que Equipo necesita saber de la cuenta de auth de cada miembro. */
 export interface UserAccessInfo {
+  name?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
   email: string | null;
   createdAt: Date;
   lastSignInAt: Date | null;
@@ -27,7 +30,7 @@ export class UserDirectoryService {
     const rows = await this.prisma.$queryRaw<
       { id: string; email: string | null; name: string | null }[]
     >`
-      SELECT id::text AS id, email, raw_user_meta_data ->> 'full_name' AS name
+      SELECT id::text AS id, email, COALESCE(raw_user_meta_data ->> 'full_name', raw_user_meta_data ->> 'name') AS name
       FROM auth.users
       WHERE id = ANY(${unique}::uuid[])`;
 
@@ -43,13 +46,25 @@ export class UserDirectoryService {
       {
         id: string;
         email: string | null;
+        name: string | null;
+        first_name: string | null;
+        last_name: string | null;
         created_at: Date;
         last_sign_in_at: Date | null;
         email_confirmed_at: Date | null;
         banned_until: Date | null;
       }[]
     >`
-      SELECT id::text AS id, email, created_at, last_sign_in_at, email_confirmed_at, banned_until
+      SELECT
+        id::text AS id,
+        email,
+        COALESCE(raw_user_meta_data ->> 'full_name', raw_user_meta_data ->> 'name') AS name,
+        raw_user_meta_data ->> 'first_name' AS first_name,
+        raw_user_meta_data ->> 'last_name' AS last_name,
+        created_at,
+        last_sign_in_at,
+        email_confirmed_at,
+        banned_until
       FROM auth.users
       WHERE id = ANY(${unique}::uuid[])`;
 
@@ -57,6 +72,9 @@ export class UserDirectoryService {
       rows.map((r) => [
         r.id,
         {
+          name: r.name,
+          firstName: r.first_name,
+          lastName: r.last_name,
           email: r.email,
           createdAt: r.created_at,
           lastSignInAt: r.last_sign_in_at,

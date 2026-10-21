@@ -10,6 +10,9 @@ export type StaffStatus = 'INVITED' | 'ACTIVE';
 
 export interface StaffMemberDto {
   userId: string;
+  name?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
   /** null si la cuenta de auth ya no existe. */
   email: string | null;
   role: MemberRole;
@@ -25,6 +28,8 @@ export interface StaffMemberDto {
 
 export interface InviteStaffInput {
   email: string;
+  firstName?: string;
+  lastName?: string;
   locationId: string;
   /** Si se omite, Supabase envía un correo de invitación. */
   password?: string;

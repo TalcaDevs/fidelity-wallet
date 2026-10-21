@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import type { StaffMemberDto } from '@fidelity/shared';
+import type { InviteStaffInput, StaffMemberDto } from '@fidelity/shared';
 import * as staffService from '../services/staffService';
 import { useAsyncData, errorMessage } from './useAsyncData';
 import { useToast } from './useToast';
@@ -57,7 +57,7 @@ export function useTeam(brandId: string | null) {
 
   /** Lanza: el modal de invitación muestra el error junto al formulario. */
   const inviteStaff = useCallback(
-    async (input: { email: string; locationId: string; password?: string }) => {
+    async (input: InviteStaffInput) => {
       if (!brandId) return;
       await staffService.inviteStaff(brandId, input);
       notifySuccess(input.password ? 'Usuario creado' : 'Invitación enviada');
