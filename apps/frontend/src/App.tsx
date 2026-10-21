@@ -82,9 +82,16 @@ export default function App() {
           <Route element={<RequireRole session={session} membership={membership} allow={ADMIN_ROLES} platformAdmin={platformAdmin} />}>
             <Route element={<Layout session={session} role={membership.role} brandId={membership.brandId} isSuspended={membership.isSuspended} />}>
               {/* Rutas siempre accesibles para el dueño (incluso con cuenta suspendida por mora) */}
-              {(isBillingEnabled || membership.isSuspended) && (
-                <Route path={ROUTES.billing} element={<Billing brandId={membership.brandId} isSuspended={membership.isSuspended} />} />
-              )}
+              <Route
+                path={ROUTES.billing}
+                element={
+                  isBillingEnabled || membership.isSuspended ? (
+                    <Billing brandId={membership.brandId} isSuspended={membership.isSuspended} />
+                  ) : (
+                    <Navigate to={ROUTES.dashboard} replace />
+                  )
+                }
+              />
               <Route path={ROUTES.support} element={<Support brandId={membership.brandId} />} />
 
               {/* Rutas operativas: bloqueadas por Route Guard si la suscripción está suspendida */}

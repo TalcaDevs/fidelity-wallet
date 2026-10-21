@@ -1,13 +1,23 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
+import App from '../../App';
 import { RedirectIfAuthenticated, RequireActiveSubscription, RequirePlatformAdmin, RequireRole } from './RouteGuards';
+import * as useAuthModule from '../../hooks/useAuth';
+import * as usePlatformAdminModule from '../../hooks/usePlatformAdmin';
+import * as useDashboardStatsModule from '../../hooks/useDashboardStats';
+import * as useSubscriptionModule from '../../hooks/useSubscription';
+import * as membershipService from '../../services/membershipService';
 import type { MembershipState } from '../../hooks/useMembership';
 import type { PlatformAdminState } from '../../hooks/usePlatformAdmin';
 
+vi.mock('../../config/features', () => ({
+  isBillingEnabled: false,
+}));
+
 // Sesión mínima: RequireRole solo comprueba que exista, no la lee.
-const SESSION = { user: { id: 'user-1' } } as unknown as Session;
+const SESSION = { user: { id: 'user-1', email: 'owner@comercio.cl' } } as unknown as Session;
 
 const LOADED: MembershipState = { brandId: null, programId: null, merchantId: 'm1', role: 'OWNER', loading: false, error: null };
 
@@ -295,5 +305,85 @@ describe('RequireActiveSubscription', () => {
     );
     expect(screen.queryByText('panel activo')).not.toBeInTheDocument();
     expect(screen.getByText('pantalla facturacion')).toBeInTheDocument();
+  });
+});
+
+describe('Flujo de reactivación desde Facturación con VITE_FEATURE_BILLING apagado', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.history.pushState({}, '', '/');
+  });
+
+  it('redirige a /admin/dashboard sin caer en 404 cuando la marca pasa de SUSPENDED a ACTIVE estando en /admin/billing', async () => {
+    window.history.pushState({}, '', '/admin/billing');
+
+    vi.spyOn(useAuthModule, 'useAuth').mockReturnValue({
+      session: SESSION,
+      loading: false,
+      isRecoveringPassword: false,
+      finishPasswordRecovery: vi.fn(),
+    });
+    vi.spyOn(usePlatformAdminModule, 'usePlatformAdmin').mockReturnValue({
+      role: null,
+      loading: false,
+    });
+    vi.spyOn(useDashboardStatsModule, 'useDashboardStats').mockReturnValue({
+      stats: { activePasses: 10, stampsDelivered: 25, rewardsRedeemed: 3, recentScans: [] },
+      loading: false,
+      error: null,
+      fetchStats: vi.fn(),
+    });
+    vi.spyOn(useSubscriptionModule, 'useSubscription').mockReturnValue({
+      subscription: {
+        planId: 'TRIAL',
+        status: 'TRIALING',
+        billingCycle: 'MONTHLY',
+        trialEndsAt: '2026-11-01T00:00:00.000Z',
+        currentPeriodEnd: '2026-11-01T00:00:00.000Z',
+        usage: { programs: 1, locations: 1, teamUsers: 1, customers: 10 },
+      },
+      trialDaysLeft: 18,
+      loading: false,
+      error: null,
+    });
+
+    const fetchSpy = vi
+      .spyOn(membershipService, 'fetchMemberships')
+      .mockResolvedValueOnce([
+        {
+          brandId: 'b1',
+          merchantId: 'm1',
+          programId: null,
+          role: 'OWNER',
+          brandStatus: 'SUSPENDED',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          brandId: 'b1',
+          merchantId: 'm1',
+          programId: 'p1',
+          role: 'OWNER',
+          brandStatus: 'ACTIVE',
+        },
+      ]);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Tu cuenta se encuentra suspendida')).toBeInTheDocument();
+    });
+
+    act(() => {
+      membershipService.invalidateMemberships();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Tu programa de fidelización')).toBeInTheDocument();
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(window.location.pathname).toBe('/admin/dashboard');
+    expect(screen.queryByText(/404/i)).not.toBeInTheDocument();
   });
 });
