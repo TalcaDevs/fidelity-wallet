@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useReducer, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { QRCam } from './QRCam';
 import { ManualFallback } from './ManualFallback';
@@ -13,59 +13,32 @@ import {
   validateScan,
   type LookupTarget,
   type ScanResult,
-  type ScanValidation as Validation,
   type StampExtras,
 } from '../../services/scanService';
-import { listBrandLocations, type LocationOption } from '../../services/locationsService';
 import { IdentifierValue } from '../../components/ui/IdentifierInput';
 import { ROUTES } from '../../components/routing/routePaths';
 import type { MerchantRole } from '../../hooks/useMembership';
-import { ScanLoading, ScanSuccess, ScanAlreadyScanned, ScanReward, ScanError, ScanRedeemSuccess, ScanOffline, ScanSessionExpired } from './ScanViews';
+import {
+  ScanReady,
+  ScanLoading,
+  ScanSuccess,
+  ScanAlreadyScanned,
+  ScanReward,
+  ScanError,
+  ScanRedeemSuccess,
+  ScanOffline,
+  ScanSessionExpired,
+} from './ScanViews';
 import { ScanValidation } from './ScanValidation';
 import { WALLET_THEME } from '../../components/ui/walletTheme';
 import { useTheme } from '../../hooks/useTheme';
 import WalletIcon from '../../assets/home/wallet.svg?react';
 import SunIcon from '../../assets/home/sun.svg?react';
 import MoonIcon from '../../assets/home/moon.svg?react';
-import { SCAN_PRIMARY, SCAN_SECONDARY } from './scannerStyles';
+import { SCAN_SECONDARY } from './scannerStyles';
 import '../../components/admin/panelAnimations.css';
-
-type ScanState = 'camera' | 'manual' | 'loading' | 'validation' | 'success' | 'alreadyScanned' | 'reward' | 'error' | 'redeemSuccess';
-
-/** El canje usa la misma pantalla venga de la validación o de un sello recién sumado. */
-const rewardFromValidation = (v: Validation): ScanResult => ({
-  ok: true,
-  passId: v.passId,
-  customerLabel: v.customerLabel,
-  stampsCount: v.stampsCount,
-  pointsCount: v.pointsCount,
-  rewardCurrency: v.rewardCurrency,
-  stampsEnabled: v.stampsEnabled,
-  pointsEnabled: v.pointsEnabled,
-  targetStamps: v.targetStamps,
-  rewardUnlocked: v.rewardUnlocked,
-  rewardName: v.rewardName,
-  availablePromotions: v.availablePromotions,
-  nextExpiryAt: v.nextExpiryAt,
-});
-
-function getStoredLocation(key: string | null): string | null {
-  if (!key) return null;
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function setStoredLocation(key: string | null, value: string): void {
-  if (!key) return;
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Modo privado o sin permisos de almacenamiento
-  }
-}
+import { useScannerLocation } from './useScannerLocation';
+import { scanReducer, initialScanState, type RewardSource } from './scanReducer';
 
 export function Scan({
   merchantId: initialMerchantId,
@@ -81,166 +54,142 @@ export function Scan({
   const { isDarkMode, toggleDarkMode } = useTheme();
   const { triggerFeedback, resumeAudio } = useScanFeedback();
   const signOut = useSignOut();
-  const [isStarted, setIsStarted] = useState(false);
-  const [state, setState] = useState<ScanState>('camera');
-  const [result, setResult] = useState<ScanResult | null>(null);
-  const [validation, setValidation] = useState<Validation | null>(null);
-  // Desde dónde se abrió el canje: "seguir juntando" vuelve a la validación si aún no se selló.
-  const [rewardFrom, setRewardFrom] = useState<'validation' | 'stamped'>('stamped');
+  const isOnline = useOnlineStatus();
 
-  const storageKey = brandId ? `fidelity_scanner_merchant_${brandId}` : null;
-  const [selectedMerchantId, setSelectedMerchantId] = useState<string>(() => {
-    if (role === 'OWNER' && storageKey) {
-      const cached = getStoredLocation(storageKey);
-      if (cached) return cached;
-    }
-    return initialMerchantId;
+  const [state, dispatch] = useReducer(scanReducer, initialScanState);
+  const { isStarted, status, result, validation, isSessionExpired } = state;
+
+  const { merchantId, locations, activeLocation, selectLocation } = useScannerLocation({
+    brandId,
+    initialMerchantId,
+    role,
   });
-  const [locations, setLocations] = useState<LocationOption[]>([]);
-
-  const merchantId = role === 'OWNER' ? selectedMerchantId : initialMerchantId;
-
-  useEffect(() => {
-    if (!brandId) return;
-    let cancelled = false;
-    listBrandLocations(brandId)
-      .then((data) => {
-        if (cancelled) return;
-        const active = data.filter((l) => l.isActive);
-        setLocations(active);
-        if (role === 'OWNER') {
-          setSelectedMerchantId((current) => {
-            if (active.length > 0 && !active.some((l) => l.id === current)) {
-              const fallback = active.some((l) => l.id === initialMerchantId)
-                ? initialMerchantId
-                : active[0].id;
-              setStoredLocation(storageKey, fallback);
-              return fallback;
-            }
-            return current;
-          });
-        }
-      })
-      .catch((err) => {
-        console.error('Error al cargar sucursales:', err);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [brandId, role, initialMerchantId, storageKey]);
-
-  const activeLocation = locations.find((l) => l.id === merchantId);
 
   const resetScanner = useCallback(() => {
-    setResult(null);
-    setValidation(null);
-    setState('camera');
+    dispatch({ type: 'RESET_SCANNER' });
   }, []);
 
   const handleLocationChange = (newMerchantId: string) => {
-    setSelectedMerchantId(newMerchantId);
-    setStoredLocation(storageKey, newMerchantId);
+    selectLocation(newMerchantId);
     resetScanner();
   };
-  
-  const isOnline = useOnlineStatus();
-  const [isSessionExpired, setIsSessionExpired] = useState(false);
 
-  const handleFailure = useCallback((res: { errorCode?: string }) => {
-    triggerFeedback('error');
-    if (res.errorCode === 'UNAUTHORIZED') {
-      setIsSessionExpired(true);
-    } else {
-      setState('error');
-    }
-  }, [triggerFeedback]);
+  const handleFailure = useCallback(
+    (res: ScanResult) => {
+      triggerFeedback('error');
+      if (res.errorCode === 'UNAUTHORIZED') {
+        dispatch({
+          type: 'FAILURE',
+          isSessionExpired: true,
+          result: res,
+        });
+      } else {
+        dispatch({
+          type: 'FAILURE',
+          result: res,
+        });
+      }
+    },
+    [triggerFeedback],
+  );
 
   // Escanear o buscar a mano solo valida: nada se suma hasta "Agregar sello".
-  const handleLookup = useCallback(async (lookup: LookupTarget) => {
-    setState('loading');
-    setResult(null);
-    const res = await validateScan({ merchantId, target: lookup });
-    if (!res.ok) {
-      setResult({ ok: false, error: res.error, errorCode: res.errorCode });
-      handleFailure(res);
-      return;
-    }
-    const { ok: _ok, ...found } = res;
-    setValidation(found);
-    setState('validation');
-  }, [merchantId, handleFailure]);
+  const handleLookup = useCallback(
+    async (lookup: LookupTarget) => {
+      dispatch({ type: 'START_LOOKUP' });
+      const res = await validateScan({ merchantId, target: lookup });
+      if (!res.ok) {
+        handleFailure({ ok: false, error: res.error, errorCode: res.errorCode });
+        return;
+      }
+      const { ok: _ok, ...found } = res;
+      dispatch({ type: 'LOOKUP_SUCCESS', validation: found });
+    },
+    [merchantId, handleFailure],
+  );
 
-  const handleAddStamp = useCallback(async (extras: StampExtras) => {
-    if (!validation) return;
-    setState('loading');
-    const res = await processScan({
-      merchantId,
-      action: 'STAMP',
-      target: { validationToken: validation.validationToken },
-      extras,
-    });
-    setResult(res);
+  const handleAddStamp = useCallback(
+    async (extras: StampExtras) => {
+      if (!validation) return;
+      dispatch({ type: 'START_ACTION' });
+      const res = await processScan({
+        merchantId,
+        action: 'STAMP',
+        target: { validationToken: validation.validationToken },
+        extras,
+      });
 
-    if (!res.ok) {
-      handleFailure(res);
-    } else if (res.alreadyScanned) {
-      triggerFeedback('alreadyScanned');
-      setState('alreadyScanned');
-    } else {
-      triggerFeedback(res.rewardUnlocked ? 'reward' : 'success');
-      setState('success');
-    }
-  }, [validation, merchantId, handleFailure, triggerFeedback]);
+      if (!res.ok) {
+        handleFailure(res);
+      } else if (res.alreadyScanned) {
+        triggerFeedback('alreadyScanned');
+        dispatch({ type: 'ACTION_ALREADY_SCANNED', result: res });
+      } else {
+        triggerFeedback(res.rewardUnlocked ? 'reward' : 'success');
+        dispatch({ type: 'ACTION_SUCCESS', result: res });
+      }
+    },
+    [validation, merchantId, handleFailure, triggerFeedback],
+  );
 
-  const openReward = useCallback((from: 'validation' | 'stamped') => {
-    if (from === 'validation' && validation) setResult(rewardFromValidation(validation));
-    setRewardFrom(from);
-    setState('reward');
-  }, [validation]);
+  const openReward = useCallback((from: RewardSource) => {
+    dispatch({ type: 'OPEN_REWARD', from });
+  }, []);
 
   // promotionId: el premio que eligió el cliente (los sellos sirven para cualquier promoción activa).
-  const handleRedeem = useCallback(async (promotionId?: string) => {
-    if (!validation) return;
-    setState('loading');
-    const res = await processScan({
-      merchantId,
-      action: 'REDEEM',
-      target: { validationToken: validation.validationToken },
-      promotionId,
-    });
-    setResult(res);
+  const handleRedeem = useCallback(
+    async (promotionId?: string) => {
+      if (!validation) return;
+      dispatch({ type: 'START_ACTION' });
+      const res = await processScan({
+        merchantId,
+        action: 'REDEEM',
+        target: { validationToken: validation.validationToken },
+        promotionId,
+      });
 
-    if (!res.ok) {
-      handleFailure(res);
-    } else if (res.alreadyScanned) {
-      // Doble toque sobre el mismo premio: el canje ya estaba hecho. NO es un "premio entregado"
-      // nuevo; mostrarlo así haría que el cajero lo entregue dos veces.
-      triggerFeedback('alreadyScanned');
-      setState('alreadyScanned');
-    } else {
-      triggerFeedback('success');
-      setState('redeemSuccess');
-    }
-  }, [validation, merchantId, handleFailure, triggerFeedback]);
+      if (!res.ok) {
+        handleFailure(res);
+      } else if (res.alreadyScanned) {
+        // Doble toque sobre el mismo premio: el canje ya estaba hecho. NO es un "premio entregado"
+        // nuevo; mostrarlo así haría que el cajero lo entregue dos veces.
+        triggerFeedback('alreadyScanned');
+        dispatch({ type: 'ACTION_ALREADY_SCANNED', result: res });
+      } else {
+        triggerFeedback('success');
+        dispatch({ type: 'ACTION_REDEEM_SUCCESS', result: res });
+      }
+    },
+    [validation, merchantId, handleFailure, triggerFeedback],
+  );
 
-  const handleManual = useCallback((identifier: IdentifierValue) => {
+  const handleManual = useCallback(
+    (identifier: IdentifierValue) => {
+      resumeAudio();
+      const customer =
+        identifier.kind === 'rut'
+          ? { rut: identifier.value }
+          : identifier.kind === 'phone'
+            ? { phone: identifier.value }
+            : { email: identifier.value };
+      void handleLookup({ customer });
+    },
+    [handleLookup, resumeAudio],
+  );
+
+  const leaveReward = useCallback(() => {
+    dispatch({ type: 'LEAVE_REWARD' });
+  }, []);
+
+  const startScanning = useCallback(() => {
     resumeAudio();
-    const customer =
-      identifier.kind === 'rut'
-        ? { rut: identifier.value }
-        : identifier.kind === 'phone'
-          ? { phone: identifier.value }
-          : { email: identifier.value };
-    void handleLookup({ customer });
-  }, [handleLookup, resumeAudio]);
+    dispatch({ type: 'START_CAMERA' });
+  }, [resumeAudio]);
 
-  const leaveReward = () => {
-    if (rewardFrom === 'validation' && validation) {
-      setState('validation');
-    } else {
-      resetScanner();
-    }
-  };
+  const switchToManual = useCallback(() => {
+    resumeAudio();
+    dispatch({ type: 'SWITCH_TO_MANUAL' });
+  }, [resumeAudio]);
 
   return (
     <div className={`${WALLET_THEME} fw-scanner h-[100dvh] w-full flex flex-col overflow-hidden relative isolate [&_:focus-visible]:outline-2 [&_:focus-visible]:outline-panel-accent [&_:focus-visible]:outline-offset-4 motion-reduce:[&_*]:animate-none motion-reduce:[&_*]:transition-none`}>
@@ -248,6 +197,7 @@ export function Scan({
         <div className="absolute -left-48 -top-48 h-[650px] w-[650px] rounded-full bg-[radial-gradient(ellipse,#087bd712,transparent_65%)] dark:bg-[radial-gradient(ellipse,#087bd722,transparent_65%)]" />
         <div className="absolute -right-48 bottom-0 h-[500px] w-[500px] rounded-full bg-[radial-gradient(ellipse,#d69e0910,transparent_65%)]" />
       </div>
+
       <header className="shrink-0 border-b border-panel-border bg-panel-surface/80 backdrop-blur-md">
         <div className="mx-auto max-w-6xl px-4 py-3 sm:px-8 sm:py-4 flex flex-wrap items-center justify-between gap-x-5 gap-y-3">
           <div className="flex min-w-0 items-center gap-3">
@@ -279,9 +229,9 @@ export function Scan({
                 </span>
               </div>
             )}
-            {state === 'camera' ? (
-              <button onClick={() => { resumeAudio(); setState('manual'); }} className={SCAN_SECONDARY}>Manual</button>
-            ) : state === 'manual' ? (
+            {status === 'camera' ? (
+              <button onClick={switchToManual} className={SCAN_SECONDARY}>Manual</button>
+            ) : status === 'manual' ? (
               <button onClick={resetScanner} className={SCAN_SECONDARY}>Cámara</button>
             ) : null}
             {role === 'OWNER' && <Link to={ROUTES.dashboard} className={SCAN_SECONDARY}>Panel</Link>}
@@ -294,39 +244,9 @@ export function Scan({
       </header>
 
       <main className="mx-auto flex-1 min-h-0 relative w-full max-w-3xl px-4 py-5 sm:px-8 sm:py-8 flex flex-col">
-        {state === 'manual' && <ManualFallback onSubmit={handleManual} onCancel={resetScanner} />}
-        {state === 'camera' && !isStarted && (
-          <div className="flex-1 min-h-0 overflow-y-auto">
-            <section aria-labelledby="scan-ready-title" className="flex min-h-full flex-col items-center justify-center text-center py-4" data-entry-stagger>
-              <div aria-hidden="true" className="relative w-24 h-24 shrink-0 rounded-3xl border border-panel-accent/20 bg-panel-surface flex items-center justify-center mb-7 shadow-panel">
-                <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-panel-canvas bg-panel-gold" />
-                <svg className="w-10 h-10 text-panel-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
-              <div>
-                <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-panel-accent">Cada visita cuenta</p>
-                <h2 id="scan-ready-title" className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-3">Listo para escanear</h2>
-                <p className="text-panel-muted mb-7 max-w-sm text-sm leading-relaxed">Presiona el botón para activar la cámara y el sonido.</p>
-              </div>
-              <button onClick={() => { resumeAudio(); setIsStarted(true); }} className={SCAN_PRIMARY}>Comenzar a escanear</button>
-              <ol className="mt-9 grid w-full max-w-xl grid-cols-1 sm:grid-cols-3 gap-3 text-left">
-                {[
-                  ['01', 'Escanea', 'Lee el QR de la tarjeta del cliente.'],
-                  ['02', 'Revisa', 'Confirma el cliente y su saldo.'],
-                  ['03', 'Suma o canjea', 'Elige la acción antes de registrarla.'],
-                ].map(([step, title, description]) => (
-                  <li key={step} className="flex gap-3 sm:block rounded-2xl border border-panel-border bg-panel-surface/80 p-4 shadow-panel">
-                    <span className="text-[11px] font-extrabold text-panel-gold sm:mb-3 sm:block">{step}</span>
-                    <div><p className="text-sm font-extrabold">{title}</p><p className="mt-1 text-xs leading-relaxed text-panel-muted">{description}</p></div>
-                  </li>
-                ))}
-              </ol>
-            </section>
-          </div>
-        )}
-        {state === 'camera' && isStarted && (
+        {status === 'manual' && <ManualFallback onSubmit={handleManual} onCancel={resetScanner} />}
+        {status === 'camera' && !isStarted && <ScanReady onStart={startScanning} />}
+        {status === 'camera' && isStarted && (
           <div className="flex-1 min-h-0 relative flex flex-col">
             <div className="flex-1 min-h-0 w-full relative">
               {!isOnline ? (
@@ -341,8 +261,8 @@ export function Scan({
           </div>
         )}
 
-        {state === 'loading' && <ScanLoading />}
-        {state === 'validation' && validation && (
+        {status === 'loading' && <ScanLoading />}
+        {status === 'validation' && validation && (
           <ScanValidation
             key={validation.validationToken}
             validation={validation}
@@ -351,7 +271,7 @@ export function Scan({
             onRedeem={() => openReward('validation')}
           />
         )}
-        {state === 'success' && result && (
+        {status === 'success' && result && (
           <ScanSuccess
             cardType={validation?.cardType ?? 'STAMPS'}
             result={result}
@@ -359,10 +279,18 @@ export function Scan({
             onRedeem={result.rewardUnlocked ? () => openReward('stamped') : undefined}
           />
         )}
-        {state === 'redeemSuccess' && result && <ScanRedeemSuccess result={result} onReset={resetScanner} />}
-        {state === 'alreadyScanned' && result && <ScanAlreadyScanned result={result} onReset={resetScanner} />}
-        {state === 'reward' && result && <ScanReward key={result.scanId ?? result.passId} result={result} cardType={validation?.cardType ?? 'STAMPS'} onReset={leaveReward} onRedeem={(id) => void handleRedeem(id)} />}
-        {state === 'error' && <ScanError result={result} onReset={resetScanner} />}
+        {status === 'redeemSuccess' && result && <ScanRedeemSuccess result={result} onReset={resetScanner} />}
+        {status === 'alreadyScanned' && result && <ScanAlreadyScanned result={result} onReset={resetScanner} />}
+        {status === 'reward' && result && (
+          <ScanReward
+            key={result.scanId ?? result.passId}
+            result={result}
+            cardType={validation?.cardType ?? 'STAMPS'}
+            onReset={leaveReward}
+            onRedeem={(id) => void handleRedeem(id)}
+          />
+        )}
+        {status === 'error' && <ScanError result={result} onReset={resetScanner} />}
       </main>
 
       {!isOnline ? (
