@@ -1,8 +1,16 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsDateString, IsInt, IsOptional, IsTimeZone, Max, Min } from 'class-validator';
+import { IsDateString, IsInt, IsOptional, IsTimeZone, IsUUID, Max, Min } from 'class-validator';
 
 export class ReportPeriodQueryDto {
+  @ApiPropertyOptional({
+    description: 'Filtrar por sucursal específica (si se omite en ruta de marca, consolida toda la marca)',
+    example: 'a0000000-0000-0000-0000-000000000001',
+  })
+  @IsOptional()
+  @IsUUID('4', { message: 'El parámetro "merchantId" debe ser un UUID válido' })
+  merchantId?: string;
+
   @ApiPropertyOptional({
     description: 'Fecha de inicio del rango (formato ISO 8601 o YYYY-MM-DD)',
     example: '2026-09-01',
@@ -30,6 +38,14 @@ export class ReportPeriodQueryDto {
 }
 
 export class RetentionReportQueryDto {
+  @ApiPropertyOptional({
+    description: 'Filtrar por sucursal específica (si se omite en ruta de marca, consolida toda la marca)',
+    example: 'a0000000-0000-0000-0000-000000000001',
+  })
+  @IsOptional()
+  @IsUUID('4', { message: 'El parámetro "merchantId" debe ser un UUID válido' })
+  merchantId?: string;
+
   @ApiPropertyOptional({
     description: 'Zona horaria para la agregación de datos (por defecto: America/Santiago)',
     example: 'America/Santiago',

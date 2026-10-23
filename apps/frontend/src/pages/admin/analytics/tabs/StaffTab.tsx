@@ -39,7 +39,7 @@ export function StaffTab({ staff }: StaffTabProps) {
                 Observaciones Operativas y Antifraude del Equipo ({allAlerts.length})
               </h4>
               <p className="text-xs text-amber-800 dark:text-amber-400">
-                Señales de advertencia preventivas basadas en las heurísticas de seguridad del programa.
+                Alertas preventivas para evitar entrega indebida de premios o sellos duplicados en caja.
               </p>
             </div>
           </div>
@@ -97,9 +97,11 @@ export function StaffTab({ staff }: StaffTabProps) {
                   <tr key={m.userId}>
                     <td className="py-4">
                       <span className="font-semibold text-panel-text block">
-                        {m.staffName || `Miembro ${m.userId.slice(0, 8)}`}
+                        {m.staffEmail || m.staffName || 'Miembro del equipo'}
                       </span>
-                      <span className="text-[11px] font-mono text-panel-muted">{m.userId}</span>
+                      {m.staffName && m.staffEmail && (
+                        <span className="text-xs text-panel-muted block">{m.staffName}</span>
+                      )}
                     </td>
                     <td className="py-4 text-center">
                       <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-panel-soft text-panel-muted">

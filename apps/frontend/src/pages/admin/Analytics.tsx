@@ -10,6 +10,7 @@ import {
   type PromotionPerformanceReport,
   type StaffActivityReport,
 } from '../../services/reportsService';
+import { listBrandLocations, type LocationOption } from '../../services/locationsService';
 import { AnalyticsSkeleton, type TabType } from './analytics/components/AnalyticsSkeleton';
 import { OverviewTab } from './analytics/tabs/OverviewTab';
 import { RetentionTab } from './analytics/tabs/RetentionTab';
@@ -22,14 +23,36 @@ import {
 } from './analytics/utils/dateUtils';
 
 export interface AnalyticsProps {
+  brandId?: string | null;
   merchantId: string | null;
 }
 
-export function Analytics({ merchantId }: AnalyticsProps) {
+export function Analytics({ brandId, merchantId }: AnalyticsProps) {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('30d');
   const [dormantDays, setDormantDays] = useState<number>(30);
   const [retryCounter, setRetryCounter] = useState<number>(0);
+  const [locations, setLocations] = useState<LocationOption[]>([]);
+  const [selectedLocationId, setSelectedLocationId] = useState<string>('all');
+
+  // Carga de sucursales si se cuenta con brandId
+  useEffect(() => {
+    if (!brandId) {
+      setLocations([]);
+      return;
+    }
+    let isMounted = true;
+    listBrandLocations(brandId)
+      .then((locs) => {
+        if (isMounted) setLocations(locs || []);
+      })
+      .catch(() => {
+        if (isMounted) setLocations([]);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [brandId]);
 
   // Rango de fechas local sin desfase de medianoche UTC
   const dateRange = useMemo(() => computeDateRange(periodPreset), [periodPreset]);
@@ -57,9 +80,13 @@ export function Analytics({ merchantId }: AnalyticsProps) {
     setRetryCounter((prev) => prev + 1);
   }, []);
 
+  const targetId = brandId || merchantId;
+  const isBrand = Boolean(brandId);
+  const activeMerchantFilter = selectedLocationId === 'all' ? undefined : selectedLocationId;
+
   // Carga de reportes vinculados a dateRange (Overview, Promotions, Staff)
   useEffect(() => {
-    if (!merchantId) return;
+    if (!targetId) return;
 
     let isMounted = true;
     setLoadingOverview(true);
@@ -73,12 +100,13 @@ export function Analytics({ merchantId }: AnalyticsProps) {
       from: dateRange.from,
       to: dateRange.to,
       tz: timeZone,
+      ...(activeMerchantFilter ? { merchantId: activeMerchantFilter } : {}),
     };
 
     Promise.allSettled([
-      fetchOverviewReport(merchantId, queryParams),
-      fetchPromotionsReport(merchantId, queryParams),
-      fetchStaffActivityReport(merchantId, queryParams),
+      fetchOverviewReport(targetId, queryParams, isBrand),
+      fetchPromotionsReport(targetId, queryParams, isBrand),
+      fetchStaffActivityReport(targetId, queryParams, isBrand),
     ]).then(([resOverview, resPromotions, resStaff]) => {
       if (!isMounted) return;
 
@@ -113,17 +141,25 @@ export function Analytics({ merchantId }: AnalyticsProps) {
     return () => {
       isMounted = false;
     };
-  }, [merchantId, dateRange, timeZone, retryCounter]);
+  }, [targetId, isBrand, activeMerchantFilter, dateRange, timeZone, retryCounter]);
 
   // Carga desacoplada de Retention (reacciona independientemente a dormantDays)
   useEffect(() => {
-    if (!merchantId) return;
+    if (!targetId) return;
 
     let isMounted = true;
     setLoadingRetention(true);
     setErrorRetention(null);
 
-    fetchRetentionReport(merchantId, { dormantDays, tz: timeZone })
+    fetchRetentionReport(
+      targetId,
+      {
+        dormantDays,
+        tz: timeZone,
+        ...(activeMerchantFilter ? { merchantId: activeMerchantFilter } : {}),
+      },
+      isBrand,
+    )
       .then((data) => {
         if (!isMounted) return;
         setRetention(data);
@@ -141,7 +177,7 @@ export function Analytics({ merchantId }: AnalyticsProps) {
     return () => {
       isMounted = false;
     };
-  }, [merchantId, dormantDays, timeZone, retryCounter]);
+  }, [targetId, isBrand, activeMerchantFilter, dormantDays, timeZone, retryCounter]);
 
   // Determinación de carga directa por pestaña activa
   const isTabLoading = useMemo(() => {
@@ -170,7 +206,7 @@ export function Analytics({ merchantId }: AnalyticsProps) {
     }
   }, [activeTab, errorOverview, errorRetention, errorPromotions, errorStaff]);
 
-  if (!merchantId) {
+  if (!targetId) {
     return (
       <div className="p-8 text-center text-panel-muted">
         No se ha seleccionado ningún comercio asociado.
@@ -180,7 +216,7 @@ export function Analytics({ merchantId }: AnalyticsProps) {
 
   return (
     <div className="min-w-0 space-y-8">
-      {/* Header & Date Preset Filters */}
+      {/* Header, Location selector & Date Preset Filters */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text"><PanelTitle text="Analítica y Reportes" /></h1>
@@ -189,41 +225,65 @@ export function Analytics({ merchantId }: AnalyticsProps) {
           </p>
         </div>
 
-        {/* Date presets */}
-        <div className="flex items-center gap-1.5 p-1.5 bg-panel-soft rounded-2xl self-start sm:self-auto border border-panel-border">
-          <button
-            type="button"
-            onClick={() => setPeriodPreset('7d')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              periodPreset === '7d'
-                ? 'bg-panel-surface text-panel-text shadow-sm'
-                : 'text-panel-muted hover:text-panel-text '
-            }`}
-          >
-            Últimos 7 días
-          </button>
-          <button
-            type="button"
-            onClick={() => setPeriodPreset('30d')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              periodPreset === '30d'
-                ? 'bg-panel-surface text-panel-text shadow-sm'
-                : 'text-panel-muted hover:text-panel-text '
-            }`}
-          >
-            Últimos 30 días
-          </button>
-          <button
-            type="button"
-            onClick={() => setPeriodPreset('this_month')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              periodPreset === 'this_month'
-                ? 'bg-panel-surface text-panel-text shadow-sm'
-                : 'text-panel-muted hover:text-panel-text '
-            }`}
-          >
-            Este mes
-          </button>
+        <div className="flex flex-wrap items-center gap-3">
+          {locations.length > 1 && (
+            <div className="flex items-center gap-2">
+              <label htmlFor="analytics-location-select" className="text-xs font-semibold text-panel-muted">
+                Sucursal:
+              </label>
+              <select
+                id="analytics-location-select"
+                aria-label="Filtrar por sucursal"
+                value={selectedLocationId}
+                onChange={(e) => setSelectedLocationId(e.target.value)}
+                className="bg-panel-soft border border-panel-border text-panel-text text-xs rounded-xl px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-panel-primary"
+              >
+                <option value="all">Todas las sucursales (Consolidado)</option>
+                {locations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name} {!loc.isActive ? '(Inactiva)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Date presets */}
+          <div className="flex items-center gap-1.5 p-1.5 bg-panel-soft rounded-2xl self-start sm:self-auto border border-panel-border">
+            <button
+              type="button"
+              onClick={() => setPeriodPreset('7d')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                periodPreset === '7d'
+                  ? 'bg-panel-surface text-panel-text shadow-sm'
+                  : 'text-panel-muted hover:text-panel-text '
+              }`}
+            >
+              Últimos 7 días
+            </button>
+            <button
+              type="button"
+              onClick={() => setPeriodPreset('30d')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                periodPreset === '30d'
+                  ? 'bg-panel-surface text-panel-text shadow-sm'
+                  : 'text-panel-muted hover:text-panel-text '
+              }`}
+            >
+              Últimos 30 días
+            </button>
+            <button
+              type="button"
+              onClick={() => setPeriodPreset('this_month')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                periodPreset === 'this_month'
+                  ? 'bg-panel-surface text-panel-text shadow-sm'
+                  : 'text-panel-muted hover:text-panel-text '
+              }`}
+            >
+              Este mes
+            </button>
+          </div>
         </div>
       </div>
 

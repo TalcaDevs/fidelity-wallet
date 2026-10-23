@@ -98,7 +98,7 @@ export default function App() {
               <Route element={<RequireActiveSubscription membership={membership} />}>
                 <Route path={ROUTES.admin} element={<Navigate to={ROUTES.dashboard} replace />} />
                 <Route path={ROUTES.dashboard} element={<Dashboard session={session} brandId={membership.brandId} />} />
-                <Route path={ROUTES.analytics} element={<Analytics merchantId={membership.merchantId} />} />
+                <Route path={ROUTES.analytics} element={<Analytics brandId={membership.brandId} merchantId={membership.merchantId} />} />
                 <Route path={ROUTES.team} element={<Team brandId={membership.brandId} />} />
                 <Route path={ROUTES.locations} element={<Suspense fallback={null}><Locations brandId={membership.brandId} /></Suspense>} />
                 <Route path={ROUTES.card} element={<CardEditor brandId={membership.brandId} />} />

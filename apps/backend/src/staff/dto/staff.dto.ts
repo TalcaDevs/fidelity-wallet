@@ -28,6 +28,22 @@ export class InviteStaffMemberDto implements InviteStaffInput {
   @IsNotEmpty({ message: 'El correo electrónico es requerido' })
   email: string;
 
+  @ApiPropertyOptional({
+    description: 'Nombre de pila del miembro del personal',
+    example: 'Juan',
+  })
+  @IsOptional()
+  @IsString({ message: 'El nombre debe ser una cadena de texto' })
+  firstName?: string;
+
+  @ApiPropertyOptional({
+    description: 'Apellido del miembro del personal',
+    example: 'Pérez',
+  })
+  @IsOptional()
+  @IsString({ message: 'El apellido debe ser una cadena de texto' })
+  lastName?: string;
+
   @ApiProperty({
     description: 'Local de la marca al que se asigna el mesero',
     example: 'b0000000-0000-0000-0000-000000000002',
@@ -73,6 +89,9 @@ export class StaffResponseDto {
 
 export class StaffMemberResponseDto implements StaffMemberDto {
   @ApiProperty() userId: string;
+  @ApiPropertyOptional({ type: String, nullable: true }) name?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) firstName?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) lastName?: string | null;
   @ApiProperty({ type: String, nullable: true }) email: string | null;
   @ApiProperty({ enum: ['OWNER', 'STAFF'] }) role: MemberRole;
   @ApiProperty({ type: String, nullable: true, description: 'null para el OWNER' })
@@ -94,4 +113,7 @@ export class StaffActivityResponseDto implements StaffActivityDto {
   @ApiProperty({ type: String, nullable: true, example: '+56 9 **** 5678' })
   customerPhone: string | null;
   @ApiProperty({ type: String, nullable: true }) promotionName: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) customerId?: string | null;
+  @ApiPropertyOptional({ type: Number, example: 1 }) stampCount?: number;
+  @ApiPropertyOptional({ type: Number, example: 0 }) pointsEarned?: number;
 }

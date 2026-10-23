@@ -9,6 +9,7 @@ import * as apiModule from '../lib/api';
 
 describe('reportsService', () => {
   const merchantId = 'm-uuid-123';
+  const brandId = 'b-uuid-456';
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -33,6 +34,29 @@ describe('reportsService', () => {
         ),
       );
       expect(result).toEqual(mockData);
+    });
+
+    it('calls /api/brands when isBrand is true and supports merchantId query', async () => {
+      const mockData = { kpis: {} };
+      vi.spyOn(apiModule, 'authenticatedFetch').mockResolvedValue(
+        new Response(JSON.stringify(mockData), { status: 200 }),
+      );
+
+      await fetchOverviewReport(
+        brandId,
+        {
+          from: '2026-09-01',
+          to: '2026-09-15',
+          merchantId: 'loc-789',
+        },
+        true,
+      );
+
+      expect(apiModule.authenticatedFetch).toHaveBeenCalledWith(
+        expect.stringContaining(
+          `/api/brands/${brandId}/reports/overview?from=2026-09-01&to=2026-09-15&merchantId=loc-789`,
+        ),
+      );
     });
 
     it('throws error when response is not ok', async () => {
@@ -66,6 +90,19 @@ describe('reportsService', () => {
         ),
       );
       expect(result).toEqual(mockData);
+    });
+
+    it('supports isBrand route for retention', async () => {
+      const mockData = { dormantCustomers: { count: 0, customers: [] } };
+      vi.spyOn(apiModule, 'authenticatedFetch').mockResolvedValue(
+        new Response(JSON.stringify(mockData), { status: 200 }),
+      );
+
+      await fetchRetentionReport(brandId, { tz: 'America/Santiago' }, true);
+
+      expect(apiModule.authenticatedFetch).toHaveBeenCalledWith(
+        expect.stringContaining(`/api/brands/${brandId}/reports/retention?tz=America%2FSantiago`),
+      );
     });
   });
 

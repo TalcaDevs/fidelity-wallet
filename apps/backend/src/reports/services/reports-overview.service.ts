@@ -84,6 +84,7 @@ export class ReportsOverviewService {
         select: {
           type: true,
           createdAt: true,
+          stampCount: true,
           pass: { select: { customerId: true } },
         },
       }),
@@ -108,6 +109,7 @@ export class ReportsOverviewService {
         select: {
           type: true,
           createdAt: true,
+          stampCount: true,
           pass: { select: { customerId: true } },
         },
       }),
@@ -126,7 +128,7 @@ export class ReportsOverviewService {
     ]);
 
     // Métricas período actual
-    const currStamps = currScans.filter((s) => s.type === 'STAMP_ADDED').length;
+    const currStamps = currScans.filter((s) => s.type === 'STAMP_ADDED').reduce((acc, s) => acc + (s.stampCount ?? 1), 0);
     const currRewards = currScans.filter(
       (s) => s.type === 'REWARD_REDEEMED',
     ).length;
@@ -138,7 +140,7 @@ export class ReportsOverviewService {
     );
 
     // Métricas período anterior
-    const prevStamps = prevScans.filter((s) => s.type === 'STAMP_ADDED').length;
+    const prevStamps = prevScans.filter((s) => s.type === 'STAMP_ADDED').reduce((acc, s) => acc + (s.stampCount ?? 1), 0);
     const prevRewards = prevScans.filter(
       (s) => s.type === 'REWARD_REDEEMED',
     ).length;
@@ -206,10 +208,11 @@ export class ReportsOverviewService {
         createdAt: { gte: range.from, lt: range.toExclusive },
       },
       select: {
-        type: true,
-        createdAt: true,
-        pass: { select: { customerId: true } },
-      },
+          type: true,
+          createdAt: true,
+          stampCount: true,
+          pass: { select: { customerId: true } },
+        },
     });
 
     const dailyMap: Record<
@@ -233,7 +236,7 @@ export class ReportsOverviewService {
         dailyMap[dateKey] = { stamps: 0, rewards: 0, customerIds: new Set() };
       }
       if (scan.type === 'STAMP_ADDED') {
-        dailyMap[dateKey].stamps++;
+        dailyMap[dateKey].stamps += scan.stampCount ?? 1;
       } else if (scan.type === 'REWARD_REDEEMED') {
         dailyMap[dateKey].rewards++;
       }
@@ -265,6 +268,7 @@ export class ReportsOverviewService {
         by: ['method'],
         where: {
           ...filter,
+          ...VISIT_SCANS,
           createdAt: { gte: range.from, lt: range.toExclusive },
         },
         _count: { _all: true },
@@ -278,6 +282,7 @@ export class ReportsOverviewService {
       const scans = await this.prisma.scan.findMany({
         where: {
           ...filter,
+          ...VISIT_SCANS,
           createdAt: { gte: range.from, lt: range.toExclusive },
         },
         select: { method: true },

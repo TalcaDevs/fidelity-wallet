@@ -68,7 +68,8 @@ describe('ReportsService', () => {
     const overviewService = new ReportsOverviewService(prisma);
     const retentionService = new RetentionAnalyticsService(prisma);
     const promotionsService = new PromotionsAnalyticsService(prisma);
-    const staffService = new StaffAuditService(prisma);
+    const mockUsers = { lookup: vi.fn().mockResolvedValue(new Map()) } as any;
+    const staffService = new StaffAuditService(prisma, mockUsers);
     service = new ReportsService(
       prisma,
       overviewService,
@@ -141,6 +142,33 @@ describe('ReportsService', () => {
       expect(scope).toEqual({ brandId, merchantId: null });
     });
   });
+
+    it('resolves with brand scope (merchantId: null) when preferBrand is true even if merchant exists with same ID', async () => {
+      // Caso de colision: targetId coincide con merchant y brand
+      (prisma.merchant.findUnique as any).mockResolvedValue(mockMerchant);
+      (prisma.brand.findUnique as any).mockResolvedValue(mockBrand);
+      (prisma.brandMember.findUnique as any).mockResolvedValue({
+        userId: ownerId,
+        brandId,
+        role: 'OWNER',
+      });
+
+      const scope = await service.assertOwner(brandId, ownerId, { preferBrand: true });
+      expect(scope).toEqual({ brandId, merchantId: null });
+    });
+
+    it('resolves with specific merchant scope when preferBrand is true and merchantId is provided', async () => {
+      (prisma.brand.findUnique as any).mockResolvedValue(mockBrand);
+      (prisma.brandMember.findUnique as any).mockResolvedValue({
+        userId: ownerId,
+        brandId,
+        role: 'OWNER',
+      });
+      (prisma.merchant.findFirst as any) = vi.fn().mockResolvedValue({ id: merchantId });
+
+      const scope = await service.assertOwner(brandId, ownerId, { preferBrand: true, merchantId });
+      expect(scope).toEqual({ brandId, merchantId });
+    });
 
   describe('resolveDateRange', () => {
     it('throws BadRequestException on invalid timezone', () => {

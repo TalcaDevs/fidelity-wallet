@@ -33,6 +33,7 @@ export class PromotionsAnalyticsService {
         where: {
           ...scopeFilter,
           type: 'REWARD_REDEEMED',
+          voidedAt: null,
           createdAt: { gte: from, lte: to },
         },
         select: {

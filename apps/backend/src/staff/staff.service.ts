@@ -102,6 +102,16 @@ export class StaffService {
     );
     const supabase = this.getSupabaseAdmin();
 
+    const firstName = dto.firstName?.trim() || undefined;
+    const lastName = dto.lastName?.trim() || undefined;
+    const fullName = [firstName, lastName].filter(Boolean).join(' ') || undefined;
+    const userMetadata: Record<string, any> = {
+      merchant_id: merchant.id,
+      ...(firstName && { first_name: firstName }),
+      ...(lastName && { last_name: lastName }),
+      ...(fullName && { full_name: fullName, name: fullName }),
+    };
+
     if (dto.password) {
       const { data, error } = await supabase.auth.admin.createUser({
         email: dto.email,
@@ -109,7 +119,7 @@ export class StaffService {
         email_confirm: true,
         // Solo para que el trigger handle_new_user no le cree un local propio. La metadata la
         // controla el cliente, así que NO otorga permisos: la membresía se crea abajo.
-        user_metadata: { merchant_id: merchant.id },
+        user_metadata: userMetadata,
       });
 
       if (error) {
@@ -137,7 +147,7 @@ export class StaffService {
       dto.email,
       {
         // Igual que arriba: evita que el trigger cree un local; no otorga permisos.
-        data: { merchant_id: merchant.id },
+        data: userMetadata,
       },
     );
 
@@ -324,10 +334,12 @@ export class StaffService {
         id: true,
         type: true,
         method: true,
+        stampCount: true,
+        pointsEarned: true,
         createdAt: true,
         merchant: { select: { name: true } },
         promotion: { select: { name: true } },
-        pass: { select: { customer: { select: { phone: true } } } },
+        pass: { select: { customerId: true, customer: { select: { phone: true } } } },
       },
     });
 
@@ -341,6 +353,9 @@ export class StaffService {
         locationName: s.merchant.name,
         customerPhone: phone ? maskPhone(phone) : null,
         promotionName: s.promotion?.name ?? null,
+        customerId: s.pass.customerId,
+        stampCount: s.stampCount,
+        pointsEarned: s.pointsEarned,
       };
     });
   }
@@ -455,6 +470,9 @@ function toStaffMember(
 ): StaffMemberDto {
   return {
     userId: m.userId,
+    name: info?.name ?? null,
+    firstName: info?.firstName ?? null,
+    lastName: info?.lastName ?? null,
     email: info?.email ?? null,
     role: m.role,
     locationId: m.merchant?.id ?? null,

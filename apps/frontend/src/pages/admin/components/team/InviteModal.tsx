@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { STAFF_PASSWORD_MIN } from '@fidelity/shared';
+import { STAFF_PASSWORD_MIN, type InviteStaffInput } from '@fidelity/shared';
 import { Modal } from '../../../../components/ui/Modal';
 import { ErrorAlert } from '../../../../components/ui/ErrorAlert';
 import { errorMessage } from '../../../../hooks/useAsyncData';
@@ -17,9 +17,11 @@ export function InviteModal({
 }: {
   locations: LocationOption[];
   onClose: () => void;
-  onInvite: (input: { email: string; locationId: string; password?: string }) => Promise<void>;
+  onInvite: (input: InviteStaffInput) => Promise<void>;
 }) {
   const activeLocations = locations.filter((l) => l.isActive);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   // Con un solo local no hay nada que elegir.
@@ -36,7 +38,13 @@ export function InviteModal({
     setIsSubmitting(true);
     setError(null);
     try {
-      await onInvite({ email: email.trim(), locationId, password: password || undefined });
+      await onInvite({
+        email: email.trim(),
+        firstName: firstName.trim() || undefined,
+        lastName: lastName.trim() || undefined,
+        locationId,
+        password: password || undefined,
+      });
       onClose();
     } catch (err) {
       setError(errorMessage(err, 'No se pudo invitar al usuario'));
@@ -47,21 +55,63 @@ export function InviteModal({
   return (
     <Modal trapFocus
       title="Agregar usuario"
-      description="Ingresa el correo del mesero y el local donde trabajará. Si le asignas una contraseña, no recibe correo de invitación."
+      description="Ingresa los datos del mesero o cajero y el local donde trabajará. Si le asignas una contraseña, no recibe correo de invitación."
       onClose={onClose}
     >
       {error && <div className="mb-5"><ErrorAlert message={error} /></div>}
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div>
-          <label htmlFor="invite-email" className="block text-sm font-bold text-panel-text mb-2">Correo electrónico</label>
-          <input id="invite-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className={INPUT_CLASSES} />
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="invite-first-name" className="block text-sm font-bold text-panel-text mb-2">
+              Nombre
+            </label>
+            <input
+              id="invite-first-name"
+              type="text"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              placeholder="Ej: Juan"
+              className={INPUT_CLASSES}
+            />
+          </div>
+          <div>
+            <label htmlFor="invite-last-name" className="block text-sm font-bold text-panel-text mb-2">
+              Apellido
+            </label>
+            <input
+              id="invite-last-name"
+              type="text"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              placeholder="Ej: Pérez"
+              className={INPUT_CLASSES}
+            />
+          </div>
         </div>
         <div>
-          <label htmlFor="invite-location" className="block text-sm font-bold text-panel-text mb-2">Local</label>
+          <label htmlFor="invite-email" className="block text-sm font-bold text-panel-text mb-2">
+            Correo electrónico
+          </label>
+          <input
+            id="invite-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            placeholder="cajero@ejemplo.com"
+            className={INPUT_CLASSES}
+          />
+        </div>
+        <div>
+          <label htmlFor="invite-location" className="block text-sm font-bold text-panel-text mb-2">
+            Local
+          </label>
           <LocationSelect id="invite-location" locations={locations} value={locationId} onChange={setLocationId} />
         </div>
         <div>
-          <label htmlFor="invite-password" className="block text-sm font-bold text-panel-text mb-2">Contraseña (opcional)</label>
+          <label htmlFor="invite-password" className="block text-sm font-bold text-panel-text mb-2">
+            Contraseña (opcional)
+          </label>
           <input
             id="invite-password"
             type="password"

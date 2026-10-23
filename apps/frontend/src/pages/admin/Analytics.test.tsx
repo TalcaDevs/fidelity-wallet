@@ -2,6 +2,7 @@ import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Analytics } from './Analytics';
 import * as reportsService from '../../services/reportsService';
+import * as locationsService from '../../services/locationsService';
 
 describe('Analytics Page', () => {
   const merchantId = 'merchant-test-uuid';
@@ -79,6 +80,7 @@ describe('Analytics Page', () => {
       {
         userId: 'staff-uuid-1',
         staffName: 'Carlos Equipo',
+        staffEmail: 'carlos@cafedemo.cl',
         role: 'STAFF',
         stampsCount: 45,
         redeemsCount: 8,
@@ -87,7 +89,7 @@ describe('Analytics Page', () => {
           {
             type: 'EXCESSIVE_STAMPS_SAME_CUSTOMER',
             severity: 'high' as const,
-            description: '4 o más sellos otorgados al mismo cliente en menos de 7 días.',
+            description: 'carlos@cafedemo.cl (Carlos Equipo) entregó 4 o más sellos al mismo cliente en menos de 7 días. Verifica si corresponde a compras reales.',
           },
         ],
       },
@@ -168,9 +170,10 @@ describe('Analytics Page', () => {
 
     await waitFor(() => {
       expect(screen.getAllByText('Actividad de Equipo').length).toBe(2);
+      expect(screen.getByText('carlos@cafedemo.cl')).toBeInTheDocument();
       expect(screen.getByText('Carlos Equipo')).toBeInTheDocument();
       expect(screen.getByText('45')).toBeInTheDocument();
-      expect(screen.getByText(/4 o más sellos otorgados al mismo cliente/)).toBeInTheDocument();
+      expect(screen.getByText(/entregó 4 o más sellos al mismo cliente/)).toBeInTheDocument();
       expect(screen.getByText(/Severidad Alta/i)).toBeInTheDocument();
     });
   });
@@ -296,5 +299,40 @@ describe('Analytics Page', () => {
       expect(screen.getByText('Sin datos registrados para el período seleccionado')).toBeInTheDocument();
     });
   });
-});
+  it('renders branch selector when brand has multiple locations and filters reports by selected branch', async () => {
+    const brandId = 'brand-uuid-1';
+    vi.spyOn(locationsService, 'listBrandLocations').mockResolvedValue([
+      { id: 'loc-1', name: 'Sucursal Centro', isActive: true },
+      { id: 'loc-2', name: 'Sucursal Norte', isActive: true },
+    ]);
 
+    const fetchOverviewSpy = vi.spyOn(reportsService, 'fetchOverviewReport').mockResolvedValue(mockOverview as any);
+
+    render(<Analytics brandId={brandId} merchantId={merchantId} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Clientes Nuevos')).toBeInTheDocument();
+      expect(screen.getByLabelText('Filtrar por sucursal')).toBeInTheDocument();
+    });
+
+    expect(fetchOverviewSpy).toHaveBeenCalledWith(
+      brandId,
+      expect.objectContaining({ tz: expect.any(String) }),
+      true,
+    );
+    expect(fetchOverviewSpy.mock.calls[0][1]).not.toHaveProperty('merchantId');
+
+    const select = screen.getByLabelText('Filtrar por sucursal');
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'loc-2' } });
+    });
+
+    await waitFor(() => {
+      expect(fetchOverviewSpy).toHaveBeenCalledWith(
+        brandId,
+        expect.objectContaining({ merchantId: 'loc-2' }),
+        true,
+      );
+    });
+  });
+});

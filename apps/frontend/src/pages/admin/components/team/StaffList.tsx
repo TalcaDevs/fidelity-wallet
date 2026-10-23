@@ -33,16 +33,27 @@ function StatusBadge({ status }: { status: StaffStatus }) {
 
 function MemberIdentity({ member }: { member: StaffMemberDto }) {
   const email = member.email ?? 'Cuenta no disponible';
+  const fullName =
+    [member.firstName, member.lastName].filter(Boolean).join(' ').trim() ||
+    member.name ||
+    null;
+  const initial = (fullName || email).charAt(0).toUpperCase();
+
   return (
     <div className="flex items-center gap-3 min-w-0">
       <div className="w-10 h-10 rounded-full bg-panel-soft flex items-center justify-center text-panel-muted font-bold shrink-0">
-        {email.charAt(0).toUpperCase()}
+        {initial}
       </div>
       <div className="min-w-0">
-        <p className="font-bold text-panel-text truncate">{email}</p>
-        {member.role === 'OWNER' && (
-          <span className="text-xs text-panel-accent bg-panel-accent/10 px-2 py-0.5 rounded-md mt-1 inline-block">Dueño</span>
-        )}
+        <div className="flex items-center gap-2">
+          <p className="font-bold text-panel-text truncate">{fullName || email}</p>
+          {member.role === 'OWNER' && (
+            <span className="text-xs text-panel-accent bg-panel-accent/10 px-2 py-0.5 rounded-md shrink-0">
+              Dueño
+            </span>
+          )}
+        </div>
+        {fullName && <p className="text-xs text-panel-muted truncate">{email}</p>}
       </div>
     </div>
   );

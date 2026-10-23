@@ -204,6 +204,33 @@ describe('StaffService', () => {
       expect(prisma.brandMember.create).toHaveBeenCalled();
     });
 
+    it('attaches first_name, last_name and full_name to user_metadata when provided', async () => {
+      supabase.auth.admin.createUser.mockResolvedValue({
+        data: { user: { id: 'new-user', email: 'cajero@cafeteria.cl' } },
+        error: null,
+      });
+
+      await invite({
+        email: 'cajero@cafeteria.cl',
+        firstName: 'Juan',
+        lastName: 'Pérez',
+        password: 'ClaveSegura2026!',
+      });
+
+      expect(supabase.auth.admin.createUser).toHaveBeenCalledWith({
+        email: 'cajero@cafeteria.cl',
+        password: 'ClaveSegura2026!',
+        email_confirm: true,
+        user_metadata: {
+          merchant_id: mainId,
+          first_name: 'Juan',
+          last_name: 'Pérez',
+          full_name: 'Juan Pérez',
+          name: 'Juan Pérez',
+        },
+      });
+    });
+
     it('rejects moving an existing member silently (409), but is idempotent for the same local', async () => {
       supabase.auth.admin.inviteUserByEmail.mockResolvedValue({
         data: { user: { id: staffId, email: 'mesero@cafeteria.cl' } },
@@ -450,10 +477,12 @@ describe('StaffService', () => {
           id: 's1',
           type: 'STAMP_ADDED',
           method: 'QR',
+          stampCount: 1,
+          pointsEarned: 0,
           createdAt: new Date('2026-09-30T12:00:00Z'),
           merchant: { name: 'Centro' },
           promotion: null,
-          pass: { customer: { phone: '+56912345678' } },
+          pass: { customerId: 'cust-1', customer: { phone: '+56912345678' } },
         },
       ]);
 
@@ -468,6 +497,9 @@ describe('StaffService', () => {
           locationName: 'Centro',
           customerPhone: '+56 9 **** 5678',
           promotionName: null,
+          customerId: 'cust-1',
+          stampCount: 1,
+          pointsEarned: 0,
         },
       ]);
       expect(prisma.scan.findMany).toHaveBeenCalledWith(
@@ -476,6 +508,62 @@ describe('StaffService', () => {
           take: 50,
         }),
       );
+    });
+
+    it('returns stampCount and pointsEarned for multiple stamps and points-only operations', async () => {
+      prisma.scan.findMany.mockResolvedValue([
+        {
+          id: 's2',
+          type: 'STAMP_ADDED',
+          method: 'QR',
+          stampCount: 5,
+          pointsEarned: 0,
+          createdAt: new Date('2026-09-30T13:00:00Z'),
+          merchant: { name: 'Centro' },
+          promotion: null,
+          pass: { customerId: 'cust-2', customer: { phone: null } },
+        },
+        {
+          id: 's3',
+          type: 'STAMP_ADDED',
+          method: 'MANUAL',
+          stampCount: 0,
+          pointsEarned: 150,
+          createdAt: new Date('2026-09-30T13:30:00Z'),
+          merchant: { name: 'Centro' },
+          promotion: null,
+          pass: { customerId: 'cust-3', customer: { phone: null } },
+        },
+      ]);
+
+      const result = await service.getStaffActivity(brandId, ownerId, staffId);
+
+      expect(result).toEqual([
+        {
+          id: 's2',
+          type: 'STAMP_ADDED',
+          method: 'QR',
+          stampCount: 5,
+          pointsEarned: 0,
+          createdAt: '2026-09-30T13:00:00.000Z',
+          locationName: 'Centro',
+          customerPhone: null,
+          promotionName: null,
+          customerId: 'cust-2',
+        },
+        {
+          id: 's3',
+          type: 'STAMP_ADDED',
+          method: 'MANUAL',
+          stampCount: 0,
+          pointsEarned: 150,
+          createdAt: '2026-09-30T13:30:00.000Z',
+          locationName: 'Centro',
+          customerPhone: null,
+          promotionName: null,
+          customerId: 'cust-3',
+        },
+      ]);
     });
   });
 });

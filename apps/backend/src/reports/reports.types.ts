@@ -8,4 +8,8 @@ export function scopeWhere(scope: ReportScope): { merchantId: string } | { brand
 }
 
 /** Movimientos que cuentan como visita: el saldo de bienvenida lo da el sistema, no una visita. */
-export const VISIT_SCANS = { method: { not: 'WELCOME' as const } };
+/** Movimientos que cuentan como visita: el saldo de bienvenida lo da el sistema y las cargas anuladas no cuentan. */
+export const VISIT_SCANS = {
+  method: { not: 'WELCOME' as const },
+  voidedAt: null,
+};

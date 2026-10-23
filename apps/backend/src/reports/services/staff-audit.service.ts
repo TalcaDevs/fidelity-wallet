@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { MerchantRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { UserDirectoryService } from '../../common/users/user-directory.service.js';
 import type { ReportPeriodQueryDto } from '../dto/reports-query.dto.js';
 import type {
   StaffActivityDto,
@@ -8,11 +9,14 @@ import type {
   StaffMemberMetricDto,
 } from '../dto/reports-response.dto.js';
 import { resolveDateRange } from '../utils/reports-date.util.js';
-import { type ReportScope, scopeWhere } from '../reports.types.js';
+import { type ReportScope, VISIT_SCANS, scopeWhere } from '../reports.types.js';
 
 @Injectable()
 export class StaffAuditService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly users: UserDirectoryService,
+  ) {}
 
   /**
    * Reporte de Personal (Staff): Auditoría, métodos de escaneo y alertas antifraude.
@@ -33,6 +37,7 @@ export class StaffAuditService {
         passId: string;
         createdByUserId: string | null;
         createdAt: Date;
+        stampCount?: number;
       }>,
     ] = await Promise.all([
       this.prisma.brandMember.findMany({
@@ -50,7 +55,11 @@ export class StaffAuditService {
         select: { userId: true, role: true },
       }),
       this.prisma.scan.findMany({
-        where: { ...filter, createdAt: { gte: from, lt: toExclusive } },
+        where: {
+          ...filter,
+          ...VISIT_SCANS,
+          createdAt: { gte: from, lt: toExclusive },
+        },
         select: {
           id: true,
           type: true,
@@ -58,6 +67,7 @@ export class StaffAuditService {
           passId: true,
           createdByUserId: true,
           createdAt: true,
+          stampCount: true,
         },
         orderBy: { createdAt: 'asc' },
       }),
@@ -69,16 +79,22 @@ export class StaffAuditService {
       if (scan.createdByUserId) userIds.add(scan.createdByUserId);
     }
 
+    const usersMap = await this.users.lookup([...userIds]);
     const staffMetrics: StaffMemberMetricDto[] = [];
 
     for (const uid of userIds) {
       const membership = brandMembers.find((bm) => bm.userId === uid);
       const role: string = membership?.role ?? 'STAFF';
       const userScans = scans.filter((s) => s.createdByUserId === uid);
+      const userInfo = usersMap.get(uid);
+      const staffName = userInfo?.name || null;
+      const staffEmail = userInfo?.email || null;
 
-      const stampsCount = userScans.filter((s) => s.type === 'STAMP_ADDED').length;
+      const stampsCount = userScans
+        .filter((s) => s.type === 'STAMP_ADDED')
+        .reduce((sum, s) => sum + (s.stampCount ?? 1), 0);
       const redeemsCount = userScans.filter((s) => s.type === 'REWARD_REDEEMED').length;
-      const totalOps = stampsCount + redeemsCount;
+      const totalOps = userScans.length;
 
       const manualOps = userScans.filter((s) => s.method === 'MANUAL').length;
       const manualPercentage = totalOps > 0 ? Math.round((manualOps / totalOps) * 1000) / 10 : 0;
@@ -86,7 +102,7 @@ export class StaffAuditService {
       const alerts: StaffAlertDto[] = [];
 
       // Heurística 1: Mismo miembro del equipo da >= 4 sellos al mismo cliente/pase en 7 días
-      alerts.push(...this.detectExcessiveStamps(userScans));
+      alerts.push(...this.detectExcessiveStamps(userScans, staffEmail, staffName));
 
       // Heurística 2: Miembro del equipo con > 50% de sellos MANUAL con al menos 20 operaciones
       const highManualAlert = this.detectHighManualScanRatio(totalOps, manualOps, manualPercentage);
@@ -96,7 +112,8 @@ export class StaffAuditService {
 
       staffMetrics.push({
         userId: uid,
-        staffName: null,
+        staffName,
+        staffEmail,
         role,
         stampsCount,
         redeemsCount,
@@ -115,6 +132,8 @@ export class StaffAuditService {
    */
   private detectExcessiveStamps(
     userScans: Array<{ type: string; passId: string; createdAt: Date }>,
+    staffEmail?: string | null,
+    staffName?: string | null,
   ): StaffAlertDto[] {
     const alerts: StaffAlertDto[] = [];
     const passStampTimes: Record<string, number[]> = {};
@@ -126,6 +145,10 @@ export class StaffAuditService {
       }
     }
 
+    const cashierText = staffEmail
+      ? (staffName ? `${staffEmail} (${staffName})` : staffEmail)
+      : (staffName || 'Un miembro del equipo');
+
     for (const times of Object.values(passStampTimes)) {
       if (times.length >= 4) {
         for (let i = 0; i <= times.length - 4; i++) {
@@ -133,7 +156,7 @@ export class StaffAuditService {
             alerts.push({
               type: 'EXCESSIVE_STAMPS_SAME_CUSTOMER',
               severity: 'high',
-              description: 'Se registraron 4 o más sellos otorgados al mismo cliente en menos de 7 días.',
+              description: `${cashierText} entregó 4 o más sellos al mismo cliente en menos de 7 días. Verifica si corresponde a compras reales.`,
             });
             break;
           }
