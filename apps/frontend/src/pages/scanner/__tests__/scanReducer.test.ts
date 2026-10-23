@@ -161,3 +161,72 @@ describe('scanReducer', () => {
     expect(next).toBe(initialScanState);
   });
 });
+
+describe('rewardFromValidation', () => {
+  it('maps all redemption and balance fields from ScanValidation to an independent ScanResult object', () => {
+    const mockPromo = {
+      id: 'promo-101',
+      name: 'Café de Especialidad',
+      rewardName: 'Café Gratis',
+      targetStamps: 10,
+      canRedeem: true,
+      currency: 'STAMPS' as const,
+    };
+
+    const inputValidation: ScanValidation = {
+      validationToken: 'token-xyz-123',
+      passId: 'pass-uuid-999',
+      method: 'QR',
+      customerLabel: 'Ana Silva',
+      hasName: true,
+      stampsCount: 7,
+      pointsCount: 420,
+      rewardCurrency: 'STAMPS',
+      stampsEnabled: true,
+      pointsEnabled: false,
+      targetStamps: 10,
+      rewardUnlocked: true,
+      rewardName: 'Café Gratis',
+      availablePromotions: [mockPromo],
+      nextStampAvailableAt: '2026-10-22T08:00:00Z',
+      canStamp: true,
+      maxStampsPerLoad: 3,
+      reasonRequired: false,
+      nextPointsAvailableAt: null,
+      canAddPoints: false,
+      pointsReasonRequired: false,
+      cardType: 'STAMPS',
+      pesosPerPoint: 100,
+      amountRequired: false,
+      receiptRequired: false,
+      nextExpiryAt: '2026-12-31T23:59:59Z',
+    };
+
+    const expectedResult: ScanResult = {
+      ok: true,
+      passId: 'pass-uuid-999',
+      customerLabel: 'Ana Silva',
+      stampsCount: 7,
+      pointsCount: 420,
+      rewardCurrency: 'STAMPS',
+      stampsEnabled: true,
+      pointsEnabled: false,
+      targetStamps: 10,
+      rewardUnlocked: true,
+      rewardName: 'Café Gratis',
+      availablePromotions: [mockPromo],
+      nextExpiryAt: '2026-12-31T23:59:59Z',
+    };
+
+    const result = rewardFromValidation(inputValidation);
+
+    // Verify independent expected literal mapping
+    expect(result).toEqual(expectedResult);
+    expect(result.passId).toBe('pass-uuid-999');
+    expect(result.pointsCount).toBe(420);
+    expect(result.stampsCount).toBe(7);
+    expect(result.availablePromotions).toEqual([mockPromo]);
+    expect(result.nextExpiryAt).toBe('2026-12-31T23:59:59Z');
+    expect(result.rewardCurrency).toBe('STAMPS');
+  });
+});
