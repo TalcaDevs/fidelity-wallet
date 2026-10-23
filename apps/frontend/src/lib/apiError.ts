@@ -7,11 +7,26 @@
  */
 export function extractApiError(body: unknown): string | undefined {
   if (!body || typeof body !== 'object') return undefined;
-  const message = (body as { message?: unknown }).message;
-  if (typeof message === 'string' && message.trim()) return message;
+  const b = body as { message?: unknown; statusCode?: unknown; error?: unknown };
+  const message = b.message;
+
+  if (typeof message === 'string' && message.trim()) {
+    if (message.includes('Too Many Requests') || message.includes('ThrottlerException')) {
+      return 'Demasiadas solicitudes. Por favor, espera un momento antes de intentar de nuevo.';
+    }
+    return message;
+  }
   if (Array.isArray(message)) {
     const first = message.find((m): m is string => typeof m === 'string' && m.trim() !== '');
-    if (first) return first;
+    if (first) {
+      if (first.includes('Too Many Requests') || first.includes('ThrottlerException')) {
+        return 'Demasiadas solicitudes. Por favor, espera un momento antes de intentar de nuevo.';
+      }
+      return first;
+    }
+  }
+  if (b.statusCode === 429) {
+    return 'Demasiadas solicitudes. Por favor, espera un momento antes de intentar de nuevo.';
   }
   return undefined;
 }
