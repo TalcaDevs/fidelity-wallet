@@ -114,4 +114,6 @@ export class StaffActivityResponseDto implements StaffActivityDto {
   customerPhone: string | null;
   @ApiProperty({ type: String, nullable: true }) promotionName: string | null;
   @ApiPropertyOptional({ type: String, nullable: true }) customerId?: string | null;
+  @ApiPropertyOptional({ type: Number, example: 1 }) stampCount?: number;
+  @ApiPropertyOptional({ type: Number, example: 0 }) pointsEarned?: number;
 }

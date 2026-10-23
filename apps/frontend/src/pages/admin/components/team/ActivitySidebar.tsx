@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import type { StaffActivityDto, StaffMemberDto, StaffScanType } from '@fidelity/shared';
+import type { StaffActivityDto, StaffMemberDto } from '@fidelity/shared';
 import { customerDetailPath } from '../../../../components/routing/routePaths';
 import { ErrorAlert } from '../../../../components/ui/ErrorAlert';
 import { WALLET_THEME } from '../../../../components/ui/walletTheme';
@@ -37,21 +37,45 @@ const METHOD_CONFIG: Record<
   },
 };
 
-const TYPE_CONFIG: Record<
-  StaffScanType,
-  { label: string; badgeClass: string; icon: string }
-> = {
-  STAMP_ADDED: {
-    label: '+1 Sello entregado',
+function getScanBadge(scan: StaffActivityDto): {
+  label: string;
+  badgeClass: string;
+  icon: string;
+} {
+  if (scan.type === 'REWARD_REDEEMED') {
+    return {
+      label: 'Premio canjeado',
+      badgeClass: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20',
+      icon: '🎁',
+    };
+  }
+  const count = scan.stampCount ?? 1;
+  const points = scan.pointsEarned ?? 0;
+
+  if (count > 0 && points > 0) {
+    const stampText = count === 1 ? '1 Sello' : `${count} Sellos`;
+    const pointText = points === 1 ? '1 Punto' : `${points} Puntos`;
+    return {
+      label: `+${stampText} / +${pointText}`,
+      badgeClass: 'bg-panel-primary/10 text-panel-primary border-panel-primary/20',
+      icon: '🏷️',
+    };
+  }
+
+  if (count === 0 && points > 0) {
+    return {
+      label: `+${points} ${points === 1 ? 'Punto entregado' : 'Puntos entregados'}`,
+      badgeClass: 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/20',
+      icon: '⭐',
+    };
+  }
+
+  return {
+    label: `+${count} ${count === 1 ? 'Sello entregado' : 'Sellos entregados'}`,
     badgeClass: 'bg-panel-primary/10 text-panel-primary border-panel-primary/20',
     icon: '🏷️',
-  },
-  REWARD_REDEEMED: {
-    label: 'Premio canjeado',
-    badgeClass: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20',
-    icon: '🎁',
-  },
-};
+  };
+}
 
 /**
  * Modal de auditoría de actividad del personal para el dueño del local.
@@ -86,11 +110,15 @@ export function ActivitySidebar({
 
   // Mini-KPIs del historial cargado
   const stats = useMemo(() => {
-    const stamps = activity.filter((s) => s.type === 'STAMP_ADDED').length;
+    const stampsOps = activity.filter((s) => s.type === 'STAMP_ADDED').length;
+    const stamps = activity.reduce((sum, s) => {
+      if (s.type !== 'STAMP_ADDED') return sum;
+      return sum + (s.stampCount !== undefined ? s.stampCount : 1);
+    }, 0);
     const rewards = activity.filter((s) => s.type === 'REWARD_REDEEMED').length;
     const manual = activity.filter((s) => s.method === 'MANUAL').length;
     const manualPct = activity.length > 0 ? Math.round((manual / activity.length) * 100) : 0;
-    return { stamps, rewards, manual, manualPct };
+    return { stamps, stampsOps, rewards, manual, manualPct };
   }, [activity]);
 
   // Frecuencia por customerId para detectar clientes recurrentes que coinciden con alertas antifraude
@@ -282,7 +310,7 @@ export function ActivitySidebar({
                       : 'bg-panel-soft text-panel-muted hover:text-panel-text hover:bg-panel-border/60'
                   }`}
                 >
-                  Sellos ({stats.stamps})
+                  Sellos ({stats.stampsOps})
                 </button>
                 <button
                   type="button"
@@ -321,7 +349,7 @@ export function ActivitySidebar({
               ) : (
                 <ul className="space-y-3" aria-label="Lista de operaciones">
                   {filteredActivity.map((scan) => {
-                    const typeInfo = TYPE_CONFIG[scan.type];
+                    const typeInfo = getScanBadge(scan);
                     const methodInfo = METHOD_CONFIG[scan.method];
                     const phone = scan.customerPhone;
                     const customerId = scan.customerId;

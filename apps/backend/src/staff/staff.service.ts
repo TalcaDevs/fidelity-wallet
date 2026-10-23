@@ -334,6 +334,8 @@ export class StaffService {
         id: true,
         type: true,
         method: true,
+        stampCount: true,
+        pointsEarned: true,
         createdAt: true,
         merchant: { select: { name: true } },
         promotion: { select: { name: true } },
@@ -350,7 +352,10 @@ export class StaffService {
         createdAt: s.createdAt.toISOString(),
         locationName: s.merchant.name,
         customerPhone: phone ? maskPhone(phone) : null,
-        promotionName: s.promotion?.name ?? null, customerId: s.pass.customerId,
+        promotionName: s.promotion?.name ?? null,
+        customerId: s.pass.customerId,
+        stampCount: s.stampCount,
+        pointsEarned: s.pointsEarned,
       };
     });
   }

@@ -215,4 +215,75 @@ describe('ActivitySidebar (Modal)', () => {
     await screen.findByText('Auditoría de Actividad');
     expect(screen.getAllByText('Cliente frecuente (4 visitas en este historial)')).toHaveLength(4);
   });
+  it('correctly calculates stampCount for multi-stamp scans and displays dynamic badges', async () => {
+    const multiStampScans: StaffActivityDto[] = [
+      {
+        id: 'ms-1',
+        type: 'STAMP_ADDED',
+        method: 'QR',
+        stampCount: 5,
+        pointsEarned: 0,
+        createdAt: '2026-10-21T10:00:00Z',
+        locationName: 'Central',
+        customerPhone: '+56 9 **** 1234',
+        promotionName: null,
+        customerId: 'cust-multi',
+      },
+    ];
+
+    const onLoadActivity = vi.fn().mockResolvedValue(multiStampScans);
+    render(<ActivitySidebar member={mockMember} onClose={vi.fn()} onLoadActivity={onLoadActivity} />);
+
+    await screen.findByText('Auditoría de Actividad');
+
+    // KPI "Sellos otorgados" should reflect the 5 stamps granted, not 1 operation
+    expect(screen.getByText('5')).toBeInTheDocument();
+
+    // The filter pill should reflect 1 operation
+    expect(screen.getByRole('button', { name: /Sellos \(1\)/i })).toBeInTheDocument();
+
+    // The card badge should display dynamic "+5 Sellos entregados"
+    expect(screen.getByText('+5 Sellos entregados')).toBeInTheDocument();
+  });
+
+  it('handles points-only and mixed stamp/point scans accurately', async () => {
+    const mixedScans: StaffActivityDto[] = [
+      {
+        id: 'pts-only',
+        type: 'STAMP_ADDED',
+        method: 'QR',
+        stampCount: 0,
+        pointsEarned: 250,
+        createdAt: '2026-10-21T11:00:00Z',
+        locationName: 'Central',
+        customerPhone: '+56 9 **** 4321',
+        promotionName: null,
+        customerId: 'cust-points',
+      },
+      {
+        id: 'mixed',
+        type: 'STAMP_ADDED',
+        method: 'MANUAL',
+        stampCount: 2,
+        pointsEarned: 100,
+        createdAt: '2026-10-21T11:30:00Z',
+        locationName: 'Central',
+        customerPhone: '+56 9 **** 9876',
+        promotionName: null,
+        customerId: 'cust-mixed',
+      },
+    ];
+
+    const onLoadActivity = vi.fn().mockResolvedValue(mixedScans);
+    render(<ActivitySidebar member={mockMember} onClose={vi.fn()} onLoadActivity={onLoadActivity} />);
+
+    await screen.findByText('Auditoría de Actividad');
+
+    // Total stamps: 0 + 2 = 2
+    expect(screen.getByText('2')).toBeInTheDocument();
+
+    // Dynamic badges
+    expect(screen.getByText('+250 Puntos entregados')).toBeInTheDocument();
+    expect(screen.getByText('+2 Sellos / +100 Puntos')).toBeInTheDocument();
+  });
 });

@@ -52,6 +52,8 @@ export interface StaffActivityDto {
   customerPhone: string | null;
   promotionName: string | null;
   customerId?: string | null;
+  stampCount?: number;
+  pointsEarned?: number;
 }
 
 /** Escaneos más recientes que devuelve la actividad de un miembro. */

@@ -477,6 +477,8 @@ describe('StaffService', () => {
           id: 's1',
           type: 'STAMP_ADDED',
           method: 'QR',
+          stampCount: 1,
+          pointsEarned: 0,
           createdAt: new Date('2026-09-30T12:00:00Z'),
           merchant: { name: 'Centro' },
           promotion: null,
@@ -494,7 +496,10 @@ describe('StaffService', () => {
           createdAt: '2026-09-30T12:00:00.000Z',
           locationName: 'Centro',
           customerPhone: '+56 9 **** 5678',
-          promotionName: null, customerId: 'cust-1',
+          promotionName: null,
+          customerId: 'cust-1',
+          stampCount: 1,
+          pointsEarned: 0,
         },
       ]);
       expect(prisma.scan.findMany).toHaveBeenCalledWith(
@@ -503,6 +508,62 @@ describe('StaffService', () => {
           take: 50,
         }),
       );
+    });
+
+    it('returns stampCount and pointsEarned for multiple stamps and points-only operations', async () => {
+      prisma.scan.findMany.mockResolvedValue([
+        {
+          id: 's2',
+          type: 'STAMP_ADDED',
+          method: 'QR',
+          stampCount: 5,
+          pointsEarned: 0,
+          createdAt: new Date('2026-09-30T13:00:00Z'),
+          merchant: { name: 'Centro' },
+          promotion: null,
+          pass: { customerId: 'cust-2', customer: { phone: null } },
+        },
+        {
+          id: 's3',
+          type: 'STAMP_ADDED',
+          method: 'MANUAL',
+          stampCount: 0,
+          pointsEarned: 150,
+          createdAt: new Date('2026-09-30T13:30:00Z'),
+          merchant: { name: 'Centro' },
+          promotion: null,
+          pass: { customerId: 'cust-3', customer: { phone: null } },
+        },
+      ]);
+
+      const result = await service.getStaffActivity(brandId, ownerId, staffId);
+
+      expect(result).toEqual([
+        {
+          id: 's2',
+          type: 'STAMP_ADDED',
+          method: 'QR',
+          stampCount: 5,
+          pointsEarned: 0,
+          createdAt: '2026-09-30T13:00:00.000Z',
+          locationName: 'Centro',
+          customerPhone: null,
+          promotionName: null,
+          customerId: 'cust-2',
+        },
+        {
+          id: 's3',
+          type: 'STAMP_ADDED',
+          method: 'MANUAL',
+          stampCount: 0,
+          pointsEarned: 150,
+          createdAt: '2026-09-30T13:30:00.000Z',
+          locationName: 'Centro',
+          customerPhone: null,
+          promotionName: null,
+          customerId: 'cust-3',
+        },
+      ]);
     });
   });
 });
