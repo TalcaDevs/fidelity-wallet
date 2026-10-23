@@ -225,6 +225,29 @@ describe('ScanService: reglas de la tarjeta', () => {
       const result = await stamp({ reason: 'Segunda compra del día' });
       expect(result.alreadyScanned).toBe(false);
     });
+
+    it('shows daily limit message even late at night (less than 180 min to midnight)', async () => {
+      // 02:30 UTC is 23:30 in Chile (UTC-3), which is only 30 minutes before Chilean midnight (03:00 UTC)
+      vi.useFakeTimers({ now: new Date('2026-10-04T02:30:00Z'), toFake: ['Date'] });
+      latestStamp = {
+        id: 'prev',
+        createdAt: new Date('2026-10-03T14:00:00Z'),
+        method: ScanMethod.QR,
+        type: ScanType.STAMP_ADDED,
+      };
+      const result = await stamp();
+      expect(result.alreadyScanned).toBe(true);
+      expect(result.message).toMatch(/límite diario de sellos/);
+    });
+
+    it('formats singular "1 sello" in balance summary when activeStamps is 1', async () => {
+      vi.useFakeTimers({ now: new Date('2026-10-04T03:30:00Z'), toFake: ['Date'] });
+      latestStamp = null;
+      vi.mocked(prisma.stamp.aggregate).mockResolvedValue({ _sum: { amount: 1 } } as any);
+      const result = await stamp();
+      expect(result.alreadyScanned).toBe(false);
+      expect(result.message).toContain('(1 sello)');
+    });
   });
 
   describe('coexistencia: cooldown de sellos y puntos', () => {
