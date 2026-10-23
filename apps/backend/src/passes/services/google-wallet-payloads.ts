@@ -135,13 +135,24 @@ function textModules(data: PassData) {
         const mainBalance = data.rewardCurrency === 'POINTS' ? data.activePoints : data.activeStamps;
         modules.push({ id, header: 'Estado', body: statusText(card, mainBalance, data.targetStamps, data.rewardCurrency) });
         break;
-      case 'STAMPS_EXPIRY':
+      case 'STAMPS_EXPIRY': {
+        let expiryBody: string;
+        if (data.nextExpiryAt) {
+          expiryBody = formatDate(data.nextExpiryAt);
+        } else if ((card.stampsEnabled || card.pointsEnabled) && card.stampValidityDays && card.stampValidityDays > 0) {
+          expiryBody = card.stampValidityDays === 1 ? 'Vencen a 1 día de obtenerlos' : `Vencen a los ${card.stampValidityDays} días de obtenerlos`;
+        } else if (data.stampsEnabled && data.pointsEnabled) {
+          expiryBody = 'Tus sellos y puntos no vencen';
+        } else {
+          expiryBody = `Tus ${balanceUnit(card.stampsEnabled ? 'STAMPS' : 'POINTS')} no vencen`;
+        }
         modules.push({
           id,
           header: 'Próximo vencimiento',
-          body: data.nextExpiryAt ? formatDate(data.nextExpiryAt) : (data.stampsEnabled && data.pointsEnabled ? 'Tus sellos y puntos no vencen' : `Tus ${balanceUnit(card.stampsEnabled ? 'STAMPS' : 'POINTS')} no vencen`),
+          body: expiryBody,
         });
         break;
+      }
       case 'CARD_EXPIRY':
         if (data.cardExpiresAt) modules.push({ id, header: 'Tarjeta válida hasta', body: formatDate(data.cardExpiresAt) });
         break;
