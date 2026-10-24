@@ -59,7 +59,7 @@ export async function fetchDashboardStats(brandId: string): Promise<DashboardSta
     supabase.from('Pass').select('id', { count: 'exact', head: true }).eq('brandId', brandId),
     supabase.from('Scan').select('*', { count: 'exact', head: true }).eq('brandId', brandId).eq('type', 'STAMP_ADDED'),
     supabase.from('Scan').select('*', { count: 'exact', head: true }).eq('brandId', brandId).eq('type', 'REWARD_REDEEMED'),
-    supabase.from('Scan').select('id, type, createdAt, method, pass:Pass(customer:Customer(rut, phone))').eq('brandId', brandId).order('createdAt', { ascending: false }).limit(5),
+    supabase.from('Scan').select('id, type, createdAt, method, pass:Pass(customer:Customer(rut, phone))').eq('brandId', brandId).order('createdAt', { ascending: false }).limit(30),
   ]);
 
   // supabase-js no lanza: devuelve { data, count, error }. Sin esta comprobación
