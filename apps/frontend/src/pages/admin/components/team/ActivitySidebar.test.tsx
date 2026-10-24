@@ -286,4 +286,78 @@ describe('ActivitySidebar (Modal)', () => {
     expect(screen.getByText('+250 Puntos entregados')).toBeInTheDocument();
     expect(screen.getByText('+2 Sellos / +100 Puntos')).toBeInTheDocument();
   });
+
+  it('filters activity by timeframe (Hoy, Esta semana, Este mes, Todo) and shows unique customers', async () => {
+    const todayIso = new Date().toISOString();
+    const tenDaysAgoIso = new Date(Date.now() - 10 * 86400000).toISOString();
+    const fortyDaysAgoIso = new Date(Date.now() - 40 * 86400000).toISOString();
+
+    const dateScans: StaffActivityDto[] = [
+      {
+        id: 's-today-1',
+        type: 'STAMP_ADDED',
+        method: 'QR',
+        stampCount: 2,
+        pointsEarned: 0,
+        createdAt: todayIso,
+        locationName: 'Central',
+        customerPhone: '+56 9 **** 1111',
+        promotionName: null,
+        customerId: 'c-today-1',
+      },
+      {
+        id: 's-today-2',
+        type: 'STAMP_ADDED',
+        method: 'QR',
+        stampCount: 1,
+        pointsEarned: 0,
+        createdAt: todayIso,
+        locationName: 'Central',
+        customerPhone: '+56 9 **** 1111',
+        promotionName: null,
+        customerId: 'c-today-1',
+      },
+      {
+        id: 's-week-1',
+        type: 'REWARD_REDEEMED',
+        method: 'QR',
+        stampCount: 0,
+        pointsEarned: 0,
+        createdAt: tenDaysAgoIso,
+        locationName: 'Central',
+        customerPhone: '+56 9 **** 2222',
+        promotionName: 'Postre Gratis',
+        customerId: 'c-old-1',
+      },
+      {
+        id: 's-old-1',
+        type: 'STAMP_ADDED',
+        method: 'MANUAL',
+        stampCount: 1,
+        pointsEarned: 0,
+        createdAt: fortyDaysAgoIso,
+        locationName: 'Central',
+        customerPhone: '+56 9 **** 3333',
+        promotionName: null,
+        customerId: 'c-old-2',
+      },
+    ];
+
+    const onLoadActivity = vi.fn().mockResolvedValue(dateScans);
+    render(<ActivitySidebar member={mockMember} onClose={vi.fn()} onLoadActivity={onLoadActivity} />);
+
+    await screen.findByText('Auditoría de Actividad');
+
+    expect(screen.getByText('3 clientes')).toBeInTheDocument();
+    expect(screen.getByText('4 operaciones en total')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Hoy' }));
+    expect(screen.getByText('1 cliente')).toBeInTheDocument();
+    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getByText('2 operaciones en este período')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Este mes' }));
+    expect(screen.getByText('2 clientes')).toBeInTheDocument();
+    expect(screen.getByText('3 operaciones en este período')).toBeInTheDocument();
+  });
 });
