@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useDialogFocus } from '../../hooks/useDialogFocus';
+import { WALLET_THEME } from './walletTheme';
 
 export function ConfirmDialog({
   title,
@@ -36,27 +38,32 @@ export function ConfirmDialog({
     ? 'bg-red-600 hover:bg-red-700 shadow-red-600/20'
     : 'bg-brand-blue hover:bg-blue-600 shadow-brand-blue/20';
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60 backdrop-blur-sm p-4">
+  const dialogContent = (
+    <div
+      className={`${WALLET_THEME} fw-admin fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 backdrop-blur-sm p-4`}
+      onClick={(e) => {
+        if (!isBusy && e.target === e.currentTarget) onCancel();
+      }}
+    >
       <div
         ref={dialogRef}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
-        className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl p-8 w-full max-w-md duration-200"
+        className="bg-panel-surface text-panel-text rounded-3xl border border-panel-border shadow-2xl p-6 sm:p-8 w-full max-w-md duration-200 motion-safe:animate-[fw-panel-enter_240ms_ease-out]"
       >
-        <h2 id="confirm-dialog-title" className="text-2xl font-extrabold tracking-tight mb-3 text-slate-900 dark:text-slate-100">
+        <h2 id="confirm-dialog-title" className="text-xl sm:text-2xl font-extrabold tracking-tight mb-3 text-panel-text">
           {title}
         </h2>
-        <p className="text-slate-500 dark:text-slate-400 mb-8">{message}</p>
+        <p className="text-sm sm:text-base text-panel-muted mb-8">{message}</p>
 
         <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
           <button
             type="button"
             onClick={onCancel}
             disabled={isBusy}
-            className="px-5 py-3 rounded-xl font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
+            className="px-5 py-3 rounded-xl font-bold text-panel-text bg-panel-soft hover:bg-panel-border/30 transition-colors disabled:opacity-50"
           >
             {cancelLabel}
           </button>
@@ -72,4 +79,6 @@ export function ConfirmDialog({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(dialogContent, document.body) : dialogContent;
 }
