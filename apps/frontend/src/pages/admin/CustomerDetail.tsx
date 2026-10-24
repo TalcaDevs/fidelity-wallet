@@ -4,6 +4,7 @@ import { balanceUnit, type PanelStampsResultDto, type PurchaseHistoryEntryDto, t
 import { PurchaseHistory } from '../../components/customers/PurchaseHistory';
 import { ROUTES } from '../../components/routing/routePaths';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
+import { Skeleton } from '../../components/ui/Skeleton';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { useToast } from '../../hooks/useToast';
 import { getCustomerHistory } from '../../services/customersService';
@@ -80,8 +81,8 @@ export function CustomerDetail({ brandId }: { brandId: string | null }) {
 
       {loading && !data ? (
         <div className="space-y-4" aria-busy="true">
-          <div className="h-32 rounded-2xl bg-panel-soft animate-pulse" />
-          <div className="h-64 rounded-2xl bg-panel-soft animate-pulse" />
+          <Skeleton className="h-32 rounded-2xl" />
+          <Skeleton className="h-64 rounded-2xl" />
         </div>
       ) : (
         data && <PurchaseHistory

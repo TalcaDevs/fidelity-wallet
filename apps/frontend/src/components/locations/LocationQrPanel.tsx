@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import QRCode from 'qrcode';
 import type { LocationDto } from '@fidelity/shared';
 import { ErrorAlert } from '../ui/ErrorAlert';
+import { Skeleton } from '../ui/Skeleton';
 import { useToast } from '../../hooks/useToast';
 import { publicJoinUrl, updateMerchantSlug } from '../../services/merchantService';
 
@@ -88,7 +89,7 @@ export function LocationQrPanel({ location, onSlugChange }: { location: Location
 
       <div className="flex flex-col sm:flex-row gap-6 items-center">
         <div className="w-48 h-48 shrink-0 rounded-2xl bg-white border border-slate-200 flex items-center justify-center">
-          {qr ? <img src={qr} alt={`QR de registro de ${location.name}`} className="w-full h-full" /> : <div className="w-40 h-40 rounded-xl bg-slate-100 animate-pulse" />}
+          {qr ? <img src={qr} alt={`QR de registro de ${location.name}`} className="w-full h-full" /> : <Skeleton className="w-40 h-40 rounded-xl" />}
         </div>
         <div className="min-w-0 space-y-3">
           <p className="text-sm text-slate-500 dark:text-slate-400">

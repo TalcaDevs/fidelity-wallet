@@ -1,5 +1,6 @@
 import { TICKET_CATEGORY_LABELS, type TicketSummaryDto } from '@fidelity/shared';
 import { ErrorAlert } from '../../../../components/ui/ErrorAlert';
+import { Skeleton } from '../../../../components/ui/Skeleton';
 import { formatDate, formatDateTime } from '../../../../lib/formatDate';
 import { TicketStatusBadge } from './TicketStatusBadge';
 
@@ -21,9 +22,9 @@ export function SupportHistory({
       {error ? (
         <ErrorAlert message={error} />
       ) : loading ? (
-        <div className="animate-pulse space-y-4">
+        <div className="space-y-4">
           {[1, 2].map((i) => (
-            <div key={i} className="h-16 bg-panel-soft rounded-xl" />
+            <Skeleton key={i} className="h-16 rounded-xl" />
           ))}
         </div>
       ) : tickets.length === 0 ? (

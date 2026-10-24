@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { CATALOG_PLANS, type InternalSummaryDto } from '@fidelity/shared';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
+import { Skeleton } from '../../components/ui/Skeleton';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { getSummary } from '../../services/internalService';
 import { CARD, PageHeader } from './ui';
@@ -67,7 +68,7 @@ export function InternalSummary() {
 
       {loading && !data ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map((i) => <div key={i} className="h-24 rounded-2xl bg-panel-soft animate-pulse" />)}
+          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-24 rounded-2xl" />)}
         </div>
       ) : data && (
         <>

@@ -5,6 +5,7 @@ import { LocationForm } from '../../components/locations/LocationForm';
 import { LocationQrPanel } from '../../components/locations/LocationQrPanel';
 import { LocationMap, type MapPin } from '../../components/map/LocationMap';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
+import { Skeleton } from '../../components/ui/Skeleton';
 import { Modal } from '../../components/ui/Modal';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { useSubscription } from '../../hooks/useSubscription';
@@ -71,7 +72,7 @@ export function Locations({ brandId }: { brandId: string | null }) {
   }
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto">
+    <div className="w-full min-w-0 space-y-6 sm:space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text"><PanelTitle text="Sucursales" /></h1>
@@ -102,13 +103,13 @@ export function Locations({ brandId }: { brandId: string | null }) {
       <LocationMap pins={pins} className="h-80" />
 
       {loading ? (
-        <div className="animate-pulse grid gap-4 md:grid-cols-2">
-          {[1, 2].map((i) => <div key={i} className="h-32 bg-panel-soft rounded-2xl" />)}
+        <div className="grid gap-4 md:grid-cols-2">
+          {[1, 2].map((i) => <Skeleton key={i} className="h-32 rounded-2xl" />)}
         </div>
       ) : (
         <ul data-panel-stagger className="grid gap-4 md:grid-cols-2">
           {locations.map((l) => (
-            <li key={l.id} className="bg-panel-surface rounded-2xl p-6 border border-panel-border space-y-3">
+            <li key={l.id} className="bg-panel-surface rounded-2xl p-4 sm:p-6 border border-panel-border space-y-3 overflow-hidden shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="font-bold text-lg text-panel-text truncate">{l.name}</h2>
@@ -122,7 +123,7 @@ export function Locations({ brandId }: { brandId: string | null }) {
                 Registro: <a href={publicJoinUrl(l.slug)} target="_blank" rel="noopener noreferrer" className="text-panel-accent font-bold">{publicJoinUrl(l.slug)}</a>
               </p>
               {l.latitude == null && <p className="text-xs font-bold text-orange-600">Falta ubicarlo en el mapa</p>}
-              <div className="flex gap-2 pt-1">
+              <div className="flex flex-wrap gap-2 pt-1">
                 <button type="button" onClick={() => setEditing({ kind: 'edit', location: l })} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-panel-soft text-panel-text hover:bg-panel-accent/10 hover:text-panel-accent">
                   Editar
                 </button>
