@@ -10,6 +10,7 @@ import {
 import { Link } from 'react-router-dom';
 import { ROUTES } from '../../components/routing/routePaths';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
+import { Skeleton } from '../../components/ui/Skeleton';
 import { useSubscription } from '../../hooks/useSubscription';
 import { formatDate } from '../../lib/formatDate';
 
@@ -123,7 +124,7 @@ export function Billing({
 
   if (error) return <ErrorAlert message={error} />;
   if (loading || !subscription) {
-    return <div className="animate-pulse h-64 bg-panel-soft rounded-2xl max-w-7xl mx-auto" />;
+    return <Skeleton className="h-64 rounded-2xl" />;
   }
 
   // Solo atribuimos mora cuando una fuente autoritativa confirma 'mora' como motivo de suspensión.
@@ -148,7 +149,7 @@ export function Billing({
     : basePeriodText;
 
   return (
-    <div className="space-y-10 max-w-7xl mx-auto">
+    <div className="space-y-10">
       <div>
         <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text"><PanelTitle text="Facturación y planes" /></h1>
         <p className="text-panel-muted mt-2 text-sm sm:text-base">Tu plan, el uso de tu cuenta y tus boletas.</p>

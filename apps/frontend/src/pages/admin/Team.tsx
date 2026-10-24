@@ -2,6 +2,7 @@ import { PanelTitle } from '../../components/admin/PanelTitle';
 import { useState } from 'react';
 import { getPlan, type StaffMemberDto } from '@fidelity/shared';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
 import { useBrandLocations } from '../../hooks/useBrandLocations';
 import { useSubscription } from '../../hooks/useSubscription';
@@ -39,7 +40,7 @@ export function Team({ brandId }: { brandId: string | null }) {
   }
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto">
+    <div className="space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text"><PanelTitle text="Equipo" /></h1>
@@ -77,9 +78,9 @@ export function Team({ brandId }: { brandId: string | null }) {
         {team.error ? (
           <ErrorAlert message={team.error} />
         ) : team.loading ? (
-          <div className="animate-pulse space-y-4">
+          <div className="space-y-4">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-16 bg-panel-soft rounded-xl" />
+              <Skeleton key={i} className="h-16 rounded-xl" />
             ))}
           </div>
         ) : (
@@ -94,7 +95,6 @@ export function Team({ brandId }: { brandId: string | null }) {
           />
         )}
       </section>
-
 
       {dialog?.kind === 'invite' && (
         <InviteModal locations={locations} onClose={close} onInvite={team.inviteStaff} />
