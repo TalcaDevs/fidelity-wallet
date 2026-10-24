@@ -123,5 +123,5 @@ export function LocationMap({
     map.setView(position, Math.max(map.getZoom(), 15));
   }, [value]);
 
-  return <div ref={containerRef} className={`w-full rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 z-0 ${className}`} />;
+  return <div ref={containerRef} className={`w-full max-w-full rounded-2xl overflow-hidden border border-panel-border z-0 ${className}`} />;
 }

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { ErrorAlert } from '../../../components/ui/ErrorAlert';
+import { Skeleton } from '../../../components/ui/Skeleton';
 import { useToast } from '../../../hooks/useToast';
 import { CardPreview } from './CardPreview';
 import { DesignStep } from './DesignStep';
@@ -97,8 +98,8 @@ function CardEditorPage({ brandId }: { brandId: string }) {
   if (loading || !config || !saved) {
     return (
       <div className="space-y-4" aria-busy="true">
-        <div className="h-10 w-64 rounded-xl bg-panel-soft animate-pulse" />
-        <div className="h-96 rounded-2xl bg-panel-soft animate-pulse" />
+        <Skeleton className="h-10 w-64" />
+        <Skeleton className="h-96 rounded-2xl" />
       </div>
     );
   }

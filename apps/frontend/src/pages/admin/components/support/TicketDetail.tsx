@@ -6,6 +6,7 @@ import {
   type TicketDetailDto,
 } from '@fidelity/shared';
 import { Modal } from '../../../../components/ui/Modal';
+import { Skeleton } from '../../../../components/ui/Skeleton';
 import { ErrorAlert } from '../../../../components/ui/ErrorAlert';
 import { useAsyncData } from '../../../../hooks/useAsyncData';
 import { formatDateTime } from '../../../../lib/formatDate';
@@ -62,7 +63,7 @@ export function TicketDetail({
       {error ? (
         <ErrorAlert message={error} />
       ) : loading || !ticket ? (
-        <div className="animate-pulse h-40 bg-panel-soft rounded-xl" />
+        <Skeleton className="h-40 rounded-xl" />
       ) : (
         <div className="space-y-5">
           <div className="flex flex-wrap items-center gap-2">
