@@ -59,19 +59,22 @@ function firstOrSelf<T>(value: T | T[] | null | undefined): T | null {
 
 // Dos consultas en vez de un embed: PassStampBalance es una vista y PostgREST no
 // garantiza detectarle la relación con Pass, así que cruzamos por passId acá.
-export async function listCustomers(brandId: string): Promise<CustomerRow[]> {
+// Limitamos a un máximo razonable por defecto para no saturar la BD ni el cliente.
+export async function listCustomers(brandId: string, limit: number = 200): Promise<CustomerRow[]> {
+  const passQuery = supabase
+    .from('Pass')
+    .select('id, customerId, createdAt, updatedAt, customer:Customer(rut, phone, name, email, birthDay, birthMonth, birthYear)')
+    .eq('brandId', brandId)
+    .order('updatedAt', { ascending: false });
+
+  const balanceQuery = supabase
+    .from('PassStampBalance')
+    .select('passId, activeStamps, activePoints, stampsEnabled, pointsEnabled, nextExpiryAt')
+    .eq('brandId', brandId);
+
   const [passesRes, balancesRes] = await Promise.all([
-    // Pass.updatedAt cambia con cada sello, así que sirve como última actividad
-    // sin tener que traer la tabla Scan completa.
-    supabase
-      .from('Pass')
-      .select('id, customerId, createdAt, updatedAt, customer:Customer(rut, phone, name, email, birthDay, birthMonth, birthYear)')
-      .eq('brandId', brandId)
-      .order('updatedAt', { ascending: false }),
-    supabase
-      .from('PassStampBalance')
-      .select('passId, activeStamps, activePoints, stampsEnabled, pointsEnabled, nextExpiryAt')
-      .eq('brandId', brandId),
+    typeof (passQuery as any).limit === 'function' ? (passQuery as any).limit(limit) : passQuery,
+    typeof (balanceQuery as any).limit === 'function' ? (balanceQuery as any).limit(limit) : balanceQuery,
   ]);
 
   // supabase-js no lanza: devuelve { data, error }. Sin esto, un fallo del saldo
