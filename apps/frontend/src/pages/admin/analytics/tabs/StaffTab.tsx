@@ -14,10 +14,10 @@ export function StaffTab({ staff }: StaffTabProps) {
   };
 
   return (
-    <div className="space-y-8" data-testid="tab-staff">
+    <div className="space-y-6 sm:space-y-8" data-testid="tab-staff">
       {/* Antifraud Alerts Overview */}
       {allAlerts.length === 0 ? (
-        <div className="p-6 rounded-2xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 flex items-center gap-4">
+        <div className="p-4 sm:p-6 rounded-2xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold text-xl">
             ✓
           </div>
@@ -29,7 +29,7 @@ export function StaffTab({ staff }: StaffTabProps) {
           </div>
         </div>
       ) : (
-        <div className="p-6 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 space-y-4">
+        <div className="p-4 sm:p-6 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 space-y-4">
           <div className="flex items-center gap-3">
             <span className="w-8 h-8 rounded-xl bg-amber-500 text-white font-bold flex items-center justify-center">
               ⚠️
@@ -44,15 +44,18 @@ export function StaffTab({ staff }: StaffTabProps) {
             </div>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {allAlerts.map((alert, idx) => (
               <div
                 key={idx}
-                className="p-3 bg-panel-surface rounded-xl border border-amber-200/60 dark:border-amber-700/60 flex items-center justify-between text-xs"
+                className="p-3 sm:p-3.5 bg-panel-surface rounded-xl border border-amber-200/60 dark:border-amber-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs shadow-sm"
               >
-                <span className="text-panel-text font-medium">{alert.description}</span>
+                <div className="flex items-start gap-2 min-w-0">
+                  <span className="text-amber-500 font-bold shrink-0 mt-0.5" aria-hidden="true">⚠️</span>
+                  <span className="text-panel-text font-medium leading-relaxed break-words">{alert.description}</span>
+                </div>
                 <span
-                  className={`px-2 py-0.5 rounded-full font-bold uppercase text-[10px] ${
+                  className={`self-start sm:self-center shrink-0 px-2.5 py-0.5 rounded-full font-bold uppercase text-[10px] ${
                     alert.severity === 'high'
                       ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
                       : alert.severity === 'medium'
@@ -69,7 +72,7 @@ export function StaffTab({ staff }: StaffTabProps) {
       )}
 
       {/* Staff Members Table */}
-      <div data-panel-reveal className="bg-panel-surface p-8 rounded-2xl border border-panel-border shadow-sm">
+      <div data-panel-reveal className="bg-panel-surface p-4 sm:p-6 lg:p-8 rounded-2xl border border-panel-border shadow-sm">
         <h3 className="text-xl font-bold text-panel-text mb-2">Actividad de Equipo</h3>
         <p className="text-xs text-panel-muted mb-6">
           Desglose de cargas, canjes y proporción de uso de búsqueda manual por miembro del equipo.
@@ -81,7 +84,7 @@ export function StaffTab({ staff }: StaffTabProps) {
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="w-full text-left text-sm min-w-[540px]">
               <thead>
                 <tr className="border-b border-panel-border text-panel-muted text-xs">
                   <th className="pb-3 font-semibold">Miembro del Equipo</th>

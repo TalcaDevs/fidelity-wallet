@@ -8,32 +8,36 @@ export interface OverviewTabProps {
 
 export function OverviewTab({ overview }: OverviewTabProps) {
   return (
-    <div className="space-y-8" data-testid="tab-overview">
+    <div className="space-y-6 sm:space-y-8" data-testid="tab-overview">
       {/* KPI Cards Grid */}
-      <div data-panel-stagger className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div data-panel-stagger className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-5 lg:gap-6">
         <KpiCard
           title="Clientes Nuevos"
           current={overview.kpis.newCustomers.current}
           previous={overview.kpis.newCustomers.previous}
           changePercentage={overview.kpis.newCustomers.changePercentage}
+          tooltip="Personas que se registraron en tu local por primera vez en este período."
         />
         <KpiCard
           title="Clientes Activos"
           current={overview.kpis.activeCustomers.current}
           previous={overview.kpis.activeCustomers.previous}
           changePercentage={overview.kpis.activeCustomers.changePercentage}
+          tooltip="Personas que visitaron tu local o sumaron sellos en este período."
         />
         <KpiCard
           title="Cargas Registradas"
           current={overview.kpis.stampsDelivered.current}
           previous={overview.kpis.stampsDelivered.previous}
           changePercentage={overview.kpis.stampsDelivered.changePercentage}
+          tooltip="Total de sellos o puntos entregados por tu equipo a clientes."
         />
         <KpiCard
           title="Premios Canjeados"
           current={overview.kpis.rewardsRedeemed.current}
           previous={overview.kpis.rewardsRedeemed.previous}
           changePercentage={overview.kpis.rewardsRedeemed.changePercentage}
+          tooltip="Recompensas y premios que entregaste a tus clientes."
         />
         <KpiCard
           title="Tasa de Recurrencia"
@@ -41,19 +45,21 @@ export function OverviewTab({ overview }: OverviewTabProps) {
           previous={overview.kpis.recurrenceRate.previous}
           changePercentage={overview.kpis.recurrenceRate.changePercentage}
           suffix="%"
+          tooltip="Porcentaje de clientes que vuelven a tu local más de una vez."
         />
         <KpiCard
           title="Sellos Vencidos"
           current={overview.kpis.expiredStamps.current}
           previous={overview.kpis.expiredStamps.previous}
           changePercentage={overview.kpis.expiredStamps.changePercentage}
+          tooltip="Sellos que alcanzaron la fecha límite sin ser canjeados."
         />
       </div>
 
       {/* Time Series & QR vs Manual Cards */}
       <div data-panel-stagger className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
         {/* Daily Evolution Chart */}
-        <div className="lg:col-span-2 bg-panel-surface p-8 rounded-2xl border border-panel-border shadow-sm">
+        <div className="lg:col-span-2 bg-panel-surface p-4 sm:p-6 lg:p-8 rounded-2xl border border-panel-border shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
               <h3 className="text-xl font-bold text-panel-text">Evolución Diaria</h3>
@@ -61,7 +67,7 @@ export function OverviewTab({ overview }: OverviewTabProps) {
                 Tendencia de cargas y canjes registrados día a día
               </p>
             </div>
-            <div className="flex items-center gap-5 text-xs font-semibold">
+            <div className="flex flex-wrap items-center gap-3 sm:gap-5 text-xs font-semibold">
               <div className="flex items-center gap-2">
                 <span className="w-3.5 h-3.5 rounded-full bg-panel-accent border-2 border-white shadow-sm inline-block" />
                 <span className="text-panel-text">Cargas (Azul)</span>
@@ -77,7 +83,7 @@ export function OverviewTab({ overview }: OverviewTabProps) {
         </div>
 
         {/* Scan Method Distribution */}
-        <div data-panel-reveal className="bg-panel-surface p-8 rounded-2xl border border-panel-border shadow-sm flex flex-col justify-between">
+        <div data-panel-reveal className="bg-panel-surface p-4 sm:p-6 lg:p-8 rounded-2xl border border-panel-border shadow-sm flex flex-col justify-between">
           <div>
             <h3 className="text-xl font-bold text-panel-text mb-2">Método de Escaneo</h3>
             <p className="text-xs text-panel-muted mb-6">

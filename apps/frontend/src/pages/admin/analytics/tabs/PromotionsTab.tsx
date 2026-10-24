@@ -6,25 +6,51 @@ export interface PromotionsTabProps {
 
 export function PromotionsTab({ promotions }: PromotionsTabProps) {
   return (
-    <div className="space-y-8" data-testid="tab-promotions">
-      <div data-panel-reveal className="bg-panel-surface p-8 rounded-2xl border border-panel-border shadow-sm">
+    <div className="space-y-6 sm:space-y-8" data-testid="tab-promotions">
+      <div data-panel-reveal className="bg-panel-surface p-4 sm:p-6 lg:p-8 rounded-2xl border border-panel-border shadow-sm">
         <h3 className="text-xl font-bold text-panel-text mb-2">Rendimiento por Promoción</h3>
         <p className="text-xs text-panel-muted mb-6">
-          Monitoreo de canjes, tiempo promedio hasta completar el pase y sellos vencidos sin utilizar (breakage).
+          Monitoreo de canjes, tiempo promedio para completar la tarjeta y sellos que vencieron sin canjearse.
         </p>
 
         {promotions.promotions.length === 0 ? (
           <p className="text-sm text-panel-muted py-6 text-center">No hay promociones configuradas.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="w-full text-left text-sm min-w-[560px]">
               <thead>
                 <tr className="border-b border-panel-border text-panel-muted text-xs">
                   <th className="pb-3 font-semibold">Promoción</th>
                   <th className="pb-3 font-semibold text-center">Objetivo</th>
                   <th className="pb-3 font-semibold text-center">Canjes</th>
-                  <th className="pb-3 font-semibold text-center">Días Promedio para Canjear</th>
-                  <th className="pb-3 font-semibold text-center">Sellos Vencidos (Breakage)</th>
+                  <th className="pb-3 font-semibold text-center">
+                    <span className="inline-flex items-center gap-1">
+                      Días Promedio para Canjear
+                      <span
+                        className="cursor-help"
+                        title="Días que tarda un cliente en promedio en juntar todos los sellos y llevarse el premio."
+                        aria-label="Días que tarda un cliente en promedio en juntar todos los sellos y llevarse el premio."
+                      >
+                        <svg className="w-3.5 h-3.5 text-panel-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </span>
+                    </span>
+                  </th>
+                  <th className="pb-3 font-semibold text-center">
+                    <span className="inline-flex items-center gap-1">
+                      Sellos Vencidos
+                      <span
+                        className="cursor-help"
+                        title="Sellos acumulados por clientes que expiraron antes de ser canjeados."
+                        aria-label="Sellos acumulados por clientes que expiraron antes de ser canjeados."
+                      >
+                        <svg className="w-3.5 h-3.5 text-panel-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </span>
+                    </span>
+                  </th>
                   <th className="pb-3 font-semibold text-right">Estado</th>
                 </tr>
               </thead>
