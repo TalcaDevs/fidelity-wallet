@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import { PESOS_PER_POINT_MAX, PESOS_PER_POINT_MIN } from '@fidelity/shared';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
+import { Skeleton } from '../../components/ui/Skeleton';
 import { ROUTES } from '../../components/routing/routePaths';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { useToast } from '../../hooks/useToast';
@@ -34,8 +35,8 @@ export function Settings({ session, brandId }: { session: Session | null; brandI
       <div data-panel-reveal className={CARD}>
         {loading || !data || !brandId ? (
           <div className="space-y-4">
-            <div className="h-6 w-40 rounded-xl bg-panel-soft animate-pulse" />
-            <div className="h-14 w-full rounded-2xl bg-panel-soft animate-pulse" />
+            <Skeleton className="h-6 w-40" />
+            <Skeleton className="h-14 w-full rounded-2xl" />
           </div>
         ) : (
           <BrandSettingsForm brandId={brandId} initial={data} email={session?.user?.email} />
