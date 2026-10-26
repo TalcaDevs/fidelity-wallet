@@ -97,17 +97,19 @@ export function StaffList({ staff, actions }: { staff: StaffMemberDto[]; actions
     <>
       <ul className="xl:hidden grid gap-3 md:grid-cols-2">
         {staff.map((member) => (
-          <li key={member.userId} className="rounded-2xl border border-panel-border p-4 space-y-3">
+          <li key={member.userId} className="rounded-2xl border border-panel-border p-4 space-y-3 bg-panel-surface">
             <MemberIdentity member={member} />
             <dl className="grid grid-cols-2 gap-2 text-sm">
               <dt className="text-panel-muted">Local</dt>
-              <dd className="text-panel-text font-medium">{member.locationName ?? 'Todos los locales'}</dd>
+              <dd className="text-panel-text font-medium truncate">{member.locationName ?? 'Todos los locales'}</dd>
               <dt className="text-panel-muted">Estado</dt>
               <dd><StatusBadge status={member.status} /></dd>
               <dt className="text-panel-muted">Último ingreso</dt>
               <dd className="text-panel-text font-medium">{lastSignIn(member)}</dd>
             </dl>
-            <MemberActions member={member} actions={actions} />
+            <div className="pt-1">
+              <MemberActions member={member} actions={actions} />
+            </div>
           </li>
         ))}
       </ul>
