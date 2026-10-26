@@ -316,10 +316,7 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
       {!loading && customers.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6" aria-label="Resumen de clientes y compras">
           <div className="bg-panel-surface p-5 rounded-2xl border border-panel-border shadow-2xs">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-panel-muted">Total Clientes</span>
-              <span className="text-lg">👥</span>
-            </div>
+            <span className="text-xs font-bold uppercase tracking-wider text-panel-muted block mb-2">Total Clientes</span>
             <div className="text-2xl font-extrabold text-panel-text tabular-nums">
               {counts.all}
             </div>
@@ -329,10 +326,7 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
           </div>
 
           <div className="bg-panel-surface p-5 rounded-2xl border border-panel-border shadow-2xs">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-panel-muted">Compras Registradas</span>
-              <span className="text-lg">💰</span>
-            </div>
+            <span className="text-xs font-bold uppercase tracking-wider text-panel-muted block mb-2">Compras Registradas</span>
             <div className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums">
               {clp.format(purchaseMetrics.totalPurchases)}
             </div>
@@ -342,10 +336,7 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
           </div>
 
           <div className="bg-panel-surface p-5 rounded-2xl border border-panel-border shadow-2xs">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-panel-muted">Ticket Promedio</span>
-              <span className="text-lg">🧾</span>
-            </div>
+            <span className="text-xs font-bold uppercase tracking-wider text-panel-muted block mb-2">Ticket Promedio</span>
             <div className="text-2xl font-extrabold text-panel-text tabular-nums">
               {purchaseMetrics.averageTicket > 0 ? clp.format(purchaseMetrics.averageTicket) : '—'}
             </div>
