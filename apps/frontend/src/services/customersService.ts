@@ -57,36 +57,60 @@ function firstOrSelf<T>(value: T | T[] | null | undefined): T | null {
   return value ?? null;
 }
 
+export interface ListCustomersOptions {
+  limit?: number;
+}
+
 // Dos consultas en vez de un embed: PassStampBalance es una vista y PostgREST no
 // garantiza detectarle la relación con Pass, así que cruzamos por passId acá.
-// Limitamos a un máximo razonable por defecto para no saturar la BD ni el cliente.
-export async function listCustomers(brandId: string, limit: number = 200): Promise<CustomerRow[]> {
-  const passQuery = supabase
+// Consultamos los saldos para los passIds efectivamente seleccionados para garantizar
+// coherencia exacta entre pases y saldos sin importar orden o volumen de clientes.
+export async function listCustomers(brandId: string, options?: ListCustomersOptions): Promise<CustomerRow[]> {
+  let passQuery = supabase
     .from('Pass')
     .select('id, customerId, createdAt, updatedAt, customer:Customer(rut, phone, name, email, birthDay, birthMonth, birthYear)')
     .eq('brandId', brandId)
     .order('updatedAt', { ascending: false });
 
-  const balanceQuery = supabase
-    .from('PassStampBalance')
-    .select('passId, activeStamps, activePoints, stampsEnabled, pointsEnabled, nextExpiryAt')
-    .eq('brandId', brandId);
+  if (typeof options?.limit === 'number') {
+    passQuery = typeof (passQuery as any).limit === 'function' ? (passQuery as any).limit(options.limit) : passQuery;
+  }
 
-  const [passesRes, balancesRes] = await Promise.all([
-    typeof (passQuery as any).limit === 'function' ? (passQuery as any).limit(limit) : passQuery,
-    typeof (balanceQuery as any).limit === 'function' ? (balanceQuery as any).limit(limit) : balanceQuery,
-  ]);
+  const passesRes = await passQuery;
+  if (passesRes.error) throw passesRes.error;
 
-  // supabase-js no lanza: devuelve { data, error }. Sin esto, un fallo del saldo
-  // dejaría la tabla en cero y el dueño creería que sus clientes no tienen sellos.
-  const failed = [passesRes, balancesRes].find((res) => res.error);
+  const passes = (passesRes.data ?? []) as RawPassRow[];
+  if (passes.length === 0) {
+    return [];
+  }
+
+  const passIds = passes.map((p) => p.id);
+
+  // Consultar saldos únicamente para los pases seleccionados, por lotes para evitar desbordar URLs
+  const CHUNK_SIZE = 100;
+  const balancePromises = [];
+  for (let i = 0; i < passIds.length; i += CHUNK_SIZE) {
+    const chunk = passIds.slice(i, i + CHUNK_SIZE);
+    balancePromises.push(
+      supabase
+        .from('PassStampBalance')
+        .select('passId, activeStamps, activePoints, stampsEnabled, pointsEnabled, nextExpiryAt')
+        .in('passId', chunk),
+    );
+  }
+
+  const balanceResults = await Promise.all(balancePromises);
+  const failed = balanceResults.find((res) => res.error);
   if (failed?.error) throw failed.error;
 
-  const balances = new Map(
-    ((balancesRes.data ?? []) as RawBalanceRow[]).map((row) => [row.passId, row]),
-  );
+  const balances = new Map<string, RawBalanceRow>();
+  for (const res of balanceResults) {
+    for (const row of ((res.data ?? []) as RawBalanceRow[])) {
+      balances.set(row.passId, row);
+    }
+  }
 
-  return ((passesRes.data ?? []) as RawPassRow[]).map((row) => {
+  return passes.map((row) => {
     const customer = firstOrSelf(row.customer);
     const balance = balances.get(row.id);
     return {
