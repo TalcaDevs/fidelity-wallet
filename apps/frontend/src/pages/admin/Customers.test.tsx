@@ -3,7 +3,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { Customers } from './Customers';
 import * as customersService from '../../services/customersService';
-import * as csvLib from '../../lib/csv';
 import * as toastHook from '../../hooks/useToast';
 
 describe('Customers page (Ley 19.628)', () => {
@@ -293,9 +292,7 @@ describe('Customers page (Ley 19.628)', () => {
     expect(screen.getByText('$16.667')).toBeInTheDocument();
   });
 
-  it('displays registered purchases per customer in table and includes them in CSV export', async () => {
-    const downloadCsvSpy = vi.spyOn(csvLib, 'downloadCsv').mockImplementation(() => {});
-
+  it('displays registered purchases per customer in table and does not render CSV export button', async () => {
     vi.spyOn(customersService, 'listCustomers').mockResolvedValue([
       {
         passId: 'p-1',
@@ -338,13 +335,7 @@ describe('Customers page (Ley 19.628)', () => {
     expect(screen.getAllByText('$35.000')).toHaveLength(2);
     expect(screen.getByText('2 compras')).toBeInTheDocument();
 
-    // Click Exportar CSV
-    fireEvent.click(screen.getByText('Exportar CSV'));
-
-    expect(downloadCsvSpy).toHaveBeenCalled();
-    const csvContent = downloadCsvSpy.mock.calls[0][1];
-    expect(csvContent).toContain('Compras registradas ($)');
-    expect(csvContent).toContain('Cantidad de compras');
-    expect(csvContent).toContain('35000');
+    // Ensure CSV export button is not rendered
+    expect(screen.queryByText('Exportar CSV')).not.toBeInTheDocument();
   });
 });

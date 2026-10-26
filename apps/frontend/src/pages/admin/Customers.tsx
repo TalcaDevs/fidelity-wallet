@@ -7,7 +7,6 @@ import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
 import { maskIdentifier } from '../../lib/maskIdentifier';
 import { formatStampExpiry } from '../../lib/stampExpiry';
-import { downloadCsv, toCsv, type CsvColumn } from '../../lib/csv';
 import { useToast } from '../../hooks/useToast';
 import { customerDetailPath } from '../../components/routing/routePaths';
 import { formatBirthday } from '../../lib/formatDate';
@@ -56,23 +55,6 @@ export function getCustomerStatus(row: CustomerRow, now: Date): {
     badgeClass: 'bg-panel-soft text-panel-muted',
   };
 }
-
-// La exportación lleva el dato completo: es la base de datos del comercio y el
-// dueño la está pidiendo explícitamente. En pantalla se muestra enmascarado.
-const CSV_COLUMNS: CsvColumn<CustomerRow>[] = [
-  { header: 'Nombre', value: (row) => row.name ?? null },
-  { header: 'Correo', value: (row) => row.email ?? null },
-  { header: 'RUT', value: (row) => row.rut },
-  { header: 'Teléfono', value: (row) => row.phone },
-  { header: 'Cumpleaños', value: (row) => formatBirthday(row.birthDay, row.birthMonth, row.birthYear) },
-  { header: 'Sellos vigentes', value: (row) => row.stampsEnabled === false ? '' : row.activeStamps },
-  { header: 'Puntos vigentes', value: (row) => row.pointsEnabled ? (row.activePoints ?? 0) : '' },
-  { header: 'Próximo vencimiento', value: (row) => (row.nextExpiryAt ? new Date(row.nextExpiryAt).toISOString() : null) },
-  { header: 'Compras registradas ($)', value: (row) => row.totalPurchases ?? 0 },
-  { header: 'Cantidad de compras', value: (row) => row.purchasesCount ?? 0 },
-  { header: 'Cliente desde', value: (row) => new Date(row.joinedAt).toISOString() },
-  { header: 'Última actividad', value: (row) => new Date(row.lastActivityAt).toISOString() },
-];
 
 export function Customers({ brandId, merchantId }: { brandId: string | null; merchantId: string | null }) {
   const { notifySuccess, notifyError } = useToast();
@@ -174,16 +156,6 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
     const startIndex = (currentPage - 1) * PAGE_SIZE;
     return visible.slice(startIndex, startIndex + PAGE_SIZE);
   }, [visible, currentPage]);
-
-  const handleExport = () => {
-    if (customers.length === 0) {
-      notifyError('Todavía no tienes clientes para exportar.');
-      return;
-    }
-    const stamp = new Date().toISOString().slice(0, 10);
-    downloadCsv(`clientes-${stamp}.csv`, toCsv(customers, CSV_COLUMNS));
-    notifySuccess(`Exportamos ${customers.length} cliente(s) a CSV.`);
-  };
 
   const getEmptyMessage = () => {
     if (customers.length === 0) {
@@ -333,18 +305,9 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
 
   return (
     <>
-      <header className="mb-8 flex flex-col md:flex-row md:justify-between md:items-center gap-6">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text"><PanelTitle text="Clientes" /></h1>
-          <p className="text-panel-muted text-sm sm:text-base">Tu base de datos: quién vuelve y cuántos sellos lleva.</p>
-        </div>
-        <button
-          onClick={handleExport}
-          className="px-6 py-3 bg-panel-primary hover:bg-panel-primary/90 text-white shadow-lg shadow-brand-blue/20 rounded-xl font-bold transition-all flex items-center gap-2 shrink-0"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-          Exportar CSV
-        </button>
+      <header className="mb-8">
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text"><PanelTitle text="Clientes" /></h1>
+        <p className="text-panel-muted text-sm sm:text-base">Tu base de datos: quién vuelve y cuántos sellos lleva.</p>
       </header>
 
       {error && <ErrorAlert message={error} />}
