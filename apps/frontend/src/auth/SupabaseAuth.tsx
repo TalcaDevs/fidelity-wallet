@@ -1,4 +1,5 @@
 import { useEffect, useState, type SubmitEvent } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { ROUTES, passwordResetUrl } from '../components/routing/routePaths';
 import {
@@ -8,6 +9,8 @@ import {
   setLastActivity,
 } from '../utils/sessionActivity';
 import { AuthFrame } from './AuthFrame';
+import { PasswordRequirements, evaluatePassword } from './PasswordRequirements';
+import { translateAuthError } from './authErrorTranslator';
 
 const INACTIVITY_LOGOUT_MESSAGE =
   'Tu sesión ha expirado por inactividad (1 hora). Por favor, inicia sesión nuevamente.';
@@ -44,15 +47,32 @@ function GoogleIcon({ className }: { className?: string }) {
   );
 }
 
-export function SupabaseAuth() {
-  const [mode, setMode] = useState<'login' | 'reset'>('login');
+export type AuthMode = 'login' | 'register' | 'reset';
+
+export function SupabaseAuth({ initialMode }: { initialMode?: AuthMode }) {
+  const location = useLocation();
+  const defaultMode: AuthMode =
+    initialMode ?? (location.pathname === ROUTES.register ? 'register' : 'login');
+
+  const [mode, setMode] = useState<AuthMode>(defaultMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [businessName, setBusinessName] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [noticeMsg, setNoticeMsg] = useState('');
+
+  useEffect(() => {
+    setMode((prev) => {
+      if (initialMode) return initialMode;
+      if (location.pathname === ROUTES.register) return 'register';
+      if (location.pathname === ROUTES.login && prev !== 'reset') return 'login';
+      return prev;
+    });
+  }, [initialMode, location.pathname]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -77,29 +97,93 @@ export function SupabaseAuth() {
         },
       });
       if (error) {
-        setErrorMsg(error.message);
+        setErrorMsg(translateAuthError(error));
       }
-    } catch {
-      setErrorMsg('No pudimos conectar con Google. Revisa tu conexión e intenta de nuevo.');
+    } catch (err) {
+      setErrorMsg(translateAuthError(err));
     } finally {
       setIsGoogleLoading(false);
     }
   };
 
-  const handleSubmit = async (e: SubmitEvent<HTMLFormElement>) => {
+  const handleLogin = async (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!email.trim()) {
+      setErrorMsg('Por favor, ingresa tu correo electrónico.');
+      return;
+    }
+    if (!password) {
+      setErrorMsg('Por favor, ingresa tu contraseña.');
+      return;
+    }
+
     setIsLoading(true);
     setErrorMsg('');
     beginExplicitSignIn();
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (error) {
-        setErrorMsg(error.message);
+        setErrorMsg(translateAuthError(error));
       } else {
         setLastActivity(Date.now());
       }
-    } catch {
-      setErrorMsg('No pudimos conectar. Revisa tu conexión e intenta de nuevo.');
+    } catch (err) {
+      setErrorMsg(translateAuthError(err));
+    } finally {
+      endExplicitSignIn();
+      setIsLoading(false);
+    }
+  };
+
+  const handleRegister = async (e: SubmitEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!email.trim()) {
+      setErrorMsg('Por favor, ingresa tu correo electrónico.');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setErrorMsg('Por favor, ingresa un correo electrónico válido (ej. contacto@comercio.cl).');
+      return;
+    }
+    const { isValid } = evaluatePassword(password);
+    if (!isValid) {
+      setErrorMsg('La contraseña debe cumplir con todos los requisitos de seguridad mostrados abajo.');
+      return;
+    }
+    if (!termsAccepted) {
+      setErrorMsg('Debes aceptar los Términos del Servicio y la Política de Privacidad para crear tu cuenta.');
+      return;
+    }
+
+    setIsLoading(true);
+    setErrorMsg('');
+    setNoticeMsg('');
+    beginExplicitSignIn();
+    try {
+      const trimmedBusiness = businessName.trim();
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          data: trimmedBusiness ? { business_name: trimmedBusiness } : {},
+        },
+      });
+
+      if (error) {
+        setErrorMsg(translateAuthError(error));
+        return;
+      }
+
+      if (data.session) {
+        setLastActivity(Date.now());
+      } else if (data.user) {
+        setNoticeMsg(
+          '¡Cuenta creada con éxito! Si la confirmación de correo está activa, revisa tu correo electrónico para verificar tu cuenta e ingresar.'
+        );
+      }
+    } catch (err) {
+      setErrorMsg(translateAuthError(err));
     } finally {
       endExplicitSignIn();
       setIsLoading(false);
@@ -108,39 +192,69 @@ export function SupabaseAuth() {
 
   const handleResetRequest = async (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!email.trim()) {
+      setErrorMsg('Por favor, ingresa tu correo electrónico.');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setErrorMsg('Por favor, ingresa un correo electrónico válido (ej. contacto@comercio.cl).');
+      return;
+    }
+
     setIsLoading(true);
     setErrorMsg('');
     setNoticeMsg('');
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
         redirectTo: passwordResetUrl(),
       });
       if (error) {
-        setErrorMsg(error.message);
+        setErrorMsg(translateAuthError(error));
         return;
       }
       setNoticeMsg('Si ese correo tiene una cuenta, le enviamos un enlace para restablecer la contraseña.');
-    } catch {
-      setErrorMsg('No pudimos conectar. Revisa tu conexión e intenta de nuevo.');
+    } catch (err) {
+      setErrorMsg(translateAuthError(err));
     } finally {
       setIsLoading(false);
     }
   };
 
-  const switchMode = (next: 'login' | 'reset') => {
+  const switchMode = (next: AuthMode) => {
     setMode(next);
     setShowPassword(false);
     setErrorMsg('');
     setNoticeMsg('');
   };
 
+  const getTitle = () => {
+    if (mode === 'register') return 'Crea tu cuenta';
+    if (mode === 'reset') return 'Recupera tu acceso';
+    return 'Inicia sesión';
+  };
+
+  const getDescription = () => {
+    if (mode === 'register') return 'Empieza a fidelizar a tus clientes y haz que vuelvan a tu negocio.';
+    if (mode === 'reset') return 'Te enviamos un enlace para crear una contraseña nueva.';
+    return 'Entra con el correo de tu cuenta para seguir con tu negocio.';
+  };
+
+  const getFormSubmitHandler = (e: SubmitEvent<HTMLFormElement>) => {
+    if (mode === 'register') return handleRegister(e);
+    if (mode === 'reset') return handleResetRequest(e);
+    return handleLogin(e);
+  };
+
   return (
-    <AuthFrame
-      title={mode === 'login' ? 'Inicia sesión' : 'Recupera tu acceso'}
-      description={mode === 'login' ? 'Entra con el correo de tu cuenta para seguir con tu negocio.' : 'Te enviamos un enlace para crear una contraseña nueva.'}
-    >
-      <form className="space-y-5" aria-busy={isLoading || isGoogleLoading} onSubmit={mode === 'login' ? handleSubmit : handleResetRequest}>
-        {mode === 'login' && (
+    <AuthFrame title={getTitle()} description={getDescription()}>
+      <form
+        noValidate
+        className="space-y-5"
+        aria-busy={isLoading || isGoogleLoading}
+        onSubmit={getFormSubmitHandler}
+      >
+        {mode !== 'reset' && (
           <div>
             <button
               type="button"
@@ -149,7 +263,13 @@ export function SupabaseAuth() {
               className={AUTH_OAUTH_BUTTON}
             >
               <GoogleIcon className="h-5 w-5 shrink-0" />
-              <span>{isGoogleLoading ? 'Conectando con Google…' : 'Continuar con Google'}</span>
+              <span>
+                {isGoogleLoading
+                  ? 'Conectando con Google…'
+                  : mode === 'register'
+                    ? 'Registrarme con Google'
+                    : 'Continuar con Google'}
+              </span>
             </button>
             <div className={AUTH_DIVIDER}>
               <div className={AUTH_DIVIDER_LINE} />
@@ -157,32 +277,201 @@ export function SupabaseAuth() {
             </div>
           </div>
         )}
-        <div>
-          <label htmlFor="login-email" className={AUTH_LABEL}>Correo electrónico</label>
-          <input id="login-email" name="email" type="email" autoComplete="email" required disabled={isLoading || isGoogleLoading} value={email} onChange={(event) => setEmail(event.target.value)} className={AUTH_FIELD} placeholder="tu@comercio.cl" />
-        </div>
-        {mode === 'login' && (
+
+        {mode === 'register' && (
           <div>
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <label htmlFor="login-password" className="text-sm font-semibold text-panel-text">Contraseña</label>
-              <button type="button" onClick={() => switchMode('reset')} disabled={isLoading || isGoogleLoading} className="text-xs font-semibold text-panel-accent transition-colors hover:underline disabled:opacity-60">¿Olvidaste tu contraseña?</button>
-            </div>
-            <div className="relative">
-              <input id="login-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" required disabled={isLoading || isGoogleLoading} value={password} onChange={(event) => setPassword(event.target.value)} className={`${AUTH_FIELD} pr-20`} placeholder="Tu contraseña" />
-              <button type="button" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-pressed={showPassword} onClick={() => setShowPassword((shown) => !shown)} disabled={isLoading || isGoogleLoading} className="absolute inset-y-1 right-1 rounded-lg px-3 text-[11px] font-semibold text-panel-muted transition-colors hover:text-panel-accent">{showPassword ? 'Ocultar' : 'Mostrar'}</button>
-            </div>
+            <label htmlFor="register-business" className={AUTH_LABEL}>
+              Nombre de tu negocio o tienda{' '}
+              <span className="text-xs font-normal text-panel-muted">(opcional)</span>
+            </label>
+            <input
+              id="register-business"
+              name="businessName"
+              type="text"
+              autoComplete="organization"
+              disabled={isLoading || isGoogleLoading}
+              value={businessName}
+              onChange={(e) => setBusinessName(e.target.value)}
+              className={AUTH_FIELD}
+              placeholder="Ej. Café Central o Mi Comercio"
+            />
           </div>
         )}
-        {noticeMsg && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-relaxed text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">{noticeMsg}</p>}
-        {errorMsg && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-relaxed text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">{errorMsg}</p>}
+
+        <div>
+          <label htmlFor="auth-email" className={AUTH_LABEL}>
+            Correo electrónico
+          </label>
+          <input
+            id="auth-email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+            disabled={isLoading || isGoogleLoading}
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            className={AUTH_FIELD}
+            placeholder="tu@comercio.cl"
+          />
+        </div>
+
+        {mode !== 'reset' && (
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <label htmlFor="auth-password" className="text-sm font-semibold text-panel-text">
+                Contraseña
+              </label>
+              {mode === 'login' && (
+                <button
+                  type="button"
+                  onClick={() => switchMode('reset')}
+                  disabled={isLoading || isGoogleLoading}
+                  className="text-xs font-semibold text-panel-accent transition-colors hover:underline disabled:opacity-60"
+                >
+                  ¿Olvidaste tu contraseña?
+                </button>
+              )}
+            </div>
+            <div className="relative">
+              <input
+                id="auth-password"
+                name="password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+                required
+                minLength={mode === 'register' ? 8 : undefined}
+                disabled={isLoading || isGoogleLoading}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                className={`${AUTH_FIELD} pr-20`}
+                placeholder={mode === 'register' ? 'Mínimo 8 caracteres' : 'Tu contraseña'}
+              />
+              <button
+                type="button"
+                aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                aria-pressed={showPassword}
+                onClick={() => setShowPassword((shown) => !shown)}
+                disabled={isLoading || isGoogleLoading}
+                className="absolute inset-y-1 right-1 rounded-lg px-3 text-[11px] font-semibold text-panel-muted transition-colors hover:text-panel-accent"
+              >
+                {showPassword ? 'Ocultar' : 'Mostrar'}
+              </button>
+            </div>
+            {mode === 'register' && <PasswordRequirements password={password} />}
+          </div>
+        )}
+
+        {mode === 'register' && (
+          <div
+            className={`rounded-xl p-2.5 transition-colors ${
+              !termsAccepted && errorMsg.includes('Términos')
+                ? 'border border-red-300 bg-red-50/70 dark:border-red-500/30 dark:bg-red-500/10'
+                : ''
+            }`}
+          >
+            <label className="flex items-start gap-2.5 text-xs leading-relaxed text-panel-muted cursor-pointer select-none">
+              <input
+                id="register-terms"
+                name="terms"
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={(e) => {
+                  setTermsAccepted(e.target.checked);
+                  if (errorMsg.includes('Términos')) setErrorMsg('');
+                }}
+                className="mt-0.5 h-4 w-4 rounded border-panel-border text-panel-primary focus:ring-panel-accent/20 dark:bg-panel-soft"
+              />
+              <span>
+                Acepto los{' '}
+                <Link
+                  to={ROUTES.terms}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-panel-accent hover:underline"
+                >
+                  Términos del Servicio y la Política de Privacidad
+                </Link>
+                .
+              </span>
+            </label>
+          </div>
+        )}
+
+        {noticeMsg && (
+          <p
+            role="status"
+            className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-relaxed text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
+          >
+            {noticeMsg}
+          </p>
+        )}
+
+        {errorMsg && (
+          <p
+            role="alert"
+            className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-relaxed text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
+          >
+            {errorMsg}
+          </p>
+        )}
+
         <button type="submit" disabled={isLoading || isGoogleLoading} className={AUTH_SUBMIT}>
-          {mode === 'login' ? (isLoading ? 'Iniciando sesión…' : 'Entrar a mi cuenta') : (isLoading ? 'Enviando enlace…' : 'Enviar enlace de recuperación')}
+          {mode === 'login'
+            ? isLoading
+              ? 'Iniciando sesión…'
+              : 'Entrar a mi cuenta'
+            : mode === 'register'
+              ? isLoading
+                ? 'Creando tu cuenta…'
+                : 'Crear mi cuenta'
+              : isLoading
+                ? 'Enviando enlace…'
+                : 'Enviar enlace de recuperación'}
           {!isLoading && <span aria-hidden="true">→</span>}
         </button>
-        {mode === 'reset' ? (
-          <button type="button" onClick={() => switchMode('login')} disabled={isLoading || isGoogleLoading} className="mx-auto block py-1 text-xs font-semibold text-panel-accent hover:underline disabled:opacity-60">← Volver a iniciar sesión</button>
-        ) : (
-          <p className="text-center text-xs leading-relaxed text-panel-muted">Para el dueño y el equipo de tu comercio.</p>
+
+        {mode === 'login' && (
+          <div className="pt-2 text-center">
+            <p className="text-xs text-panel-muted">
+              ¿No tienes una cuenta aún?{' '}
+              <Link
+                to={ROUTES.register}
+                onClick={() => switchMode('register')}
+                className="font-bold text-panel-accent transition-colors hover:underline"
+              >
+                Regístrate aquí
+              </Link>
+            </p>
+          </div>
+        )}
+
+        {mode === 'register' && (
+          <div className="pt-2 text-center">
+            <p className="text-xs text-panel-muted">
+              ¿Ya tienes una cuenta?{' '}
+              <Link
+                to={ROUTES.login}
+                onClick={() => switchMode('login')}
+                className="font-bold text-panel-accent transition-colors hover:underline"
+              >
+                Inicia sesión aquí
+              </Link>
+            </p>
+          </div>
+        )}
+
+        {mode === 'reset' && (
+          <div className="pt-2 text-center">
+            <button
+              type="button"
+              onClick={() => switchMode('login')}
+              disabled={isLoading || isGoogleLoading}
+              className="mx-auto block py-1 text-xs font-semibold text-panel-accent hover:underline disabled:opacity-60"
+            >
+              ← Volver a iniciar sesión
+            </button>
+          </div>
         )}
       </form>
     </AuthFrame>

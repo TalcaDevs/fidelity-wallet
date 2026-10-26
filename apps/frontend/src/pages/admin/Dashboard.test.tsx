@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
 import { Dashboard } from './Dashboard';
 import * as useDashboardStatsModule from '../../hooks/useDashboardStats';
@@ -128,5 +129,27 @@ describe('Dashboard', () => {
     expect(screen.getByText(/6 - 7/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Página siguiente de movimientos' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Página anterior de movimientos' })).toBeEnabled();
+  });
+
+  it('renders onboarding checklist when store has no activity yet', () => {
+    vi.spyOn(useDashboardStatsModule, 'useDashboardStats').mockReturnValue({
+      stats: {
+        activePasses: 0,
+        stampsDelivered: 0,
+        rewardsRedeemed: 0,
+        recentScans: [],
+      },
+      loading: false,
+      error: null,
+      fetchStats: vi.fn(),
+    });
+
+    render(
+      <MemoryRouter>
+        <Dashboard session={null} brandId="new-store-1" />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole('heading', { name: /Primeros pasos/ })).toBeInTheDocument();
   });
 });

@@ -207,6 +207,7 @@ export function Layout({
           </div>
         </aside>
         <div className="flex min-w-0 flex-1 flex-col" inert={drawerOpen}>
+          {role === 'OWNER' && isBillingEnabled && !isSuspended && <TrialBanner brandId={brandId} />}
           <header className="relative z-20 flex min-h-18 shrink-0 items-center justify-between gap-3 border-b border-panel-border bg-panel-surface/80 px-4 backdrop-blur-xl sm:px-6 lg:px-10">
             <div className="flex min-w-0 items-center gap-3">
               <button type="button" onClick={() => setIsSidebarOpen(true)} aria-label="Abrir menú" aria-controls="panel-navigation" aria-expanded={drawerOpen} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-panel-border text-panel-muted md:hidden">
@@ -237,7 +238,6 @@ export function Layout({
           <main id="panel-content" tabIndex={-1} className="relative isolate flex-1 overflow-y-auto overflow-x-hidden scroll-smooth">
             <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[480px] bg-[radial-gradient(ellipse_at_top_right,#087bd710,transparent_65%)] dark:bg-[radial-gradient(ellipse_at_top_right,#087bd71c,transparent_65%)]" />
             <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 sm:py-8 lg:px-10 lg:py-10">
-              {role === 'OWNER' && isBillingEnabled && !isSuspended && <TrialBanner brandId={brandId} />}
               <Outlet />
             </div>
           </main>
