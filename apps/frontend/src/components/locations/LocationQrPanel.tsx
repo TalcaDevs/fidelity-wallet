@@ -1,19 +1,29 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import QRCode from 'qrcode';
-import type { LocationDto } from '@fidelity/shared';
+import type { CardConfigDto, LocationDto } from '@fidelity/shared';
 import { ErrorAlert } from '../ui/ErrorAlert';
 import { Skeleton } from '../ui/Skeleton';
 import { useToast } from '../../hooks/useToast';
 import { publicJoinUrl, updateMerchantSlug } from '../../services/merchantService';
+import { PrintCounterKitModal } from './PrintCounterKitModal';
 
 const QR_OPTIONS = { width: 512, margin: 2, errorCorrectionLevel: 'M' } as const;
 
 /** Link de registro de un local, su QR para imprimir y el cambio de slug. */
-export function LocationQrPanel({ location, onSlugChange }: { location: LocationDto; onSlugChange: (slug: string) => void }) {
+export function LocationQrPanel({
+  location,
+  onSlugChange,
+  cardConfig,
+}: {
+  location: LocationDto;
+  onSlugChange: (slug: string) => void;
+  cardConfig?: CardConfigDto | null;
+}) {
   const { notifySuccess } = useToast();
   const [slugDraft, setSlugDraft] = useState(location.slug);
   const [qr, setQr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showKit, setShowKit] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const url = publicJoinUrl(location.slug);
 
@@ -34,35 +44,6 @@ export function LocationQrPanel({ location, onSlugChange }: { location: Location
     } catch {
       setError('No pudimos copiar el link. Cópialo manualmente.');
     }
-  }
-
-  function print() {
-    if (!qr) return;
-    const win = window.open('', '_blank', 'width=600,height=800');
-    if (!win) {
-      setError('Tu navegador bloqueó la ventana de impresión.');
-      return;
-    }
-    const doc = win.document;
-    doc.title = `QR ${location.name}`;
-    const style = doc.createElement('style');
-    style.textContent =
-      'body{font-family:system-ui,sans-serif;text-align:center;padding:48px}img{width:360px;height:360px}h1{font-size:28px;margin:0 0 8px}p{color:#475569;margin:4px 0}';
-    doc.head.appendChild(style);
-    const title = doc.createElement('h1');
-    title.textContent = location.name;
-    const hint = doc.createElement('p');
-    hint.textContent = 'Escanea y saca tu tarjeta de sellos';
-    const img = doc.createElement('img');
-    img.onload = () => {
-      win.focus();
-      win.print();
-    };
-    img.src = qr;
-    img.alt = `QR de ${location.name}`;
-    const link = doc.createElement('p');
-    link.textContent = url;
-    doc.body.append(title, hint, img, link);
   }
 
   async function saveSlug(e: FormEvent) {
@@ -89,7 +70,11 @@ export function LocationQrPanel({ location, onSlugChange }: { location: Location
 
       <div className="flex flex-col sm:flex-row gap-6 items-center">
         <div className="w-48 h-48 shrink-0 rounded-2xl bg-white border border-slate-200 flex items-center justify-center">
-          {qr ? <img src={qr} alt={`QR de registro de ${location.name}`} className="w-full h-full" /> : <Skeleton className="w-40 h-40 rounded-xl" />}
+          {qr ? (
+            <img src={qr} alt={`QR de registro de ${location.name}`} className="w-full h-full" />
+          ) : (
+            <Skeleton className="w-40 h-40 rounded-xl" />
+          )}
         </div>
         <div className="min-w-0 space-y-3">
           <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -97,7 +82,21 @@ export function LocationQrPanel({ location, onSlugChange }: { location: Location
           </p>
           <p className="font-bold text-slate-800 dark:text-slate-100 break-all">{url}</p>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => void copy()} className="px-3 py-2 rounded-lg text-sm font-bold bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-brand-blue/10 hover:text-brand-blue">
+            <button
+              type="button"
+              onClick={() => setShowKit(true)}
+              className="px-3 py-2 rounded-lg text-sm font-bold bg-brand-blue text-white hover:bg-blue-600 flex items-center gap-1.5 shadow-sm"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+              </svg>
+              <span>Kit para Mesón / Caja (PDF)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void copy()}
+              className="px-3 py-2 rounded-lg text-sm font-bold bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-brand-blue/10 hover:text-brand-blue"
+            >
               Copiar link
             </button>
             <a
@@ -108,7 +107,12 @@ export function LocationQrPanel({ location, onSlugChange }: { location: Location
             >
               Descargar PNG
             </a>
-            <button type="button" onClick={print} disabled={!qr} className="px-3 py-2 rounded-lg text-sm font-bold bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-brand-blue/10 hover:text-brand-blue disabled:opacity-50">
+            <button
+              type="button"
+              onClick={() => setShowKit(true)}
+              disabled={!qr}
+              className="px-3 py-2 rounded-lg text-sm font-bold bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-brand-blue/10 hover:text-brand-blue disabled:opacity-50"
+            >
               Imprimir
             </button>
           </div>
@@ -141,6 +145,14 @@ export function LocationQrPanel({ location, onSlugChange }: { location: Location
           Si cambias el link, los QR ya impresos de este local dejan de funcionar.
         </p>
       </form>
+
+      {showKit && (
+        <PrintCounterKitModal
+          location={location}
+          cardConfig={cardConfig}
+          onClose={() => setShowKit(false)}
+        />
+      )}
     </div>
   );
 }

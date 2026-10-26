@@ -54,4 +54,13 @@ describe('LocationQrPanel', () => {
     expect(await screen.findByText('Ese link ya está en uso')).toBeInTheDocument();
     expect(onSlugChange).not.toHaveBeenCalled();
   });
+
+  it('abre el modal del Kit de Mesón al hacer clic en el botón correspondiente', async () => {
+    render(<LocationQrPanel location={location} onSlugChange={vi.fn()} />);
+
+    const kitButton = screen.getByRole('button', { name: /Kit para Mesón \/ Caja/i });
+    await userEvent.click(kitButton);
+
+    expect(screen.getByText('Kit para Imprimir en tu Local')).toBeInTheDocument();
+  });
 });
