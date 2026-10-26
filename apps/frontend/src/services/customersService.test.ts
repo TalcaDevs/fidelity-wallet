@@ -15,7 +15,13 @@ describe('customersService - balances', () => {
     };
     const from = vi.spyOn(supabase, 'from')
       .mockReturnValueOnce(passes as unknown as ReturnType<typeof supabase.from>)
-      .mockReturnValueOnce(balances as unknown as ReturnType<typeof supabase.from>);
+      .mockReturnValueOnce(balances as unknown as ReturnType<typeof supabase.from>)
+      .mockReturnValue({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        is: vi.fn().mockReturnThis(),
+        not: vi.fn().mockResolvedValue({ data: [], error: null }),
+      } as any);
     try {
       expect(await listCustomers('b-1')).toEqual([expect.objectContaining({ activeStamps: 0, activePoints: 42, stampsEnabled: false, pointsEnabled: true })]);
       expect(balances.select).toHaveBeenCalledWith('passId, activeStamps, activePoints, stampsEnabled, pointsEnabled, nextExpiryAt');
@@ -162,6 +168,64 @@ describe('customersService - balances', () => {
       expect(result).toEqual([]);
       // Only 1 call to supabase.from ('Pass'), none for 'PassStampBalance'
       expect(from).toHaveBeenCalledTimes(1);
+    } finally {
+      from.mockRestore();
+    }
+  });
+
+  it('aggregates total purchases and purchase counts per customer from non-voided scans', async () => {
+    const mockPasses = [
+      { id: 'p-1', customerId: 'c-1', createdAt: '2026-10-01', updatedAt: '2026-10-06', customer: { name: 'Cliente Con Compras' } },
+      { id: 'p-2', customerId: 'c-2', createdAt: '2026-10-01', updatedAt: '2026-10-06', customer: { name: 'Cliente Sin Compras' } },
+    ];
+
+    const passes = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      order: vi.fn().mockResolvedValue({ data: mockPasses, error: null }),
+    };
+
+    const balances = {
+      select: vi.fn().mockReturnThis(),
+      in: vi.fn().mockResolvedValue({
+        data: [
+          { passId: 'p-1', activeStamps: 3, activePoints: 0, stampsEnabled: true, pointsEnabled: false, nextExpiryAt: null },
+          { passId: 'p-2', activeStamps: 1, activePoints: 0, stampsEnabled: true, pointsEnabled: false, nextExpiryAt: null },
+        ],
+        error: null,
+      }),
+    };
+
+    const mockScans = [
+      { passId: 'p-1', purchaseAmount: 15000 },
+      { passId: 'p-1', purchaseAmount: 25000 },
+    ];
+
+    const scans = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
+      not: vi.fn().mockResolvedValue({ data: mockScans, error: null }),
+    };
+
+    const from = vi.spyOn(supabase, 'from')
+      .mockReturnValueOnce(passes as any)
+      .mockReturnValueOnce(balances as any)
+      .mockReturnValue(scans as any);
+
+    try {
+      const result = await listCustomers('b-1');
+      expect(result).toHaveLength(2);
+
+      const c1 = result.find((r) => r.passId === 'p-1');
+      expect(c1).toBeDefined();
+      expect(c1?.totalPurchases).toBe(40000);
+      expect(c1?.purchasesCount).toBe(2);
+
+      const c2 = result.find((r) => r.passId === 'p-2');
+      expect(c2).toBeDefined();
+      expect(c2?.totalPurchases).toBe(0);
+      expect(c2?.purchasesCount).toBe(0);
     } finally {
       from.mockRestore();
     }

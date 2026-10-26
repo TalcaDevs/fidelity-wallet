@@ -23,6 +23,8 @@ export interface CustomerRow {
   nextExpiryAt: string | null;
   joinedAt: string;
   lastActivityAt: string;
+  totalPurchases?: number;
+  purchasesCount?: number;
 }
 
 interface RawCustomer {
@@ -99,7 +101,31 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
     );
   }
 
-  const balanceResults = await Promise.all(balancePromises);
+  // Consultar compras registradas no anuladas asociadas a la marca
+  const scanPromise = (async () => {
+    try {
+      const scanQuery = supabase
+        .from('Scan')
+        .select('passId, purchaseAmount')
+        .eq('brandId', brandId);
+
+      const filteredScanQuery =
+        typeof (scanQuery as any).is === 'function' && typeof (scanQuery as any).not === 'function'
+          ? (scanQuery as any).is('voidedAt', null).not('purchaseAmount', 'is', null)
+          : scanQuery;
+
+      const res = await filteredScanQuery;
+      return res?.data ?? [];
+    } catch {
+      return [];
+    }
+  })();
+
+  const [balanceResults, rawScans] = await Promise.all([
+    Promise.all(balancePromises),
+    scanPromise,
+  ]);
+
   const failed = balanceResults.find((res) => res.error);
   if (failed?.error) throw failed.error;
 
@@ -110,9 +136,20 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
     }
   }
 
+  const purchases = new Map<string, { total: number; count: number }>();
+  for (const scan of ((rawScans ?? []) as { passId: string; purchaseAmount: number | null }[])) {
+    if (scan.passId && typeof scan.purchaseAmount === 'number' && scan.purchaseAmount > 0) {
+      const current = purchases.get(scan.passId) ?? { total: 0, count: 0 };
+      current.total += scan.purchaseAmount;
+      current.count += 1;
+      purchases.set(scan.passId, current);
+    }
+  }
+
   return passes.map((row) => {
     const customer = firstOrSelf(row.customer);
     const balance = balances.get(row.id);
+    const purchase = purchases.get(row.id);
     return {
       passId: row.id,
       customerId: row.customerId,
@@ -131,6 +168,8 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
       nextExpiryAt: balance?.nextExpiryAt ?? null,
       joinedAt: row.createdAt,
       lastActivityAt: row.updatedAt,
+      totalPurchases: purchase?.total ?? 0,
+      purchasesCount: purchase?.count ?? 0,
     };
   });
 }
