@@ -1,7 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { LocationDto } from '@fidelity/shared';
+import type { CardConfigDto, LocationDto } from '@fidelity/shared';
 import { Locations } from './Locations';
 import * as locationsService from '../../services/locationsService';
 import * as cardService from '../../services/cardService';
@@ -18,9 +18,10 @@ const mockLocations: LocationDto[] = [
     region: 'Metropolitana',
     latitude: -33.44,
     longitude: -70.65,
+    phone: null,
+    contactName: null,
     isActive: true,
     createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
   },
 ];
 
@@ -36,7 +37,7 @@ describe('Locations Page', () => {
       brandName: 'Mi Cafetería',
       rewards: [{ name: 'Café gratis', target: 10, currency: 'STAMPS' }],
       design: { backgroundColor: '#1E3A8A', textColor: '#FFFFFF', logoUrl: null },
-    } as any);
+    } as unknown as CardConfigDto);
   });
 
   it('lista las sucursales con sus botones de acción', async () => {
