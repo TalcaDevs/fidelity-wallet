@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { StaffActivityDto, StaffMemberDto } from '@fidelity/shared';
-import { ActivitySidebar } from './ActivitySidebar';
+import { ActivitySidebar, isWithinCalendarPeriod } from './ActivitySidebar';
 
 const mockNavigate = vi.fn();
 
@@ -359,5 +359,124 @@ describe('ActivitySidebar (Modal)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Este mes' }));
     expect(screen.getByText('2 clientes')).toBeInTheDocument();
     expect(screen.getByText('3 operaciones en este período')).toBeInTheDocument();
+  });
+
+  it('explicitly discloses that metrics and activity correspond to the latest 50 recorded operations', async () => {
+    const onLoadActivity = vi.fn().mockResolvedValue(mockScans);
+    render(<ActivitySidebar member={mockMember} onClose={vi.fn()} onLoadActivity={onLoadActivity} />);
+
+    await screen.findByText('Auditoría de Actividad');
+
+    // Header badge
+    expect(screen.getByText('Últimas 50 operaciones')).toBeInTheDocument();
+
+    // Footnote under KPIs
+    expect(
+      screen.getByText('* Indicadores calculados sobre las últimas 50 operaciones registradas para este miembro.'),
+    ).toBeInTheDocument();
+
+    // Footer note
+    expect(
+      screen.getByText('Calculado sobre las últimas 50 operaciones registradas'),
+    ).toBeInTheDocument();
+  });
+
+  it('strictly respects calendar boundaries: excludes previous month operations even if within 30 days', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // Fixed reference date: Saturday Oct 24, 2026 at 12:00 UTC
+    vi.setSystemTime(new Date('2026-10-24T12:00:00Z'));
+
+    try {
+      const calendarScans: StaffActivityDto[] = [
+        {
+          id: 'scan-oct-today',
+          type: 'STAMP_ADDED',
+          method: 'QR',
+          stampCount: 1,
+          createdAt: '2026-10-24T10:00:00Z',
+          locationName: 'Central',
+          customerPhone: '+56 9 **** 1111',
+          promotionName: null,
+          customerId: 'cust-oct-today',
+        },
+        {
+          id: 'scan-oct-earlier',
+          type: 'STAMP_ADDED',
+          method: 'QR',
+          stampCount: 2,
+          createdAt: '2026-10-02T10:00:00Z',
+          locationName: 'Central',
+          customerPhone: '+56 9 **** 2222',
+          promotionName: null,
+          customerId: 'cust-oct-earlier',
+        },
+        // 24 days ago: Sept 30, 2026. Within rolling 30 days, but outside calendar month of October!
+        {
+          id: 'scan-sep-30',
+          type: 'STAMP_ADDED',
+          method: 'QR',
+          stampCount: 3,
+          createdAt: '2026-09-30T22:00:00Z',
+          locationName: 'Central',
+          customerPhone: '+56 9 **** 3333',
+          promotionName: null,
+          customerId: 'cust-sep-30',
+        },
+      ];
+
+      const onLoadActivity = vi.fn().mockResolvedValue(calendarScans);
+      render(<ActivitySidebar member={mockMember} onClose={vi.fn()} onLoadActivity={onLoadActivity} />);
+
+      await screen.findByText('Auditoría de Actividad');
+
+      // In "Todo", all 3 customers and operations are present
+      expect(screen.getByText('3 clientes')).toBeInTheDocument();
+      expect(screen.getByText('3 operaciones en total')).toBeInTheDocument();
+
+      // Switch to "Este mes": Sept 30 MUST be excluded! Only Oct 24 and Oct 02 are included.
+      await userEvent.click(screen.getByRole('button', { name: 'Este mes' }));
+      expect(screen.getByText('2 clientes')).toBeInTheDocument();
+      expect(screen.getByText('2 operaciones en este período')).toBeInTheDocument();
+
+      // Stamps total for Este mes should be 1 + 2 = 3 (Sept 30 with 3 stamps is excluded)
+      expect(screen.getByText('3')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  describe('isWithinCalendarPeriod helper', () => {
+    const fixedNow = new Date('2026-10-24T12:00:00Z'); // Saturday Oct 24, 2026
+
+    it('handles "all" filter for any date', () => {
+      expect(isWithinCalendarPeriod(new Date('2020-01-01'), 'all', fixedNow)).toBe(true);
+    });
+
+    it('excludes future dates', () => {
+      expect(isWithinCalendarPeriod(new Date('2026-10-25T12:00:00Z'), 'today', fixedNow)).toBe(false);
+      expect(isWithinCalendarPeriod(new Date('2026-11-01T12:00:00Z'), 'month', fixedNow)).toBe(false);
+    });
+
+    it('evaluates "today" correctly', () => {
+      expect(isWithinCalendarPeriod(new Date('2026-10-24T08:00:00Z'), 'today', fixedNow)).toBe(true);
+      expect(isWithinCalendarPeriod(new Date('2026-10-23T23:59:59Z'), 'today', fixedNow)).toBe(false);
+    });
+
+    it('evaluates "week" from current week Monday 00:00:00', () => {
+      // Oct 24 is Saturday. Monday of that week was Oct 19.
+      expect(isWithinCalendarPeriod(new Date('2026-10-19T12:00:00Z'), 'week', fixedNow)).toBe(true);
+      expect(isWithinCalendarPeriod(new Date('2026-10-21T15:00:00Z'), 'week', fixedNow)).toBe(true);
+      // Sunday Oct 18 is before Monday Oct 19
+      expect(isWithinCalendarPeriod(new Date('2026-10-18T23:59:59Z'), 'week', fixedNow)).toBe(false);
+    });
+
+    it('evaluates "month" strictly by calendar month and year', () => {
+      expect(isWithinCalendarPeriod(new Date('2026-10-01T12:00:00Z'), 'month', fixedNow)).toBe(true);
+      expect(isWithinCalendarPeriod(new Date('2026-10-24T11:59:59Z'), 'month', fixedNow)).toBe(true);
+      // Sept 30 is previous month even though it is only 24 days away
+      expect(isWithinCalendarPeriod(new Date('2026-09-30T23:59:59Z'), 'month', fixedNow)).toBe(false);
+      // Oct 2025 is a year ago
+      expect(isWithinCalendarPeriod(new Date('2025-10-24T12:00:00Z'), 'month', fixedNow)).toBe(false);
+    });
   });
 });

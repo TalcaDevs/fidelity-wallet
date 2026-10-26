@@ -27,6 +27,43 @@ const TIME_FILTER_TABS: { id: TimeFilterType; label: string }[] = [
  * Renderizado vía portal en document.body con soporte completo de modo oscuro (WALLET_THEME),
  * estados de carga skeleton, filtros rápidos por período y tipo de operación, y navegación al cliente.
  */
+export function isWithinCalendarPeriod(date: Date, filter: TimeFilterType, now: Date): boolean {
+  if (filter === 'all') return true;
+  if (isNaN(date.getTime())) return false;
+  if (date > now) return false;
+
+  if (filter === 'today') {
+    return date.toDateString() === now.toDateString();
+  }
+
+  if (filter === 'week') {
+    // Semana calendario de lunes a domingo
+    const currentDay = now.getDay();
+    const distanceToMonday = (currentDay + 6) % 7;
+    const startOfWeek = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() - distanceToMonday,
+      0,
+      0,
+      0,
+      0,
+    );
+    return date >= startOfWeek && date <= now;
+  }
+
+  if (filter === 'month') {
+    // Mes calendario: mismo mes y año que el momento actual
+    return (
+      date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth() &&
+      date <= now
+    );
+  }
+
+  return true;
+}
+
 export function ActivitySidebar({
   member,
   onClose,
@@ -55,27 +92,16 @@ export function ActivitySidebar({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
 
-  // Filtro por período de tiempo (Hoy, Esta semana, Este mes, Todo)
+  const now = useMemo(() => new Date(), []);
+
+  // Filtro por período de tiempo con límites calendario (Hoy, Esta semana, Este mes, Todo)
   const timeFilteredActivity = useMemo(() => {
     if (timeFilter === 'all') return activity;
-    const now = new Date();
     return activity.filter((scan) => {
       const scanDate = new Date(scan.createdAt);
-      if (isNaN(scanDate.getTime())) return false;
-      if (timeFilter === 'today') {
-        return scanDate.toDateString() === now.toDateString();
-      }
-      if (timeFilter === 'week') {
-        const diff = now.getTime() - scanDate.getTime();
-        return diff >= 0 && diff <= 7 * 24 * 60 * 60 * 1000;
-      }
-      if (timeFilter === 'month') {
-        const diff = now.getTime() - scanDate.getTime();
-        return diff >= 0 && diff <= 30 * 24 * 60 * 60 * 1000;
-      }
-      return true;
+      return isWithinCalendarPeriod(scanDate, timeFilter, now);
     });
-  }, [activity, timeFilter]);
+  }, [activity, timeFilter, now]);
 
   // Mini-KPIs calculados según el período seleccionado
   const stats = useMemo(() => {
@@ -143,7 +169,7 @@ export function ActivitySidebar({
           </div>
           <p className="font-bold text-panel-text text-sm">Sin actividad en este período</p>
           <p className="text-xs text-panel-muted mt-1 max-w-xs mx-auto">
-            No se registraron operaciones {timeFilter === 'today' ? 'hoy' : timeFilter === 'week' ? 'en la última semana' : 'en los últimos 30 días'}. Prueba seleccionando otro período o "Todo".
+            No se registraron operaciones {timeFilter === 'today' ? 'hoy' : timeFilter === 'week' ? 'en esta semana' : 'en este mes'}. Prueba seleccionando otro período o "Todo".
           </p>
         </div>
       );
@@ -317,6 +343,11 @@ export function ActivitySidebar({
           </div>
         </div>
 
+        {/* Alcance de datos */}
+        <p className="text-[11px] text-panel-muted mb-4 text-center sm:text-left">
+          * Indicadores calculados sobre las últimas 50 operaciones registradas para este miembro.
+        </p>
+
         {/* Botones de filtro por tipo de operación */}
         <div className="flex items-center gap-1.5 mb-4 overflow-x-auto pb-1 text-xs" role="tablist" aria-label="Filtro de operaciones">
           <button
@@ -402,12 +433,15 @@ export function ActivitySidebar({
         {/* Cabecera del modal */}
         <div className="p-5 sm:p-6 border-b border-panel-border flex items-start justify-between gap-3 shrink-0 bg-panel-surface">
           <div className="min-w-0 pr-6">
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
               <h2 id="activity-title" className="text-xl font-bold text-panel-text">
                 Auditoría de Actividad
               </h2>
               <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-panel-soft text-panel-muted border border-panel-border">
                 {member.role === 'OWNER' ? 'Dueño' : 'Cajero'}
+              </span>
+              <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-panel-soft text-panel-muted border border-panel-border">
+                Últimas 50 operaciones
               </span>
             </div>
             {displayName ? (
@@ -441,13 +475,18 @@ export function ActivitySidebar({
 
         {/* Footer del modal con contador de período y botón de cierre */}
         <div className="p-4 sm:p-5 border-t border-panel-border bg-panel-soft/40 flex items-center justify-between shrink-0">
-          <p className="text-xs text-panel-muted">
-            {timeFilteredActivity.length > 0
-              ? `${timeFilteredActivity.length} operaciones ${timeFilter === 'all' ? 'en total' : 'en este período'}`
-              : activity.length > 0
-              ? `Sin operaciones en este período (${activity.length} en total)`
-              : ''}
-          </p>
+          <div className="text-xs text-panel-muted">
+            <span>
+              {timeFilteredActivity.length > 0
+                ? `${timeFilteredActivity.length} operaciones ${timeFilter === 'all' ? 'en total' : 'en este período'}`
+                : activity.length > 0
+                ? `Sin operaciones en este período (${activity.length} en total)`
+                : ''}
+            </span>
+            <span className="block text-[11px] text-panel-muted/80">
+              Calculado sobre las últimas 50 operaciones registradas
+            </span>
+          </div>
           <button
             type="button"
             onClick={onClose}
