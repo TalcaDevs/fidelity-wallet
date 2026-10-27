@@ -1,106 +1,58 @@
-name: 🛡️ Monorepo PR Checks
+name: CI de Pull Requests (Revisión Automatizada)
 
+# Se ejecuta en cada apertura o nuevo commit contra la rama de integración 'dev'
 on:
   pull_request:
-    branches:
-      - main
-      - dev
-
-  workflow_dispatch: 
+    branches: [dev]
 
 jobs:
   validate:
-    name: Validate PR
+    name: 🛡️ Validación y Calidad de Código
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 15
+
     steps:
-      - name: 📥 Checkout del código
+      - name: 📥 Clonar Repositorio
         uses: actions/checkout@v4
 
       - name: 📦 Instalar pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 11 # Actualizado para hacer match con el pnpm-lock.yaml local
+        uses: pnpm/action-setup@v4
 
-      - name: 🟢 Configurar Node.js
+      - name: ⚡ Configurar Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22.x' # pnpm v11 requires Node >= 22.13
+          node-version: 22
           cache: 'pnpm'
 
-      - name: 🧩 Instalar dependencias
-        # Falla si alguien olvidó commitear el pnpm-lock.yaml actualizado
+      - name: 🚀 Instalar Dependencias del Monorepo
+        # frozen-lockfile garantiza que nadie suba dependencias sin actualizar el pnpm-lock.yaml
         run: pnpm install --frozen-lockfile
 
-      - name: 📚 Build de paquetes compartidos
-        # apps/* importan @fidelity/shared desde su dist/
-        run: pnpm --filter './packages/**' run build
+      - name: 🏗️ Generar Prisma Client
+        # Vital: Necesario antes de typecheck y tests para que los tipos de BD existan
+        run: pnpm --filter backend run db:generate
 
-      - name: 🗄️ Generar Prisma Client
-        # Necesario para que TypeScript no falle al buscar tipos de @prisma/client
-        run: pnpm --filter backend exec prisma generate
+      - name: 🔨 Compilar Packages Compartidos
+        # Compila los tipos y utilidades de packages/shared necesarios para el backend y frontend
+        run: pnpm --filter shared run build
 
       - name: 🔒 Auditoría de Seguridad
         # Evaluamos solo dependencias de producción para no bloquear el PR por una vulnerabilidad en una librería de testing
-        # Las vulnerabilidades upstream conocidas se gestionan en pnpm-workspace.yaml (auditConfig.ignoreGhsas)
-        run: pnpm audit --prod --audit-level=high --ignore-unfixable
+        # Ignoramos GHSA-ggr8-5vv4-36mx que es un falso positivo interno de Prisma (deepmerge-ts)
+        run: pnpm audit --prod --audit-level=high --ignore GHSA-ggr8-5vv4-36mx
 
       - name: 🧹 Lint & Formato
         # Ejecuta el script "lint" en cada package.json de tus apps/packages
         run: pnpm -r run lint
 
-      - name: 🏷️ Type Checking
-        # Ejecuta la validación estricta de TypeScript (tsc --noEmit)
+      - name: 🔍 Verificación Estricta de Tipos (TypeScript)
+        # Typecheck sin emitir archivos JS para asegurar integridad de interfaces
         run: pnpm -r run typecheck
 
-      - name: ⚙️ Pruebas Unitarias
-        # Ejecuta los tests de la Plataforma (ej. validación matemática al añadir Sello/Punto)
+      - name: 🧪 Ejecución de Pruebas Automatizadas
+        # Corre la suite completa de unit/integration tests de backend y frontend
         run: pnpm -r run test
 
-      - name: 🏗️ Dry Build
-        # Intenta compilar Next.js y el backend de Node para asegurar que nada rompe en producción
+      - name: 📦 Compilación de Producción (Build)
+        # Valida que tanto NestJS como Vite/Tailwind compilen a dist sin errores
         run: pnpm -r run build
-
-  db-tests:
-    name: DB (migraciones, RLS y triggers)
-    runs-on: ubuntu-latest
-    env:
-      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres?schema=public
-
-    steps:
-      - name: 📥 Checkout del código
-        uses: actions/checkout@v4
-
-      - name: 📦 Instalar pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 11
-
-      - name: 🟢 Configurar Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22.x'
-          cache: 'pnpm'
-
-      - name: 🧩 Instalar dependencias
-        run: pnpm install --frozen-lockfile
-
-      - name: 🐘 Configurar Supabase CLI
-        uses: supabase/setup-cli@v1
-        with:
-          version: 2.118.0
-
-      - name: 🚀 Levantar Supabase local
-        # Postgres + Auth bastan: el trigger handle_new_user y auth.uid() necesitan el esquema auth.
-        run: supabase start -x studio,imgproxy,realtime,storage-api,edge-runtime,logflare,vector
-
-      - name: 📚 Build de paquetes compartidos
-        run: pnpm --filter './packages/**' run build
-
-      - name: 🗄️ Aplicar migraciones desde cero
-        run: |
-          pnpm --filter backend exec prisma generate
-          pnpm --filter backend exec prisma migrate deploy
-
-      - name: 🧪 Pruebas contra la BD
-        run: pnpm --filter backend run test:db

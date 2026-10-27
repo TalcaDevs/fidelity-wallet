@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { Customers } from './Customers';
 import * as customersService from '../../services/customersService';
+import * as csvLib from '../../lib/csv';
 import * as toastHook from '../../hooks/useToast';
 
 describe('Customers page (Ley 19.628)', () => {
@@ -292,7 +293,7 @@ describe('Customers page (Ley 19.628)', () => {
     expect(screen.getByText('$16.667')).toBeInTheDocument();
   });
 
-  it('displays registered purchases per customer in table and does not render CSV export button', async () => {
+  it('displays registered purchases per customer in table and renders CSV export button', async () => {
     vi.spyOn(customersService, 'listCustomers').mockResolvedValue([
       {
         passId: 'p-1',
@@ -335,8 +336,43 @@ describe('Customers page (Ley 19.628)', () => {
     expect(screen.getAllByText('$35.000')).toHaveLength(2);
     expect(screen.getByText('2 compras')).toBeInTheDocument();
 
-    // Ensure CSV export button is not rendered
-    expect(screen.queryByText('Exportar CSV')).not.toBeInTheDocument();
+    // Verify CSV export button is present
+    expect(screen.getByRole('button', { name: /Exportar CSV/i })).toBeInTheDocument();
+  });
+
+  it('exports customers to CSV when clicking the export button', async () => {
+    const downloadSpy = vi.spyOn(csvLib, 'downloadCsv').mockImplementation(() => {});
+    vi.spyOn(customersService, 'listCustomers').mockResolvedValue([
+      {
+        passId: 'p-1',
+        customerId: 'c-1',
+        name: 'Ana Exportable',
+        rut: '11111111-1',
+        phone: '+56911111111',
+        activeStamps: 4,
+        nextExpiryAt: null,
+        joinedAt: '2026-09-20T12:00:00Z',
+        lastActivityAt: '2026-09-24T12:00:00Z',
+        totalPurchases: 25000,
+        purchasesCount: 1,
+      },
+    ]);
+
+    render(<MemoryRouter><Customers brandId="m-1" merchantId="m-1" /></MemoryRouter>);
+
+    await waitFor(() => {
+      expect(screen.getByText('Ana Exportable')).toBeInTheDocument();
+    });
+
+    const exportBtn = screen.getByRole('button', { name: /Exportar CSV/i });
+    expect(exportBtn).toBeInTheDocument();
+    fireEvent.click(exportBtn);
+
+    expect(downloadSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/^clientes-\d{4}-\d{2}-\d{2}\.csv$/),
+      expect.stringContaining('Ana Exportable'),
+    );
+    expect(mockNotifySuccess).toHaveBeenCalledWith(expect.stringContaining('Exportamos 1 cliente(s) a CSV.'));
   });
 
   it('displays error alert with retry button when fetching customers fails, and reloads on click', async () => {

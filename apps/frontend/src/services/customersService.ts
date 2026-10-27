@@ -20,11 +20,11 @@ export interface CustomerRow {
   activePoints?: number;
   stampsEnabled?: boolean;
   pointsEnabled?: boolean;
+  totalPurchases?: number;
+  purchasesCount?: number;
   nextExpiryAt: string | null;
   joinedAt: string;
   lastActivityAt: string;
-  totalPurchases?: number;
-  purchasesCount?: number;
 }
 
 interface RawCustomer {
@@ -63,29 +63,38 @@ export interface ListCustomersOptions {
   limit?: number;
 }
 
-export const POSTGREST_PAGE_SIZE = 1000;
-
-interface RawScanRow {
+export interface RawScanRow {
+  id?: string;
   passId: string;
   purchaseAmount: number | null;
+  createdAt?: string;
 }
+
+// Dos consultas en vez de un embed: PassStampBalance es una vista y PostgREST no
+// garantiza detectarle la relación con Pass, así que cruzamos por passId acá.
+// Consultamos los saldos para los passIds efectivamente seleccionados para garantizar
+// coherencia exacta entre pases y saldos sin importar orden o volumen de clientes.
+export const POSTGREST_PAGE_SIZE = 1000;
 
 /**
  * Consulta las compras registradas no anuladas de la marca paginando de forma estable
- * en bloques de 1.000 para superar el límite max_rows de PostgREST y no omitir compras.
+ * con clave inmutable (id) y cota temporal consistente (snapshotTime) para evitar que
+ * compras concurrentes desplacen offsets o dupliquen registros.
  * Propaga cualquier error de consulta para evitar presentar totales en cero como datos válidos.
  */
 export async function fetchBrandScans(brandId: string): Promise<RawScanRow[]> {
   const allScans: RawScanRow[] = [];
   let from = 0;
+  let lastScanId: string | null = null;
   let hasMore = true;
+  const snapshotTime = new Date().toISOString();
 
   while (hasMore) {
     const to = from + POSTGREST_PAGE_SIZE - 1;
 
     let scanQuery: any = supabase
       .from('Scan')
-      .select('passId, purchaseAmount');
+      .select('id, passId, purchaseAmount, createdAt');
 
     if (typeof scanQuery?.eq === 'function') {
       scanQuery = scanQuery.eq('brandId', brandId);
@@ -95,27 +104,27 @@ export async function fetchBrandScans(brandId: string): Promise<RawScanRow[]> {
       scanQuery = scanQuery.is('voidedAt', null).not('purchaseAmount', 'is', null);
     }
 
-    if (typeof scanQuery?.order === 'function') {
-      const firstOrder = scanQuery.order('createdAt', { ascending: false });
-      if (firstOrder && typeof firstOrder.order === 'function') {
-        try {
-          const secondOrder = firstOrder.order('id', { ascending: false });
-          if (secondOrder) {
-            scanQuery = secondOrder;
-          } else {
-            scanQuery = firstOrder;
-          }
-        } catch {
-          scanQuery = firstOrder;
-        }
-      } else if (firstOrder) {
-        scanQuery = firstOrder;
-      }
+    if (typeof scanQuery?.lte === 'function') {
+      scanQuery = scanQuery.lte('createdAt', snapshotTime);
     }
 
+    // Paginación estable por id inmutable para evitar duplicados por actividad concurrente
+    if (typeof scanQuery?.order === 'function') {
+      scanQuery = scanQuery.order('id', { ascending: true });
+    }
+
+    const hasGt = typeof scanQuery?.gt === 'function';
     const isRanged = typeof scanQuery?.range === 'function';
-    if (isRanged) {
+
+    if (lastScanId && hasGt) {
+      scanQuery = scanQuery.gt('id', lastScanId);
+      if (typeof scanQuery?.limit === 'function') {
+        scanQuery = scanQuery.limit(POSTGREST_PAGE_SIZE);
+      }
+    } else if (isRanged) {
       scanQuery = scanQuery.range(from, to);
+    } else if (typeof scanQuery?.limit === 'function') {
+      scanQuery = scanQuery.limit(POSTGREST_PAGE_SIZE);
     }
 
     const res = await scanQuery;
@@ -124,9 +133,10 @@ export async function fetchBrandScans(brandId: string): Promise<RawScanRow[]> {
     const batch = (res?.data ?? []) as RawScanRow[];
     allScans.push(...batch);
 
-    if (!isRanged || batch.length < POSTGREST_PAGE_SIZE) {
+    if (batch.length < POSTGREST_PAGE_SIZE) {
       hasMore = false;
     } else {
+      lastScanId = batch[batch.length - 1]?.id ?? null;
       from += batch.length;
     }
   }
@@ -134,14 +144,11 @@ export async function fetchBrandScans(brandId: string): Promise<RawScanRow[]> {
   return allScans;
 }
 
-// Dos consultas en vez de un embed: PassStampBalance es una vista y PostgREST no
-// garantiza detectarle la relación con Pass, así que cruzamos por passId acá.
-// Consultamos los saldos para los passIds efectivamente seleccionados para garantizar
-// coherencia exacta entre pases y saldos sin importar orden o volumen de clientes.
 export async function listCustomers(brandId: string, options?: ListCustomersOptions): Promise<CustomerRow[]> {
   const passes: RawPassRow[] = [];
   const maxLimit = typeof options?.limit === 'number' && options.limit > 0 ? options.limit : null;
   let from = 0;
+  let lastPassId: string | null = null;
   let hasMore = true;
 
   while (hasMore) {
@@ -155,22 +162,17 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
       .from('Pass')
       .select('id, customerId, createdAt, updatedAt, customer:Customer(rut, phone, name, email, birthDay, birthMonth, birthYear)')
       .eq('brandId', brandId)
-      .order('updatedAt', { ascending: false });
+      .order('id', { ascending: true });
 
-    // Orden compuesto determinista para garantizar paginación estable en límites de página
-    if (passQuery && typeof passQuery.order === 'function') {
-      try {
-        const nextOrder = passQuery.order('id', { ascending: false });
-        if (nextOrder) {
-          passQuery = nextOrder;
-        }
-      } catch {
-        // Fallback para mocks unitarios que no encadenan múltiples .order()
+    const hasGt = typeof passQuery?.gt === 'function';
+    const hasRange = typeof passQuery?.range === 'function';
+
+    if (lastPassId && hasGt) {
+      passQuery = passQuery.gt('id', lastPassId);
+      if (typeof passQuery?.limit === 'function') {
+        passQuery = passQuery.limit(pageSize);
       }
-    }
-
-    const isRanged = typeof passQuery?.range === 'function';
-    if (isRanged) {
+    } else if (hasRange) {
       passQuery = passQuery.range(from, to);
     } else if (maxLimit !== null && typeof passQuery?.limit === 'function') {
       passQuery = passQuery.limit(maxLimit);
@@ -183,12 +185,13 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
     passes.push(...batch);
 
     if (
-      !isRanged ||
+      !hasRange ||
       batch.length < pageSize ||
       (maxLimit !== null && passes.length >= maxLimit)
     ) {
       hasMore = false;
     } else {
+      lastPassId = batch[batch.length - 1]?.id ?? null;
       from += batch.length;
     }
   }
@@ -196,6 +199,14 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
   if (passes.length === 0) {
     return [];
   }
+
+  // Ordenar en memoria por actividad reciente (updatedAt descendente).
+  // La paginación por id inmutable evita perder clientes por actividad concurrente entre páginas.
+  passes.sort((a, b) => {
+    const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+    const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+    return timeB - timeA;
+  });
 
   const passIds = passes.map((p) => p.id);
 
@@ -257,11 +268,11 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
       activePoints: balance?.activePoints ?? 0,
       stampsEnabled: balance?.stampsEnabled ?? true,
       pointsEnabled: balance?.pointsEnabled ?? false,
+      totalPurchases: purchase?.total ?? 0,
+      purchasesCount: purchase?.count ?? 0,
       nextExpiryAt: balance?.nextExpiryAt ?? null,
       joinedAt: row.createdAt,
       lastActivityAt: row.updatedAt,
-      totalPurchases: purchase?.total ?? 0,
-      purchasesCount: purchase?.count ?? 0,
     };
   });
 }
@@ -295,7 +306,6 @@ export async function deleteCustomer(merchantId: string, customerId: string): Pr
     throw new Error(extractApiError(errorData) ?? 'Error al eliminar los datos del cliente.');
   }
 }
-
 
 export const HISTORY_PAGE_SIZE = 20;
 
