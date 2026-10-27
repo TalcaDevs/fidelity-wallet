@@ -71,6 +71,7 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
   const passes: RawPassRow[] = [];
   const maxLimit = typeof options?.limit === 'number' && options.limit > 0 ? options.limit : null;
   let from = 0;
+  let lastPassId: string | null = null;
   let hasMore = true;
 
   while (hasMore) {
@@ -84,22 +85,17 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
       .from('Pass')
       .select('id, customerId, createdAt, updatedAt, customer:Customer(rut, phone, name, email, birthDay, birthMonth, birthYear)')
       .eq('brandId', brandId)
-      .order('updatedAt', { ascending: false });
+      .order('id', { ascending: true });
 
-    // Orden compuesto determinista para garantizar paginación estable en límites de página
-    if (passQuery && typeof passQuery.order === 'function') {
-      try {
-        const nextOrder = passQuery.order('id', { ascending: false });
-        if (nextOrder && typeof nextOrder.then === 'function') {
-          passQuery = nextOrder;
-        }
-      } catch {
-        // Fallback para mocks unitarios que no encadenan múltiples .order()
+    const hasGt = typeof passQuery?.gt === 'function';
+    const hasRange = typeof passQuery?.range === 'function';
+
+    if (lastPassId && hasGt) {
+      passQuery = passQuery.gt('id', lastPassId);
+      if (typeof passQuery?.limit === 'function') {
+        passQuery = passQuery.limit(pageSize);
       }
-    }
-
-    const isRanged = typeof passQuery?.range === 'function';
-    if (isRanged) {
+    } else if (hasRange) {
       passQuery = passQuery.range(from, to);
     } else if (maxLimit !== null && typeof passQuery?.limit === 'function') {
       passQuery = passQuery.limit(maxLimit);
@@ -112,12 +108,13 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
     passes.push(...batch);
 
     if (
-      !isRanged ||
+      !hasRange ||
       batch.length < pageSize ||
       (maxLimit !== null && passes.length >= maxLimit)
     ) {
       hasMore = false;
     } else {
+      lastPassId = batch[batch.length - 1]?.id ?? null;
       from += batch.length;
     }
   }
@@ -125,6 +122,14 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
   if (passes.length === 0) {
     return [];
   }
+
+  // Ordenar en memoria por actividad reciente (updatedAt descendente).
+  // La paginación por id inmutable evita perder clientes por actividad concurrente entre páginas.
+  passes.sort((a, b) => {
+    const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+    const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+    return timeB - timeA;
+  });
 
   const passIds = passes.map((p) => p.id);
 
@@ -206,7 +211,6 @@ export async function deleteCustomer(merchantId: string, customerId: string): Pr
     throw new Error(extractApiError(errorData) ?? 'Error al eliminar los datos del cliente.');
   }
 }
-
 
 export const HISTORY_PAGE_SIZE = 20;
 

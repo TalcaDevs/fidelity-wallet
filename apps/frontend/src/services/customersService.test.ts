@@ -168,19 +168,14 @@ describe('customersService - balances', () => {
       return Promise.resolve({ data: capped, error: null });
     });
 
-    const orderSecondMock = vi.fn().mockReturnValue({
-      range: rangeMock,
-    });
-
-    const orderFirstMock = vi.fn().mockReturnValue({
-      order: orderSecondMock,
+    const orderMock = vi.fn().mockReturnValue({
       range: rangeMock,
     });
 
     const passes = {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
-      order: orderFirstMock,
+      order: orderMock,
     };
 
     const balances = {
@@ -207,9 +202,64 @@ describe('customersService - balances', () => {
       expect(rangeMock).toHaveBeenNthCalledWith(1, 0, 999);
       expect(rangeMock).toHaveBeenNthCalledWith(2, 1000, 1999);
 
-      // Verifies deterministic compound ordering by updatedAt and id
-      expect(orderFirstMock).toHaveBeenCalledWith('updatedAt', { ascending: false });
-      expect(orderSecondMock).toHaveBeenCalledWith('id', { ascending: false });
+      // Verifies stable immutable ordering by id to prevent pagination shift
+      expect(orderMock).toHaveBeenCalledWith('id', { ascending: true });
+    } finally {
+      from.mockRestore();
+    }
+  });
+
+  it('preserves all 1001 customers without duplicates or omissions even if activity changes between pages', async () => {
+    // 1001 passes with immutable IDs p-0000 to p-1000
+    const mockPasses = Array.from({ length: 1001 }, (_, i) => ({
+      id: `p-${String(i).padStart(4, '0')}`,
+      customerId: `c-${i}`,
+      createdAt: '2026-10-01',
+      updatedAt: '2026-10-06T10:00:00Z',
+      customer: { name: `Cliente ${i}` },
+    }));
+
+    let callCount = 0;
+    const rangeMock = vi.fn().mockImplementation((from: number, to: number) => {
+      callCount++;
+      if (callCount === 1) {
+        // First page returned 0..999
+        return Promise.resolve({ data: mockPasses.slice(0, 1000), error: null });
+      }
+      // Between page 1 and page 2, customer p-1000 receives a stamp (activity updated to NOW)
+      mockPasses[1000].updatedAt = '2026-10-27T20:00:00Z';
+      return Promise.resolve({ data: mockPasses.slice(1000, 1001), error: null });
+    });
+
+    const orderMock = vi.fn().mockReturnValue({
+      range: rangeMock,
+    });
+
+    const passes = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      order: orderMock,
+    };
+
+    const balances = {
+      select: vi.fn().mockReturnThis(),
+      in: vi.fn().mockResolvedValue({ data: [], error: null }),
+    };
+
+    const from = vi.spyOn(supabase, 'from').mockImplementation(((table: string) => {
+      if (table === 'Pass') return passes as any;
+      if (table === 'PassStampBalance') return balances as any;
+      return {} as any;
+    }) as any);
+
+    try {
+      const result = await listCustomers('b-1');
+      // Verifies all 1001 unique passes are retrieved without omission or duplicate
+      expect(result).toHaveLength(1001);
+      const uniqueIds = new Set(result.map((r) => r.passId));
+      expect(uniqueIds.size).toBe(1001);
+      // Because p-1000 was updated with newest activity, it should be sorted to the very top in memory
+      expect(result[0].passId).toBe('p-1000');
     } finally {
       from.mockRestore();
     }
