@@ -70,9 +70,11 @@ describe('customersService - balances', () => {
       in: balanceIn,
     };
 
-    const from = vi.spyOn(supabase, 'from')
-      .mockReturnValueOnce(passes as unknown as ReturnType<typeof supabase.from>)
-      .mockReturnValue(balances as unknown as ReturnType<typeof supabase.from>);
+    const from = vi.spyOn(supabase, 'from').mockImplementation(((table: string) => {
+      if (table === 'Pass') return passes as any;
+      if (table === 'PassStampBalance') return balances as any;
+      return {} as any;
+    }) as any);
 
     try {
       const result = await listCustomers('b-1');
@@ -119,9 +121,11 @@ describe('customersService - balances', () => {
       in: vi.fn().mockResolvedValue({ data: [], error: null }),
     };
 
-    const from = vi.spyOn(supabase, 'from')
-      .mockReturnValueOnce(passes as unknown as ReturnType<typeof supabase.from>)
-      .mockReturnValue(balances as unknown as ReturnType<typeof supabase.from>);
+    const from = vi.spyOn(supabase, 'from').mockImplementation(((table: string) => {
+      if (table === 'Pass') return passes as any;
+      if (table === 'PassStampBalance') return balances as any;
+      return {} as any;
+    }) as any);
 
     try {
       const result = await listCustomers('b-1');
@@ -148,6 +152,139 @@ describe('customersService - balances', () => {
     try {
       await listCustomers('b-1', { limit: 50 });
       expect(limitMock).toHaveBeenCalledWith(50);
+    } finally {
+      from.mockRestore();
+    }
+  });
+
+  it('retrieves full dataset across multiple pages when total passes exceed PostgREST 1000 max_rows server limit', async () => {
+    // 1005 passes in total (exceeds PostgREST max_rows = 1000)
+    const mockPasses = Array.from({ length: 1005 }, (_, i) => ({
+      id: `p-${i}`,
+      customerId: `c-${i}`,
+      createdAt: '2026-10-01',
+      updatedAt: '2026-10-06',
+      customer: { name: `Cliente ${i}` },
+    }));
+
+    const rangeMock = vi.fn().mockImplementation((from: number, to: number) => {
+      // Simulate PostgREST max_rows = 1000: returns at most 1000 rows per request
+      const requested = mockPasses.slice(from, to + 1);
+      const capped = requested.slice(0, 1000);
+      return Promise.resolve({ data: capped, error: null });
+    });
+
+    const orderMock = vi.fn().mockReturnValue({
+      range: rangeMock,
+    });
+
+    const passes = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      order: orderMock,
+    };
+
+    const balances = {
+      select: vi.fn().mockReturnThis(),
+      in: vi.fn().mockResolvedValue({ data: [], error: null }),
+    };
+
+    const from = vi.spyOn(supabase, 'from').mockImplementation(((table: string) => {
+      if (table === 'Pass') return passes as any;
+      if (table === 'PassStampBalance') return balances as any;
+      return {} as any;
+    }) as any);
+
+    try {
+      const result = await listCustomers('b-1');
+
+      // Verifies all 1005 passes are returned without truncation
+      expect(result).toHaveLength(1005);
+      expect(result[0].passId).toBe('p-0');
+      expect(result[1004].passId).toBe('p-1004');
+
+      // Verifies range was called twice: 0-999 (returned 1000) and 1000-1999 (returned 5)
+      expect(rangeMock).toHaveBeenCalledTimes(2);
+      expect(rangeMock).toHaveBeenNthCalledWith(1, 0, 999);
+      expect(rangeMock).toHaveBeenNthCalledWith(2, 1000, 1999);
+
+      // Verifies stable immutable ordering by id to prevent pagination shift
+      expect(orderMock).toHaveBeenCalledWith('id', { ascending: true });
+    } finally {
+      from.mockRestore();
+    }
+  });
+
+  it('preserves all 1001 customers without duplicates or omissions even if activity changes between pages', async () => {
+    // 1001 passes with immutable IDs p-0000 to p-1000
+    const mockPasses = Array.from({ length: 1001 }, (_, i) => ({
+      id: `p-${String(i).padStart(4, '0')}`,
+      customerId: `c-${i}`,
+      createdAt: '2026-10-01',
+      updatedAt: '2026-10-06T10:00:00Z',
+      customer: { name: `Cliente ${i}` },
+    }));
+
+    let callCount = 0;
+    const rangeMock = vi.fn().mockImplementation((_from: number, _to: number) => {
+      callCount++;
+      if (callCount === 1) {
+        // First page returned 0..999
+        return Promise.resolve({ data: mockPasses.slice(0, 1000), error: null });
+      }
+      // Between page 1 and page 2, customer p-1000 receives a stamp (activity updated to NOW)
+      mockPasses[1000].updatedAt = '2026-10-27T20:00:00Z';
+      return Promise.resolve({ data: mockPasses.slice(1000, 1001), error: null });
+    });
+
+    const orderMock = vi.fn().mockReturnValue({
+      range: rangeMock,
+    });
+
+    const passes = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      order: orderMock,
+    };
+
+    const balances = {
+      select: vi.fn().mockReturnThis(),
+      in: vi.fn().mockResolvedValue({ data: [], error: null }),
+    };
+
+    const from = vi.spyOn(supabase, 'from').mockImplementation(((table: string) => {
+      if (table === 'Pass') return passes as any;
+      if (table === 'PassStampBalance') return balances as any;
+      return {} as any;
+    }) as any);
+
+    try {
+      const result = await listCustomers('b-1');
+      // Verifies all 1001 unique passes are retrieved without omission or duplicate
+      expect(result).toHaveLength(1001);
+      const uniqueIds = new Set(result.map((r) => r.passId));
+      expect(uniqueIds.size).toBe(1001);
+      // Because p-1000 was updated with newest activity, it should be sorted to the very top in memory
+      expect(result[0].passId).toBe('p-1000');
+    } finally {
+      from.mockRestore();
+    }
+  });
+
+  it('applies range limit for partial page when explicit limit is smaller than 1000', async () => {
+    const rangeMock = vi.fn().mockResolvedValue({ data: [], error: null });
+    const orderMock = vi.fn().mockReturnValue({
+      range: rangeMock,
+    });
+    const passes = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      order: orderMock,
+    };
+    const from = vi.spyOn(supabase, 'from').mockReturnValueOnce(passes as unknown as ReturnType<typeof supabase.from>);
+    try {
+      await listCustomers('b-1', { limit: 50 });
+      expect(rangeMock).toHaveBeenCalledWith(0, 49);
     } finally {
       from.mockRestore();
     }
@@ -318,7 +455,7 @@ describe('customersService - balances', () => {
     }));
 
     let pageCount = 0;
-    const scanRangeMock = vi.fn().mockImplementation((from: number, to: number) => {
+    const scanRangeMock = vi.fn().mockImplementation((_from: number, _to: number) => {
       pageCount++;
       if (pageCount === 1) {
         return Promise.resolve({ data: mockScans.slice(0, 1000), error: null });
@@ -501,7 +638,7 @@ describe('customersService - balances', () => {
     }));
 
     let callCount = 0;
-    const rangeMock = vi.fn().mockImplementation((from: number, to: number) => {
+    const rangeMock = vi.fn().mockImplementation((_from: number, _to: number) => {
       callCount++;
       if (callCount === 1) {
         return Promise.resolve({ data: mockPasses.slice(0, 1000), error: null });
