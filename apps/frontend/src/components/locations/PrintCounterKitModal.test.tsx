@@ -201,4 +201,57 @@ describe('PrintCounterKitModal', () => {
 
     expect(onClose).toHaveBeenCalled();
   });
+
+  it('actualiza el incentivo por defecto si cardConfig llega de forma asíncrona pero conserva edición manual', async () => {
+    // 1. Montar inicialmente con cardConfig = null (cargando)
+    const { rerender } = render(
+      <PrintCounterKitModal
+        location={mockLocation}
+        cardConfig={null}
+        onClose={vi.fn()}
+      />,
+    );
+
+    // Debe tener el valor por defecto genérico de 10 sellos
+    expect(screen.getByDisplayValue('Junta 10 sellos y llévate tu premio gratis')).toBeInTheDocument();
+
+    // 2. cardConfig termina de cargar con 8 sellos
+    rerender(
+      <PrintCounterKitModal
+        location={mockLocation}
+        cardConfig={mockCardConfig}
+        onClose={vi.fn()}
+      />,
+    );
+
+    // Debe actualizarse automáticamente a los 8 sellos de la tarjeta
+    expect(screen.getByDisplayValue('Junta 8 sellos y llévate Café Americano Gratis')).toBeInTheDocument();
+
+    // 3. Si el usuario edita manualmente el texto
+    const input = screen.getByDisplayValue('Junta 8 sellos y llévate Café Americano Gratis');
+    await userEvent.clear(input);
+    await userEvent.type(input, '¡Promo especial de verano!');
+    expect(screen.getByDisplayValue('¡Promo especial de verano!')).toBeInTheDocument();
+
+    // 4. Actualizar nuevamente cardConfig no debe sobreescribir la edición manual del usuario
+    const updatedCard = {
+      ...mockCardConfig,
+      rewards: [{ name: 'Muffin Gratis', target: 6, currency: 'STAMPS' }],
+    } as unknown as CardConfigDto;
+
+    rerender(
+      <PrintCounterKitModal
+        location={mockLocation}
+        cardConfig={updatedCard}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByDisplayValue('¡Promo especial de verano!')).toBeInTheDocument();
+
+    // 5. Al pulsar "Restablecer", vuelve al default de la tarjeta actual
+    const resetBtn = screen.getByRole('button', { name: 'Restablecer' });
+    await userEvent.click(resetBtn);
+    expect(screen.getByDisplayValue('Junta 6 sellos y llévate Muffin Gratis')).toBeInTheDocument();
+  });
 });

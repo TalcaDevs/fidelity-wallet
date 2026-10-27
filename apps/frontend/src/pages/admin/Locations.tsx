@@ -19,7 +19,7 @@ type Editing =
   | { kind: 'new' }
   | { kind: 'edit'; location: LocationDto }
   | { kind: 'qr'; location: LocationDto }
-  | { kind: 'kit'; location: LocationDto }
+  | { kind: 'kit'; location: LocationDto; returnTo?: 'qr' }
   | null;
 
 const addressOf = (l: LocationDto) => [l.address, l.commune, l.region].filter(Boolean).join(', ');
@@ -29,7 +29,7 @@ export function Locations({ brandId }: { brandId: string | null }) {
   const fetcher = useCallback(() => listLocations(brandId!), [brandId]);
   const { data, loading, error, setData } = useAsyncData(brandId ? fetcher : null);
   const cardFetcher = useCallback(() => (brandId ? getCard(brandId) : Promise.resolve(null)), [brandId]);
-  const { data: cardConfig } = useAsyncData(brandId ? cardFetcher : null);
+  const { data: cardConfig, loading: cardLoading } = useAsyncData(brandId ? cardFetcher : null);
   const { subscription } = useSubscription(brandId);
   const { notifySuccess, notifyError } = useToast();
   const [editing, setEditing] = useState<Editing>(null);
@@ -142,7 +142,9 @@ export function Locations({ brandId }: { brandId: string | null }) {
                 <button
                   type="button"
                   onClick={() => setEditing({ kind: 'kit', location: l })}
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-extrabold bg-brand-blue hover:bg-blue-600 text-white shadow-sm shadow-brand-blue/30 flex items-center gap-1.5 transition-all active:scale-95"
+                  disabled={cardLoading}
+                  title={cardLoading ? 'Cargando configuración de tarjeta...' : undefined}
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-extrabold bg-brand-blue hover:bg-blue-600 text-white shadow-sm shadow-brand-blue/30 flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-60 cursor-pointer disabled:cursor-not-allowed"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
@@ -169,6 +171,8 @@ export function Locations({ brandId }: { brandId: string | null }) {
           <LocationQrPanel
             location={editing.location}
             cardConfig={cardConfig}
+            cardLoading={cardLoading}
+            onOpenKit={() => setEditing({ kind: 'kit', location: editing.location, returnTo: 'qr' })}
             onSlugChange={(slug) => {
               const updated = { ...editing.location, slug };
               upsert(updated);
@@ -182,7 +186,13 @@ export function Locations({ brandId }: { brandId: string | null }) {
         <PrintCounterKitModal
           location={editing.location}
           cardConfig={cardConfig}
-          onClose={() => setEditing(null)}
+          onClose={() => {
+            if (editing.returnTo === 'qr') {
+              setEditing({ kind: 'qr', location: editing.location });
+            } else {
+              setEditing(null);
+            }
+          }}
         />
       )}
 

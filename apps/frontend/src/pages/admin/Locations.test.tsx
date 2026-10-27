@@ -68,4 +68,37 @@ describe('Locations Page', () => {
 
     expect(await screen.findByText('Link y QR · Sucursal Centro')).toBeInTheDocument();
   });
+
+  it('abre el Kit de Mesón desde Link y QR manteniendo un solo modal activo y permitiendo regresar', async () => {
+    render(<Locations brandId="brand-1" />);
+
+    // 1. Abrir Link y QR
+    const qrButton = await screen.findByRole('button', { name: 'Link y QR' });
+    await userEvent.click(qrButton);
+    expect(await screen.findByText('Link y QR · Sucursal Centro')).toBeInTheDocument();
+
+    // 2. Abrir Kit de Mesón desde dentro del modal de Link y QR
+    const openKitFromQrBtn = screen.getByRole('button', { name: /Kit para Mesón \/ Caja/i });
+    await userEvent.click(openKitFromQrBtn);
+
+    // Debe mostrar el modal del Kit y no competir con el modal de Link y QR
+    expect(await screen.findByText('Kit para Imprimir en tu Local')).toBeInTheDocument();
+    expect(screen.queryByText('Link y QR · Sucursal Centro')).not.toBeInTheDocument();
+
+    // 3. Probar navegación con teclado (Tab) desde el botón Cerrar
+    const closeKitBtn = screen.getByRole('button', { name: 'Cerrar' });
+    closeKitBtn.focus();
+    expect(document.activeElement).toBe(closeKitBtn);
+    await userEvent.tab();
+    expect(document.activeElement).not.toBe(closeKitBtn);
+
+    // 4. Cerrar el Kit de Mesón debe regresar a Link y QR
+    await userEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
+    expect(await screen.findByText('Link y QR · Sucursal Centro')).toBeInTheDocument();
+    expect(screen.queryByText('Kit para Imprimir en tu Local')).not.toBeInTheDocument();
+
+    // 5. Cerrar Link y QR vuelve a la lista principal
+    await userEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
+    expect(screen.queryByText('Link y QR · Sucursal Centro')).not.toBeInTheDocument();
+  });
 });

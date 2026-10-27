@@ -25,7 +25,13 @@ export function Modal({
   useDialogFocus(trapFocus, dialogRef);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') {
+        const dialogs = Array.from(document.querySelectorAll('[role="dialog"]'));
+        if (dialogs.length > 0 && dialogs[dialogs.length - 1] !== dialogRef.current) {
+          return;
+        }
+        onClose();
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);

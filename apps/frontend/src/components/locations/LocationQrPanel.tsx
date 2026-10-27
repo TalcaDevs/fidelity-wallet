@@ -14,10 +14,14 @@ export function LocationQrPanel({
   location,
   onSlugChange,
   cardConfig,
+  cardLoading = false,
+  onOpenKit,
 }: {
   location: LocationDto;
   onSlugChange: (slug: string) => void;
   cardConfig?: CardConfigDto | null;
+  cardLoading?: boolean;
+  onOpenKit?: () => void;
 }) {
   const { notifySuccess } = useToast();
   const [slugDraft, setSlugDraft] = useState(location.slug);
@@ -26,6 +30,14 @@ export function LocationQrPanel({
   const [showKit, setShowKit] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const url = publicJoinUrl(location.slug);
+
+  const handleOpenKit = () => {
+    if (onOpenKit) {
+      onOpenKit();
+    } else {
+      setShowKit(true);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -84,8 +96,10 @@ export function LocationQrPanel({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => setShowKit(true)}
-              className="px-3 py-2 rounded-lg text-sm font-bold bg-brand-blue text-white hover:bg-blue-600 flex items-center gap-1.5 shadow-sm cursor-pointer transition-all active:scale-[0.98]"
+              onClick={handleOpenKit}
+              disabled={cardLoading}
+              title={cardLoading ? 'Cargando configuración de tarjeta...' : undefined}
+              className="px-3 py-2 rounded-lg text-sm font-bold bg-brand-blue text-white hover:bg-blue-600 flex items-center gap-1.5 shadow-sm cursor-pointer transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
@@ -109,9 +123,10 @@ export function LocationQrPanel({
             </a>
             <button
               type="button"
-              onClick={() => setShowKit(true)}
-              disabled={!qr}
-              className="px-3 py-2 rounded-lg text-sm font-bold bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-brand-blue/10 hover:text-brand-blue disabled:opacity-50"
+              onClick={handleOpenKit}
+              disabled={!qr || cardLoading}
+              title={cardLoading ? 'Cargando configuración de tarjeta...' : undefined}
+              className="px-3 py-2 rounded-lg text-sm font-bold bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-brand-blue/10 hover:text-brand-blue disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               Imprimir
             </button>
@@ -146,7 +161,7 @@ export function LocationQrPanel({
         </p>
       </form>
 
-      {showKit && (
+      {showKit && !onOpenKit && (
         <PrintCounterKitModal
           location={location}
           cardConfig={cardConfig}

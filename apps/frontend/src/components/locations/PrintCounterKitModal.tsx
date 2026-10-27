@@ -51,6 +51,13 @@ export function PrintCounterKitModal({
   const [headline, setHeadline] = useState('¡Escanea y guarda tu tarjeta!');
   const [subheadline, setSubheadline] = useState('En Apple Wallet o Google Wallet');
   const [incentive, setIncentive] = useState(defaultIncentive);
+  const [userEditedIncentive, setUserEditedIncentive] = useState(false);
+
+  useEffect(() => {
+    if (!userEditedIncentive) {
+      setIncentive(defaultIncentive);
+    }
+  }, [defaultIncentive, userEditedIncentive]);
 
   const [qr, setQr] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
@@ -227,7 +234,10 @@ export function PrintCounterKitModal({
               {incentive !== defaultIncentive && (
                 <button
                   type="button"
-                  onClick={() => setIncentive(defaultIncentive)}
+                  onClick={() => {
+                    setUserEditedIncentive(false);
+                    setIncentive(defaultIncentive);
+                  }}
                   className="text-[11px] font-bold text-brand-blue hover:underline cursor-pointer"
                 >
                   Restablecer
@@ -238,7 +248,10 @@ export function PrintCounterKitModal({
               id={incentiveInputId}
               type="text"
               value={incentive}
-              onChange={(e) => setIncentive(e.target.value)}
+              onChange={(e) => {
+                setUserEditedIncentive(true);
+                setIncentive(e.target.value);
+              }}
               className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 font-medium focus:outline-none focus:ring-2 focus:ring-brand-blue"
               placeholder="ej. Junta 10 sellos y llévate tu premio gratis"
             />

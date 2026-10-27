@@ -63,4 +63,22 @@ describe('LocationQrPanel', () => {
 
     expect(screen.getByText('Kit para Imprimir en tu Local')).toBeInTheDocument();
   });
+
+  it('invoca onOpenKit cuando se provee la prop en lugar de montar el modal internamente', async () => {
+    const onOpenKit = vi.fn();
+    render(<LocationQrPanel location={location} onSlugChange={vi.fn()} onOpenKit={onOpenKit} />);
+
+    const kitButton = screen.getByRole('button', { name: /Kit para Mesón \/ Caja/i });
+    await userEvent.click(kitButton);
+
+    expect(onOpenKit).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Kit para Imprimir en tu Local')).not.toBeInTheDocument();
+  });
+
+  it('deshabilita los botones del kit mientras cardLoading es true', () => {
+    render(<LocationQrPanel location={location} onSlugChange={vi.fn()} cardLoading={true} />);
+
+    expect(screen.getByRole('button', { name: /Kit para Mesón \/ Caja/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Imprimir' })).toBeDisabled();
+  });
 });
