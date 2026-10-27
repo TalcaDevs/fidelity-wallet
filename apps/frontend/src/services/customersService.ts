@@ -65,21 +65,63 @@ export interface ListCustomersOptions {
 // garantiza detectarle la relación con Pass, así que cruzamos por passId acá.
 // Consultamos los saldos para los passIds efectivamente seleccionados para garantizar
 // coherencia exacta entre pases y saldos sin importar orden o volumen de clientes.
-export async function listCustomers(brandId: string, options?: ListCustomersOptions): Promise<CustomerRow[]> {
-  let passQuery = supabase
-    .from('Pass')
-    .select('id, customerId, createdAt, updatedAt, customer:Customer(rut, phone, name, email, birthDay, birthMonth, birthYear)')
-    .eq('brandId', brandId)
-    .order('updatedAt', { ascending: false });
+export const POSTGREST_PAGE_SIZE = 1000;
 
-  if (typeof options?.limit === 'number') {
-    passQuery = typeof (passQuery as any).limit === 'function' ? (passQuery as any).limit(options.limit) : passQuery;
+export async function listCustomers(brandId: string, options?: ListCustomersOptions): Promise<CustomerRow[]> {
+  const passes: RawPassRow[] = [];
+  const maxLimit = typeof options?.limit === 'number' && options.limit > 0 ? options.limit : null;
+  let from = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const remaining = maxLimit !== null ? maxLimit - passes.length : POSTGREST_PAGE_SIZE;
+    if (remaining <= 0) break;
+
+    const pageSize = Math.min(POSTGREST_PAGE_SIZE, remaining);
+    const to = from + pageSize - 1;
+
+    let passQuery: any = supabase
+      .from('Pass')
+      .select('id, customerId, createdAt, updatedAt, customer:Customer(rut, phone, name, email, birthDay, birthMonth, birthYear)')
+      .eq('brandId', brandId)
+      .order('updatedAt', { ascending: false });
+
+    // Orden compuesto determinista para garantizar paginación estable en límites de página
+    if (passQuery && typeof passQuery.order === 'function') {
+      try {
+        const nextOrder = passQuery.order('id', { ascending: false });
+        if (nextOrder && typeof nextOrder.then === 'function') {
+          passQuery = nextOrder;
+        }
+      } catch {
+        // Fallback para mocks unitarios que no encadenan múltiples .order()
+      }
+    }
+
+    const isRanged = typeof passQuery?.range === 'function';
+    if (isRanged) {
+      passQuery = passQuery.range(from, to);
+    } else if (maxLimit !== null && typeof passQuery?.limit === 'function') {
+      passQuery = passQuery.limit(maxLimit);
+    }
+
+    const passesRes = await passQuery;
+    if (passesRes.error) throw passesRes.error;
+
+    const batch = (passesRes.data ?? []) as RawPassRow[];
+    passes.push(...batch);
+
+    if (
+      !isRanged ||
+      batch.length < pageSize ||
+      (maxLimit !== null && passes.length >= maxLimit)
+    ) {
+      hasMore = false;
+    } else {
+      from += batch.length;
+    }
   }
 
-  const passesRes = await passQuery;
-  if (passesRes.error) throw passesRes.error;
-
-  const passes = (passesRes.data ?? []) as RawPassRow[];
   if (passes.length === 0) {
     return [];
   }

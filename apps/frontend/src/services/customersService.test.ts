@@ -64,9 +64,11 @@ describe('customersService - balances', () => {
       in: balanceIn,
     };
 
-    const from = vi.spyOn(supabase, 'from')
-      .mockReturnValueOnce(passes as unknown as ReturnType<typeof supabase.from>)
-      .mockReturnValue(balances as unknown as ReturnType<typeof supabase.from>);
+    const from = vi.spyOn(supabase, 'from').mockImplementation(((table: string) => {
+      if (table === 'Pass') return passes as any;
+      if (table === 'PassStampBalance') return balances as any;
+      return {} as any;
+    }) as any);
 
     try {
       const result = await listCustomers('b-1');
@@ -113,9 +115,11 @@ describe('customersService - balances', () => {
       in: vi.fn().mockResolvedValue({ data: [], error: null }),
     };
 
-    const from = vi.spyOn(supabase, 'from')
-      .mockReturnValueOnce(passes as unknown as ReturnType<typeof supabase.from>)
-      .mockReturnValue(balances as unknown as ReturnType<typeof supabase.from>);
+    const from = vi.spyOn(supabase, 'from').mockImplementation(((table: string) => {
+      if (table === 'Pass') return passes as any;
+      if (table === 'PassStampBalance') return balances as any;
+      return {} as any;
+    }) as any);
 
     try {
       const result = await listCustomers('b-1');
@@ -142,6 +146,89 @@ describe('customersService - balances', () => {
     try {
       await listCustomers('b-1', { limit: 50 });
       expect(limitMock).toHaveBeenCalledWith(50);
+    } finally {
+      from.mockRestore();
+    }
+  });
+
+  it('retrieves full dataset across multiple pages when total passes exceed PostgREST 1000 max_rows server limit', async () => {
+    // 1005 passes in total (exceeds PostgREST max_rows = 1000)
+    const mockPasses = Array.from({ length: 1005 }, (_, i) => ({
+      id: `p-${i}`,
+      customerId: `c-${i}`,
+      createdAt: '2026-10-01',
+      updatedAt: '2026-10-06',
+      customer: { name: `Cliente ${i}` },
+    }));
+
+    const rangeMock = vi.fn().mockImplementation((from: number, to: number) => {
+      // Simulate PostgREST max_rows = 1000: returns at most 1000 rows per request
+      const requested = mockPasses.slice(from, to + 1);
+      const capped = requested.slice(0, 1000);
+      return Promise.resolve({ data: capped, error: null });
+    });
+
+    const orderSecondMock = vi.fn().mockReturnValue({
+      range: rangeMock,
+    });
+
+    const orderFirstMock = vi.fn().mockReturnValue({
+      order: orderSecondMock,
+      range: rangeMock,
+    });
+
+    const passes = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      order: orderFirstMock,
+    };
+
+    const balances = {
+      select: vi.fn().mockReturnThis(),
+      in: vi.fn().mockResolvedValue({ data: [], error: null }),
+    };
+
+    const from = vi.spyOn(supabase, 'from').mockImplementation(((table: string) => {
+      if (table === 'Pass') return passes as any;
+      if (table === 'PassStampBalance') return balances as any;
+      return {} as any;
+    }) as any);
+
+    try {
+      const result = await listCustomers('b-1');
+
+      // Verifies all 1005 passes are returned without truncation
+      expect(result).toHaveLength(1005);
+      expect(result[0].passId).toBe('p-0');
+      expect(result[1004].passId).toBe('p-1004');
+
+      // Verifies range was called twice: 0-999 (returned 1000) and 1000-1999 (returned 5)
+      expect(rangeMock).toHaveBeenCalledTimes(2);
+      expect(rangeMock).toHaveBeenNthCalledWith(1, 0, 999);
+      expect(rangeMock).toHaveBeenNthCalledWith(2, 1000, 1999);
+
+      // Verifies deterministic compound ordering by updatedAt and id
+      expect(orderFirstMock).toHaveBeenCalledWith('updatedAt', { ascending: false });
+      expect(orderSecondMock).toHaveBeenCalledWith('id', { ascending: false });
+    } finally {
+      from.mockRestore();
+    }
+  });
+
+  it('applies range limit for partial page when explicit limit is smaller than 1000', async () => {
+    const rangeMock = vi.fn().mockResolvedValue({ data: [], error: null });
+    const orderMock = vi.fn().mockReturnValue({
+      range: rangeMock,
+    });
+    const passes = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      order: orderMock,
+    };
+    const from = vi.spyOn(supabase, 'from').mockReturnValueOnce(passes as unknown as ReturnType<typeof supabase.from>);
+    try {
+      await listCustomers('b-1', { limit: 50 });
+      expect(rangeMock).toHaveBeenCalledWith(0, 49);
     } finally {
       from.mockRestore();
     }
