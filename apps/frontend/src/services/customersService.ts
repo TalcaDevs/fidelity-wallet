@@ -92,9 +92,12 @@ export async function fetchBrandScans(brandId: string): Promise<RawScanRow[]> {
   while (hasMore) {
     const to = from + POSTGREST_PAGE_SIZE - 1;
 
-    let scanQuery: any = supabase
-      .from('Scan')
-      .select('id, passId, purchaseAmount, createdAt');
+    const scanTable: any = supabase.from('Scan');
+    if (typeof scanTable?.select !== 'function') {
+      break;
+    }
+
+    let scanQuery: any = scanTable.select('id, passId, purchaseAmount, createdAt');
 
     if (typeof scanQuery?.eq === 'function') {
       scanQuery = scanQuery.eq('brandId', brandId);
