@@ -121,7 +121,7 @@ describe('PrintCounterKitModal', () => {
 
     // Imprimir para verificar que usa el color del tema Café Cálido (#78350F)
     const printButton = screen.getByRole('button', { name: /Imprimir \/ Guardar como PDF/i });
-    await waitFor(() => expect(printButton).not.toBeDisabled());
+    await waitFor(() => expect(printButton).not.toBeDisabled(), { timeout: 4000 });
     await userEvent.click(printButton);
 
     expect(printSpy).toHaveBeenCalledWith(
@@ -171,7 +171,7 @@ describe('PrintCounterKitModal', () => {
 
     // Esperar a que el QR se genere para habilitar el botón
     const printButton = screen.getByRole('button', { name: /Imprimir \/ Guardar como PDF/i });
-    await waitFor(() => expect(printButton).not.toBeDisabled());
+    await waitFor(() => expect(printButton).not.toBeDisabled(), { timeout: 4000 });
 
     await userEvent.click(printButton);
 

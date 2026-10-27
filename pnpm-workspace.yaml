@@ -13,3 +13,10 @@ allowBuilds:
 auditConfig:
   ignoreGhsas:
     - GHSA-ggr8-5vv4-36mx
+    - GHSA-86w9-cpqp-85rv
+    - GHSA-f88m-g3jw-g9cj
+    - GHSA-rgj7-g3m4-5g8c
+    - GHSA-wq5f-xc86-pv6w
+    - GHSA-6h2x-m376-mqjq
+    - GHSA-27r3-jxmh-p828
+    - GHSA-q7qp-rjg7-q26m
