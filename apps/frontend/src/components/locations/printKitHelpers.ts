@@ -1,7 +1,7 @@
 import type { CardConfigDto } from '@fidelity/shared';
 
 export type PaperSize = 'A5' | 'LETTER' | 'OFICIO';
-export type ColorMode = 'BRAND' | 'MONO';
+export type ColorMode = 'BRAND' | 'MONO' | 'CUSTOM';
 
 export interface FlyerRenderOptions {
   paperSize: PaperSize;

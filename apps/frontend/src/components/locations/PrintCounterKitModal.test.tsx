@@ -104,6 +104,39 @@ describe('PrintCounterKitModal', () => {
     expect(monoButton).toHaveClass('text-brand-blue');
   });
 
+  it('permite cambiar a un estilo de local (ej. Café Cálido) y restablecer a mi marca', async () => {
+    const printSpy = vi.spyOn(printHelpers, 'printCounterFlyer').mockResolvedValue();
+
+    render(
+      <PrintCounterKitModal
+        location={mockLocation}
+        cardConfig={mockCardConfig}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const coffeeButton = screen.getByRole('button', { name: /Café Cálido/i });
+    await userEvent.click(coffeeButton);
+    expect(coffeeButton).toHaveClass('text-brand-blue');
+
+    // Imprimir para verificar que usa el color del tema Café Cálido (#78350F)
+    const printButton = screen.getByRole('button', { name: /Imprimir \/ Guardar como PDF/i });
+    await waitFor(() => expect(printButton).not.toBeDisabled());
+    await userEvent.click(printButton);
+
+    expect(printSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        colorMode: 'CUSTOM',
+        primaryColor: '#78350F',
+      }),
+    );
+
+    // Botón para restablecer a mi marca
+    const resetBrandBtn = screen.getByRole('button', { name: 'Restablecer a mi marca' });
+    await userEvent.click(resetBrandBtn);
+    expect(screen.getByRole('button', { name: /Mi Tarjeta/i })).toHaveClass('text-brand-blue');
+  });
+
   it('permite editar la promesa y restablecerla', async () => {
     render(
       <PrintCounterKitModal

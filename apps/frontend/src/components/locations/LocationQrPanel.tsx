@@ -85,7 +85,7 @@ export function LocationQrPanel({
             <button
               type="button"
               onClick={() => setShowKit(true)}
-              className="px-3 py-2 rounded-lg text-sm font-bold bg-brand-blue text-white hover:bg-blue-600 flex items-center gap-1.5 shadow-sm"
+              className="px-3 py-2 rounded-lg text-sm font-bold bg-brand-blue text-white hover:bg-blue-600 flex items-center gap-1.5 shadow-sm cursor-pointer transition-all active:scale-[0.98]"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
@@ -95,7 +95,7 @@ export function LocationQrPanel({
             <button
               type="button"
               onClick={() => void copy()}
-              className="px-3 py-2 rounded-lg text-sm font-bold bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-brand-blue/10 hover:text-brand-blue"
+              className="px-3 py-2 rounded-lg text-sm font-bold bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-brand-blue/10 hover:text-brand-blue cursor-pointer transition-all active:scale-[0.98]"
             >
               Copiar link
             </button>

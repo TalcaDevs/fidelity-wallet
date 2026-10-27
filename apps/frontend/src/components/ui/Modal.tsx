@@ -50,7 +50,7 @@ export function Modal({
           type="button"
           onClick={onClose}
           aria-label="Cerrar"
-          className="absolute top-5 right-5 sm:top-6 sm:right-6 p-2 rounded-xl text-panel-muted hover:text-panel-text hover:bg-panel-soft transition-colors focus-visible:outline-2 focus-visible:outline-panel-accent"
+          className="absolute top-5 right-5 sm:top-6 sm:right-6 p-2 rounded-xl text-panel-muted hover:text-panel-text hover:bg-panel-soft cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-panel-accent"
         >
           <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
