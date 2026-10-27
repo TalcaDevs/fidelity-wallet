@@ -9,7 +9,6 @@ import { maskIdentifier } from '../../lib/maskIdentifier';
 import { formatStampExpiry } from '../../lib/stampExpiry';
 import { useToast } from '../../hooks/useToast';
 import { customerDetailPath } from '../../components/routing/routePaths';
-import { formatBirthday } from '../../lib/formatDate';
 
 const DATE_FORMAT: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit', year: 'numeric' };
 const PAGE_SIZE = 10;
