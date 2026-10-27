@@ -220,7 +220,7 @@ describe('customersService - balances', () => {
     }));
 
     let callCount = 0;
-    const rangeMock = vi.fn().mockImplementation((from: number, to: number) => {
+    const rangeMock = vi.fn().mockImplementation((_from: number, _to: number) => {
       callCount++;
       if (callCount === 1) {
         // First page returned 0..999
