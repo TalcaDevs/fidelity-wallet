@@ -240,6 +240,26 @@ describe('Authentication forms', () => {
       expect(auth.signUp).not.toHaveBeenCalled();
     });
 
+    it('validates terms and conditions acceptance before Google registration', async () => {
+      auth.signInWithOAuth.mockResolvedValue({ error: null });
+      renderWithRouter(<SupabaseAuth initialMode="register" />);
+      const googleBtn = screen.getByRole('button', { name: /Registrarme con Google/i });
+      fireEvent.click(googleBtn);
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Debes aceptar los Términos del Servicio');
+      expect(auth.signInWithOAuth).not.toHaveBeenCalled();
+
+      // Al marcar la casilla de términos, sí permite continuar con Google
+      fireEvent.click(screen.getByRole('checkbox'));
+      fireEvent.click(googleBtn);
+      expect(auth.signInWithOAuth).toHaveBeenCalledWith({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/admin`,
+        },
+      });
+    });
+
     it('successfully registers with optional business name in metadata and auto-confirms session', async () => {
       auth.signUp.mockResolvedValue({
         data: {

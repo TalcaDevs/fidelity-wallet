@@ -84,6 +84,11 @@ export function SupabaseAuth({ initialMode }: { initialMode?: AuthMode }) {
   }, []);
 
   const handleGoogleSignIn = async () => {
+    if (mode === 'register' && !termsAccepted) {
+      setErrorMsg('Debes aceptar los Términos del Servicio y la Política de Privacidad para crear tu cuenta.');
+      return;
+    }
+
     setIsGoogleLoading(true);
     setErrorMsg('');
     try {
