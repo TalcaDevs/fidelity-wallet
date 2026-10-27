@@ -63,25 +63,136 @@ export interface ListCustomersOptions {
   limit?: number;
 }
 
+export const POSTGREST_PAGE_SIZE = 1000;
+
+interface RawScanRow {
+  passId: string;
+  purchaseAmount: number | null;
+}
+
+/**
+ * Consulta las compras registradas no anuladas de la marca paginando de forma estable
+ * en bloques de 1.000 para superar el límite max_rows de PostgREST y no omitir compras.
+ * Propaga cualquier error de consulta para evitar presentar totales en cero como datos válidos.
+ */
+export async function fetchBrandScans(brandId: string): Promise<RawScanRow[]> {
+  const allScans: RawScanRow[] = [];
+  let from = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const to = from + POSTGREST_PAGE_SIZE - 1;
+
+    let scanQuery: any = supabase
+      .from('Scan')
+      .select('passId, purchaseAmount');
+
+    if (typeof scanQuery?.eq === 'function') {
+      scanQuery = scanQuery.eq('brandId', brandId);
+    }
+
+    if (typeof scanQuery?.is === 'function' && typeof scanQuery?.not === 'function') {
+      scanQuery = scanQuery.is('voidedAt', null).not('purchaseAmount', 'is', null);
+    }
+
+    if (typeof scanQuery?.order === 'function') {
+      const firstOrder = scanQuery.order('createdAt', { ascending: false });
+      if (firstOrder && typeof firstOrder.order === 'function') {
+        try {
+          const secondOrder = firstOrder.order('id', { ascending: false });
+          if (secondOrder) {
+            scanQuery = secondOrder;
+          } else {
+            scanQuery = firstOrder;
+          }
+        } catch {
+          scanQuery = firstOrder;
+        }
+      } else if (firstOrder) {
+        scanQuery = firstOrder;
+      }
+    }
+
+    const isRanged = typeof scanQuery?.range === 'function';
+    if (isRanged) {
+      scanQuery = scanQuery.range(from, to);
+    }
+
+    const res = await scanQuery;
+    if (res?.error) throw res.error;
+
+    const batch = (res?.data ?? []) as RawScanRow[];
+    allScans.push(...batch);
+
+    if (!isRanged || batch.length < POSTGREST_PAGE_SIZE) {
+      hasMore = false;
+    } else {
+      from += batch.length;
+    }
+  }
+
+  return allScans;
+}
+
 // Dos consultas en vez de un embed: PassStampBalance es una vista y PostgREST no
 // garantiza detectarle la relación con Pass, así que cruzamos por passId acá.
 // Consultamos los saldos para los passIds efectivamente seleccionados para garantizar
 // coherencia exacta entre pases y saldos sin importar orden o volumen de clientes.
 export async function listCustomers(brandId: string, options?: ListCustomersOptions): Promise<CustomerRow[]> {
-  let passQuery = supabase
-    .from('Pass')
-    .select('id, customerId, createdAt, updatedAt, customer:Customer(rut, phone, name, email, birthDay, birthMonth, birthYear)')
-    .eq('brandId', brandId)
-    .order('updatedAt', { ascending: false });
+  const passes: RawPassRow[] = [];
+  const maxLimit = typeof options?.limit === 'number' && options.limit > 0 ? options.limit : null;
+  let from = 0;
+  let hasMore = true;
 
-  if (typeof options?.limit === 'number') {
-    passQuery = typeof (passQuery as any).limit === 'function' ? (passQuery as any).limit(options.limit) : passQuery;
+  while (hasMore) {
+    const remaining = maxLimit !== null ? maxLimit - passes.length : POSTGREST_PAGE_SIZE;
+    if (remaining <= 0) break;
+
+    const pageSize = Math.min(POSTGREST_PAGE_SIZE, remaining);
+    const to = from + pageSize - 1;
+
+    let passQuery: any = supabase
+      .from('Pass')
+      .select('id, customerId, createdAt, updatedAt, customer:Customer(rut, phone, name, email, birthDay, birthMonth, birthYear)')
+      .eq('brandId', brandId)
+      .order('updatedAt', { ascending: false });
+
+    // Orden compuesto determinista para garantizar paginación estable en límites de página
+    if (passQuery && typeof passQuery.order === 'function') {
+      try {
+        const nextOrder = passQuery.order('id', { ascending: false });
+        if (nextOrder) {
+          passQuery = nextOrder;
+        }
+      } catch {
+        // Fallback para mocks unitarios que no encadenan múltiples .order()
+      }
+    }
+
+    const isRanged = typeof passQuery?.range === 'function';
+    if (isRanged) {
+      passQuery = passQuery.range(from, to);
+    } else if (maxLimit !== null && typeof passQuery?.limit === 'function') {
+      passQuery = passQuery.limit(maxLimit);
+    }
+
+    const passesRes = await passQuery;
+    if (passesRes?.error) throw passesRes.error;
+
+    const batch = (passesRes?.data ?? []) as RawPassRow[];
+    passes.push(...batch);
+
+    if (
+      !isRanged ||
+      batch.length < pageSize ||
+      (maxLimit !== null && passes.length >= maxLimit)
+    ) {
+      hasMore = false;
+    } else {
+      from += batch.length;
+    }
   }
 
-  const passesRes = await passQuery;
-  if (passesRes.error) throw passesRes.error;
-
-  const passes = (passesRes.data ?? []) as RawPassRow[];
   if (passes.length === 0) {
     return [];
   }
@@ -101,29 +212,10 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
     );
   }
 
-  // Consultar compras registradas no anuladas asociadas a la marca
-  const scanPromise = (async () => {
-    try {
-      const scanQuery = supabase
-        .from('Scan')
-        .select('passId, purchaseAmount')
-        .eq('brandId', brandId);
-
-      const filteredScanQuery =
-        typeof (scanQuery as any).is === 'function' && typeof (scanQuery as any).not === 'function'
-          ? (scanQuery as any).is('voidedAt', null).not('purchaseAmount', 'is', null)
-          : scanQuery;
-
-      const res = await filteredScanQuery;
-      return res?.data ?? [];
-    } catch {
-      return [];
-    }
-  })();
-
+  // Consultar compras registradas de forma paginada y en paralelo a los saldos
   const [balanceResults, rawScans] = await Promise.all([
     Promise.all(balancePromises),
-    scanPromise,
+    fetchBrandScans(brandId),
   ]);
 
   const failed = balanceResults.find((res) => res.error);
@@ -137,7 +229,7 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
   }
 
   const purchases = new Map<string, { total: number; count: number }>();
-  for (const scan of ((rawScans ?? []) as { passId: string; purchaseAmount: number | null }[])) {
+  for (const scan of ((rawScans ?? []) as RawScanRow[])) {
     if (scan.passId && typeof scan.purchaseAmount === 'number' && scan.purchaseAmount > 0) {
       const current = purchases.get(scan.passId) ?? { total: 0, count: 0 };
       current.total += scan.purchaseAmount;

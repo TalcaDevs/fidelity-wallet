@@ -338,4 +338,39 @@ describe('Customers page (Ley 19.628)', () => {
     // Ensure CSV export button is not rendered
     expect(screen.queryByText('Exportar CSV')).not.toBeInTheDocument();
   });
+
+  it('displays error alert with retry button when fetching customers fails, and reloads on click', async () => {
+    const listSpy = vi.spyOn(customersService, 'listCustomers')
+      .mockRejectedValueOnce(new Error('database unavailable'))
+      .mockResolvedValueOnce([
+        {
+          passId: 'p-1',
+          customerId: 'c-1',
+          name: 'Cliente Recuperado',
+          rut: '11111111-1',
+          phone: '+56911111111',
+          activeStamps: 4,
+          nextExpiryAt: null,
+          joinedAt: '2026-09-20T12:00:00Z',
+          lastActivityAt: '2026-09-24T12:00:00Z',
+        },
+      ]);
+
+    render(<MemoryRouter><Customers brandId="m-1" merchantId="m-1" /></MemoryRouter>);
+
+    await waitFor(() => {
+      expect(screen.getByText('No pudimos cargar tus clientes.')).toBeInTheDocument();
+    });
+
+    const retryBtn = screen.getByRole('button', { name: 'Reintentar' });
+    expect(retryBtn).toBeInTheDocument();
+
+    fireEvent.click(retryBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Cliente Recuperado')).toBeInTheDocument();
+    });
+
+    expect(listSpy).toHaveBeenCalledTimes(2);
+  });
 });

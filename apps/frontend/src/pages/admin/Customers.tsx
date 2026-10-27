@@ -69,6 +69,7 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
 
   const fetchCustomers = useCallback(async (id: string) => {
     setLoading(true);
+    setError(null);
     try {
       setCustomers(await listCustomers(id));
     } catch (err) {
@@ -309,7 +310,7 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
         <p className="text-panel-muted text-sm sm:text-base">Tu base de datos: quién vuelve y cuántos sellos lleva.</p>
       </header>
 
-      {error && <ErrorAlert message={error} />}
+      {error && <ErrorAlert message={error} onRetry={brandId ? () => fetchCustomers(brandId) : undefined} />}
 
       {/* Tarjetas resumen de clientes y compras registradas */}
       {!loading && customers.length > 0 && (
