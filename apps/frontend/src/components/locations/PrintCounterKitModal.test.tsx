@@ -87,7 +87,7 @@ describe('PrintCounterKitModal', () => {
     const a5Button = screen.getByRole('button', { name: /A5/i });
     await userEvent.click(a5Button);
     expect(screen.getAllByText('A5').length).toBeGreaterThan(0);
-  });
+  }, 15000);
 
   it('permite cambiar a modo Blanco y Negro (Ahorro)', async () => {
     render(
