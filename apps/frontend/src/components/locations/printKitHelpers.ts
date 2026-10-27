@@ -57,7 +57,7 @@ export function generateFlyerHtml(options: FlyerRenderOptions): string {
   const pageSizeRule = isA5
     ? 'a5 portrait'
     : isOficio
-      ? 'legal portrait'
+      ? '216mm 330mm'
       : 'letter portrait';
 
   const qrSize = isA5 ? '210px' : isOficio ? '280px' : '260px';

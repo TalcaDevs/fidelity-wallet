@@ -82,7 +82,7 @@ describe('printKitHelpers', () => {
 
     it('genera HTML con tamaño Oficio cuando se selecciona OFICIO', () => {
       const html = generateFlyerHtml({ ...baseOptions, paperSize: 'OFICIO' });
-      expect(html).toContain('size: legal portrait');
+      expect(html).toContain('size: 216mm 330mm');
     });
 
     it('aplica paleta de alto contraste en modo MONO', () => {
