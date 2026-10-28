@@ -10,6 +10,8 @@ import { TypeStep } from './TypeStep';
 import { useCardEditor } from './useCardEditor';
 import { usePanelMotion } from '../../../hooks/usePanelMotion';
 import { PANEL_PAGE } from '../../../components/admin/panelStyles';
+import { Link } from 'react-router-dom';
+import { ROUTES } from '../../../components/routing/routePaths';
 
 const STEPS = ['Tipo', 'Información', 'Diseño', 'Detalles'] as const;
 const STEP_INDEX = { TYPE: 0, INFO: 1, DESIGN: 2, DETAILS: 3 } as const;
@@ -204,6 +206,26 @@ function CardEditorPage({ brandId }: { brandId: string }) {
         </div>
         <div className="lg:sticky lg:top-6">
           <CardPreview config={config} brandName={saved.brandName} face={step === 3 ? 'DETAILS' : 'FRONT'} />
+          {saved.locations > 0 && (
+            <div className="mt-4 p-4 rounded-2xl bg-panel-surface border border-panel-border shadow-sm flex items-start gap-3">
+              <div className="w-8 h-8 rounded-xl bg-brand-blue/10 text-brand-blue flex items-center justify-center shrink-0 text-base">
+                🖨️
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-extrabold text-panel-text">Material para tu mesón o caja</p>
+                <p className="text-[11px] text-panel-muted mt-0.5 leading-relaxed">
+                  Descarga el kit para imprimir (Carta o A5) con tu logo y QR para que tus clientes se registren solos al pagar.
+                </p>
+                <Link
+                  to={ROUTES.locations}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-panel-accent hover:underline mt-2"
+                >
+                  <span>Ver en Sucursales</span>
+                  <span>→</span>
+                </Link>
+              </div>
+            </div>
+          )}
           {saved.customers > 0 && (
             <p className="text-xs text-panel-muted mt-3 px-2">
               Al guardar, los cambios llegan también a {saved.customers === 1 ? 'el cliente que ya tiene' : `los ${saved.customers} clientes que ya tienen`} la tarjeta.

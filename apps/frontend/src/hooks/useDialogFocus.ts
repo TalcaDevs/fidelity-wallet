@@ -13,6 +13,10 @@ export function useDialogFocus(open: boolean, dialogRef: RefObject<HTMLElement |
     (focusable()[0] ?? dialog).focus();
 
     const onKeyDown = (event: KeyboardEvent) => {
+      const activeDialog = document.activeElement instanceof Element ? document.activeElement.closest('[role="dialog"]') : null;
+      if (activeDialog && activeDialog !== dialog) {
+        return;
+      }
       if (event.key === 'Escape' && onClose) {
         event.preventDefault();
         onClose();
