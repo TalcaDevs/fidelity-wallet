@@ -205,10 +205,14 @@ export function RedirectIfAuthenticated({
   }
 
   // Solo respetamos destinos que pertenezcan a /admin o /internal (rutas exactas o subrutas).
-  // Defensa en profundidad: previene open redirects y descarta candidatos no deseados como /scan.
+  // Defensa en profundidad: previene open redirects y descarta candidatos no deseados como /scan, /admin/login o /admin/register.
   const isAllowed = (p: string) => {
     const path = p.split('?')[0].split('#')[0];
-    return [ROUTES.admin, ROUTES.internal].some((base) => path === base || path.startsWith(`${base}/`));
+    return (
+      [ROUTES.admin, ROUTES.internal].some((base) => path === base || path.startsWith(`${base}/`)) &&
+      path !== ROUTES.login &&
+      path !== ROUTES.register
+    );
   };
   const target =
     candidate && isAllowed(candidate)

@@ -7,6 +7,7 @@ import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
 import { maskIdentifier } from '../../lib/maskIdentifier';
 import { PANEL_HEADING, PANEL_SURFACE } from '../../components/admin/panelStyles';
+import { OnboardingChecklist } from './components/OnboardingChecklist';
 
 const PASSES_ICON = <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>;
 const STAMPS_ICON = <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>;
@@ -189,6 +190,10 @@ export function Dashboard({ session, brandId }: { session: Session | null; brand
 
   return (
     <>
+      {!loading && activePasses === 0 && stampsDelivered === 0 && (
+        <OnboardingChecklist brandId={brandId} />
+      )}
+
       <header className="mb-6 sm:mb-8">
         <p className="mb-1.5 sm:mb-2 text-xs font-bold uppercase tracking-[0.16em] text-panel-accent">
           Tu programa de fidelización

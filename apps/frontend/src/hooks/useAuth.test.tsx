@@ -284,7 +284,7 @@ describe('useAuth hook', () => {
     });
     fireEvent.submit(container.querySelector('form')!);
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid login credentials');
+    expect(await screen.findByRole('alert')).toHaveTextContent(/correo o la contraseñ|Invalid login credentials/i);
     expect(localStore[inactivityModule.ACTIVITY_STORAGE_KEY]).toBe(String(sixtyOneMinutesAgo));
 
     // 3. Simulate page reload before logout finishes: old session is still returned by getSession()

@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { ROUTES, buildLoginUrl, isReturnableRoute, resolveRedirectTarget, passwordResetUrl } from './routePaths';
+import {
+  ROUTES,
+  buildLoginUrl,
+  buildRegisterUrl,
+  isReturnableRoute,
+  resolveRedirectTarget,
+  passwordResetUrl,
+} from './routePaths';
 
 describe('resolveRedirectTarget', () => {
   it('keeps an internal path', () => {
@@ -29,9 +36,10 @@ describe('isReturnableRoute', () => {
     expect(isReturnableRoute('/internal/tickets')).toBe(true);
   });
 
-  it('returns false for /scan and /admin/login', () => {
+  it('returns false for /scan, /admin/login and /admin/register', () => {
     expect(isReturnableRoute(ROUTES.scan)).toBe(false);
     expect(isReturnableRoute(ROUTES.login)).toBe(false);
+    expect(isReturnableRoute(ROUTES.register)).toBe(false);
   });
 });
 
@@ -44,8 +52,22 @@ describe('buildLoginUrl', () => {
     expect(buildLoginUrl(ROUTES.login)).toBe(ROUTES.login);
   });
 
-  it('does not append redirect query parameter when coming from scan', () => {
+  it('does not append redirect query parameter when coming from scan or register', () => {
     expect(buildLoginUrl(ROUTES.scan)).toBe(ROUTES.login);
+    expect(buildLoginUrl(ROUTES.register)).toBe(ROUTES.login);
+  });
+});
+
+describe('buildRegisterUrl', () => {
+  it('carries the destination in the query string', () => {
+    expect(buildRegisterUrl('/admin/settings')).toBe('/admin/register?redirect=%2Fadmin%2Fsettings');
+  });
+
+  it('does not point register back at itself or login/scan', () => {
+    expect(buildRegisterUrl(ROUTES.register)).toBe(ROUTES.register);
+    expect(buildRegisterUrl(ROUTES.login)).toBe(ROUTES.register);
+    expect(buildRegisterUrl(ROUTES.scan)).toBe(ROUTES.register);
+    expect(buildRegisterUrl(null)).toBe(ROUTES.register);
   });
 });
 

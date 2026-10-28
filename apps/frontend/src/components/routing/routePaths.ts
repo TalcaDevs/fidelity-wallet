@@ -1,6 +1,7 @@
 export const ROUTES = {
   home: '/',
   login: '/admin/login',
+  register: '/admin/register',
   resetPassword: '/admin/reset',
   admin: '/admin',
   dashboard: '/admin/dashboard',
@@ -45,12 +46,17 @@ export function resolveRedirectTarget(
  * - /login es el propio formulario.
  */
 export function isReturnableRoute(from: string): boolean {
-  return from !== ROUTES.login && from !== ROUTES.scan;
+  return from !== ROUTES.login && from !== ROUTES.register && from !== ROUTES.scan;
 }
 
 export function buildLoginUrl(from: string): string {
   if (!isReturnableRoute(from)) return ROUTES.login;
   return `${ROUTES.login}?redirect=${encodeURIComponent(from)}`;
+}
+
+export function buildRegisterUrl(from?: string | null): string {
+  if (!from || !isReturnableRoute(from)) return ROUTES.register;
+  return `${ROUTES.register}?redirect=${encodeURIComponent(from)}`;
 }
 
 // La URL del correo de recuperación tiene que apuntar al formulario de nueva

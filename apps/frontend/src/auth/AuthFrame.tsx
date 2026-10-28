@@ -50,12 +50,11 @@ export function AuthFrame({ title, description, children }: { title: string; des
             </div>
           </div>
         </section>
-        <section aria-labelledby="auth-title" className="relative mx-auto w-full max-w-[440px] overflow-hidden rounded-3xl border border-panel-border bg-panel-surface/95 p-6 shadow-panel backdrop-blur-xl motion-safe:animate-[fw-panel-enter_400ms_ease-out] sm:p-9">
+        <section aria-labelledby="auth-title" className="relative mx-auto w-full max-w-[440px] overflow-hidden rounded-3xl border border-panel-border bg-panel-surface/95 p-6 shadow-panel backdrop-blur-xl motion-safe:animate-[fw-panel-enter_400ms_ease-out] sm:p-8">
           <div aria-hidden="true" className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-brand-blue via-brand-yellow to-brand-orange opacity-70" />
-          <span aria-hidden="true" className="mb-6 grid h-11 w-11 place-items-center rounded-2xl bg-panel-accent/10 text-panel-accent"><WalletIcon className="h-6 w-6" /></span>
-          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-panel-muted">Tu espacio de trabajo</p>
-          <h1 id="auth-title" className="text-3xl font-extrabold tracking-tight text-panel-text">{title}</h1>
-          <p className="mb-8 mt-3 text-sm leading-relaxed text-panel-muted">{description}</p>
+          <span aria-hidden="true" className="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-panel-accent/10 text-panel-accent"><WalletIcon className="h-5 w-5" /></span>
+          <h1 id="auth-title" className="text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text">{title}</h1>
+          <p className="mb-6 mt-1.5 text-xs sm:text-sm leading-relaxed text-panel-muted">{description}</p>
           {children}
         </section>
       </main>
