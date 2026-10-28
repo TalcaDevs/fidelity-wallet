@@ -8,12 +8,30 @@ import { ErrorAlert } from '../../components/ui/ErrorAlert';
 import { maskIdentifier } from '../../lib/maskIdentifier';
 import { formatStampExpiry } from '../../lib/stampExpiry';
 import { downloadCsv, toCsv, type CsvColumn } from '../../lib/csv';
+import { formatBirthday } from '../../lib/formatDate';
 import { useToast } from '../../hooks/useToast';
 import { customerDetailPath } from '../../components/routing/routePaths';
-import { formatBirthday } from '../../lib/formatDate';
 
 const DATE_FORMAT: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit', year: 'numeric' };
 const PAGE_SIZE = 10;
+const clp = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
+
+// La exportación lleva el dato completo: es la base de datos del comercio y el
+// dueño la está pidiendo explícitamente. En pantalla se muestra enmascarado.
+const CSV_COLUMNS: CsvColumn<CustomerRow>[] = [
+  { header: 'Nombre', value: (row) => row.name ?? null },
+  { header: 'Correo', value: (row) => row.email ?? null },
+  { header: 'RUT', value: (row) => row.rut },
+  { header: 'Teléfono', value: (row) => row.phone },
+  { header: 'Cumpleaños', value: (row) => formatBirthday(row.birthDay, row.birthMonth, row.birthYear) },
+  { header: 'Sellos vigentes', value: (row) => (row.stampsEnabled === false ? '' : row.activeStamps) },
+  { header: 'Puntos vigentes', value: (row) => (row.pointsEnabled ? (row.activePoints ?? 0) : '') },
+  { header: 'Total compras ($)', value: (row) => (row.totalPurchases !== undefined ? row.totalPurchases : '') },
+  { header: 'N° compras', value: (row) => (row.purchasesCount !== undefined ? row.purchasesCount : '') },
+  { header: 'Próximo vencimiento', value: (row) => (row.nextExpiryAt ? new Date(row.nextExpiryAt).toISOString() : null) },
+  { header: 'Cliente desde', value: (row) => new Date(row.joinedAt).toISOString() },
+  { header: 'Última actividad', value: (row) => new Date(row.lastActivityAt).toISOString() },
+];
 
 export type CustomerFilter = 'all' | 'frequent' | 'new' | 'inactive';
 
@@ -56,21 +74,6 @@ export function getCustomerStatus(row: CustomerRow, now: Date): {
   };
 }
 
-// La exportación lleva el dato completo: es la base de datos del comercio y el
-// dueño la está pidiendo explícitamente. En pantalla se muestra enmascarado.
-const CSV_COLUMNS: CsvColumn<CustomerRow>[] = [
-  { header: 'Nombre', value: (row) => row.name ?? null },
-  { header: 'Correo', value: (row) => row.email ?? null },
-  { header: 'RUT', value: (row) => row.rut },
-  { header: 'Teléfono', value: (row) => row.phone },
-  { header: 'Cumpleaños', value: (row) => formatBirthday(row.birthDay, row.birthMonth, row.birthYear) },
-  { header: 'Sellos vigentes', value: (row) => row.stampsEnabled === false ? '' : row.activeStamps },
-  { header: 'Puntos vigentes', value: (row) => row.pointsEnabled ? (row.activePoints ?? 0) : '' },
-  { header: 'Próximo vencimiento', value: (row) => (row.nextExpiryAt ? new Date(row.nextExpiryAt).toISOString() : null) },
-  { header: 'Cliente desde', value: (row) => new Date(row.joinedAt).toISOString() },
-  { header: 'Última actividad', value: (row) => new Date(row.lastActivityAt).toISOString() },
-];
-
 export function Customers({ brandId, merchantId }: { brandId: string | null; merchantId: string | null }) {
   const { notifySuccess, notifyError } = useToast();
 
@@ -85,6 +88,7 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
 
   const fetchCustomers = useCallback(async (id: string) => {
     setLoading(true);
+    setError(null);
     try {
       setCustomers(await listCustomers(id));
     } catch (err) {
@@ -94,6 +98,16 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
       setLoading(false);
     }
   }, []);
+
+    const handleExport = () => {
+    if (customers.length === 0) {
+      notifyError('Todavía no tienes clientes para exportar.');
+      return;
+    }
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadCsv(`clientes-${stamp}.csv`, toCsv(customers, CSV_COLUMNS));
+    notifySuccess(`Exportamos ${customers.length} cliente(s) a CSV.`);
+  };
 
   const handleConfirmDelete = async () => {
     if (!brandId || !merchantId || !customerToDelete) return;
@@ -131,6 +145,23 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
     return { all: customers.length, frequent, new: newCust, inactive };
   }, [customers, now]);
 
+  const purchaseMetrics = useMemo(() => {
+    let totalPurchases = 0;
+    let totalPurchasesCount = 0;
+    let customersWithPurchases = 0;
+
+    for (const c of customers) {
+      const amount = c.totalPurchases ?? 0;
+      const count = c.purchasesCount ?? 0;
+      totalPurchases += amount;
+      totalPurchasesCount += count;
+      if (amount > 0) customersWithPurchases++;
+    }
+
+    const averageTicket = totalPurchasesCount > 0 ? Math.round(totalPurchases / totalPurchasesCount) : 0;
+    return { totalPurchases, totalPurchasesCount, customersWithPurchases, averageTicket };
+  }, [customers]);
+
   const term = search.trim().toLowerCase();
   const visible = useMemo(() => {
     return customers.filter((row) => {
@@ -155,16 +186,6 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
     return visible.slice(startIndex, startIndex + PAGE_SIZE);
   }, [visible, currentPage]);
 
-  const handleExport = () => {
-    if (customers.length === 0) {
-      notifyError('Todavía no tienes clientes para exportar.');
-      return;
-    }
-    const stamp = new Date().toISOString().slice(0, 10);
-    downloadCsv(`clientes-${stamp}.csv`, toCsv(customers, CSV_COLUMNS));
-    notifySuccess(`Exportamos ${customers.length} cliente(s) a CSV.`);
-  };
-
   const getEmptyMessage = () => {
     if (customers.length === 0) {
       return {
@@ -188,7 +209,7 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
     if (loading) {
       return Array.from({ length: 3 }).map((_, i) => (
         <tr key={i}>
-          <td colSpan={5} className="p-5">
+          <td colSpan={6} className="p-5">
             <Skeleton className="h-12 rounded-2xl" />
           </td>
         </tr>
@@ -199,7 +220,7 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
       const empty = getEmptyMessage();
       return (
         <tr>
-          <td colSpan={5} className="p-16 text-center">
+          <td colSpan={6} className="p-16 text-center">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-panel-soft text-panel-muted mb-4">
               <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -271,6 +292,16 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
               )}
             </div>
           </td>
+          <td className="p-4 sm:p-5 whitespace-nowrap">
+            <div className="font-extrabold text-panel-text tabular-nums text-xs sm:text-sm">
+              {(row.totalPurchases ?? 0) > 0 ? clp.format(row.totalPurchases!) : '—'}
+            </div>
+            {(row.purchasesCount ?? 0) > 0 && (
+              <span className="block text-[11px] text-panel-muted font-medium mt-0.5">
+                {row.purchasesCount} {row.purchasesCount === 1 ? 'compra' : 'compras'}
+              </span>
+            )}
+          </td>
           <td className="p-4 sm:p-5 text-panel-muted font-medium text-xs sm:text-sm whitespace-nowrap">
             {new Date(row.joinedAt).toLocaleDateString([], DATE_FORMAT)}
           </td>
@@ -303,21 +334,59 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
 
   return (
     <>
-      <header className="mb-8 flex flex-col md:flex-row md:justify-between md:items-center gap-6">
+      <header className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text"><PanelTitle text="Clientes" /></h1>
           <p className="text-panel-muted text-sm sm:text-base">Tu base de datos: quién vuelve y cuántos sellos lleva.</p>
         </div>
         <button
+          type="button"
           onClick={handleExport}
-          className="px-6 py-3 bg-panel-primary hover:bg-panel-primary/90 text-white shadow-lg shadow-brand-blue/20 rounded-xl font-bold transition-all flex items-center gap-2 shrink-0"
+          className="px-4 py-2.5 bg-panel-primary hover:bg-panel-primary/90 text-white shadow-md shadow-brand-blue/20 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 shrink-0 self-start sm:self-auto cursor-pointer active:scale-95"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-          Exportar CSV
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          <span>Exportar CSV</span>
         </button>
       </header>
 
-      {error && <ErrorAlert message={error} />}
+      {error && <ErrorAlert message={error} onRetry={brandId ? () => fetchCustomers(brandId) : undefined} />}
+
+      {/* Tarjetas resumen de clientes y compras registradas */}
+      {!loading && customers.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6" aria-label="Resumen de clientes y compras">
+          <div className="bg-panel-surface p-5 rounded-2xl border border-panel-border shadow-2xs">
+            <span className="text-xs font-bold uppercase tracking-wider text-panel-muted block mb-2">Total Clientes</span>
+            <div className="text-2xl font-extrabold text-panel-text tabular-nums">
+              {counts.all}
+            </div>
+            <p className="text-xs text-panel-muted mt-1">
+              {counts.frequent} frecuentes · {counts.new} nuevos
+            </p>
+          </div>
+
+          <div className="bg-panel-surface p-5 rounded-2xl border border-panel-border shadow-2xs">
+            <span className="text-xs font-bold uppercase tracking-wider text-panel-muted block mb-2">Compras Registradas</span>
+            <div className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums">
+              {clp.format(purchaseMetrics.totalPurchases)}
+            </div>
+            <p className="text-xs text-panel-muted mt-1">
+              {purchaseMetrics.customersWithPurchases} {purchaseMetrics.customersWithPurchases === 1 ? 'cliente con compras' : 'clientes con compras'}
+            </p>
+          </div>
+
+          <div className="bg-panel-surface p-5 rounded-2xl border border-panel-border shadow-2xs">
+            <span className="text-xs font-bold uppercase tracking-wider text-panel-muted block mb-2">Ticket Promedio</span>
+            <div className="text-2xl font-extrabold text-panel-text tabular-nums">
+              {purchaseMetrics.averageTicket > 0 ? clp.format(purchaseMetrics.averageTicket) : '—'}
+            </div>
+            <p className="text-xs text-panel-muted mt-1">
+              Por compra registrada en caja
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="w-full md:max-w-sm">
@@ -403,6 +472,7 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
               <tr className="bg-panel-soft border-b border-panel-border backdrop-blur-sm">
                 <th className="px-4 py-3.5 sm:px-6 sm:py-4 text-xs sm:text-sm font-bold text-panel-muted uppercase tracking-wider">Cliente</th>
                 <th className="px-4 py-3.5 sm:px-6 sm:py-4 text-xs sm:text-sm font-bold text-panel-muted uppercase tracking-wider whitespace-nowrap">Saldo vigente</th>
+                <th className="px-4 py-3.5 sm:px-6 sm:py-4 text-xs sm:text-sm font-bold text-panel-muted uppercase tracking-wider whitespace-nowrap">Compras registradas</th>
                 <th className="px-4 py-3.5 sm:px-6 sm:py-4 text-xs sm:text-sm font-bold text-panel-muted uppercase tracking-wider whitespace-nowrap">Cliente desde</th>
                 <th className="px-4 py-3.5 sm:px-6 sm:py-4 text-xs sm:text-sm font-bold text-panel-muted uppercase tracking-wider whitespace-nowrap">Última actividad</th>
                 <th className="px-4 py-3.5 sm:px-6 sm:py-4 text-xs sm:text-sm font-bold text-panel-muted uppercase tracking-wider text-right whitespace-nowrap">Acciones</th>

@@ -59,7 +59,8 @@ export default function App() {
           <Route path={ROUTES.resetPassword} element={<PasswordResetRoute onDone={finishPasswordRecovery} />} />
 
           <Route element={<RedirectIfAuthenticated session={session} membership={membership} platformAdmin={platformAdmin} />}>
-            <Route path={ROUTES.login} element={<SupabaseAuth />} />
+            <Route path={ROUTES.login} element={<SupabaseAuth initialMode="login" />} />
+            <Route path={ROUTES.register} element={<SupabaseAuth initialMode="register" />} />
           </Route>
 
           {/* Scanner: requiere sesión y rol OWNER o STAFF */}

@@ -207,6 +207,7 @@ export function Layout({
           </div>
         </aside>
         <div className="flex min-w-0 flex-1 flex-col" inert={drawerOpen}>
+          {role === 'OWNER' && isBillingEnabled && !isSuspended && <TrialBanner brandId={brandId} />}
           <header className="relative z-20 flex min-h-18 shrink-0 items-center justify-between gap-3 border-b border-panel-border bg-panel-surface/80 px-4 backdrop-blur-xl sm:px-6 lg:px-10">
             <div className="flex min-w-0 items-center gap-3">
               <button type="button" onClick={() => setIsSidebarOpen(true)} aria-label="Abrir menú" aria-controls="panel-navigation" aria-expanded={drawerOpen} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-panel-border text-panel-muted md:hidden">
@@ -217,25 +218,22 @@ export function Layout({
                 <p className="truncate text-sm font-semibold">{currentPage}</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 sm:gap-3">
-              {role === 'OWNER' && isBillingEnabled && !isSuspended && <TrialBanner brandId={brandId} />}
-              {isSuspended ? (
-                <span
-                  title="Escáner pausado por cuenta suspendida"
-                  className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-panel-soft px-3 py-2.5 text-xs font-bold text-panel-muted/60 cursor-not-allowed select-none sm:px-4"
-                >
-                  <svg className="h-4 w-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path strokeLinecap="round" strokeWidth="2" d="M4 9V4h5m6 0h5v5m0 6v5h-5m-6 0H4v-5M8 8h2v2H8zm6 0h2v2h-2zM8 14h2v2H8zm6 0h2v2h-2z" />
-                  </svg>
-                  <span>Escáner pausado</span>
-                </span>
-              ) : (
-                <Link to={ROUTES.scan} aria-label="Abrir Escáner" className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-panel-primary px-3 py-2.5 text-xs font-bold text-white shadow-sm transition-colors hover:brightness-110 sm:px-4">
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeWidth="2" d="M4 9V4h5m6 0h5v5m0 6v5h-5m-6 0H4v-5M8 8h2v2H8zm6 0h2v2h-2zM8 14h2v2H8zm6 0h2v2h-2z" /></svg>
-                  <span>Escáner</span>
-                </Link>
-              )}
-            </div>
+            {isSuspended ? (
+              <span
+                title="Escáner pausado por cuenta suspendida"
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-panel-soft px-3 py-2.5 text-xs font-bold text-panel-muted/60 cursor-not-allowed select-none sm:px-4"
+              >
+                <svg className="h-4 w-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeWidth="2" d="M4 9V4h5m6 0h5v5m0 6v5h-5m-6 0H4v-5M8 8h2v2H8zm6 0h2v2h-2zM8 14h2v2H8zm6 0h2v2h-2z" />
+                </svg>
+                <span>Escáner pausado</span>
+              </span>
+            ) : (
+              <Link to={ROUTES.scan} aria-label="Abrir Escáner" className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-panel-primary px-3 py-2.5 text-xs font-bold text-white shadow-sm transition-colors hover:brightness-110 sm:px-4">
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeWidth="2" d="M4 9V4h5m6 0h5v5m0 6v5h-5m-6 0H4v-5M8 8h2v2H8zm6 0h2v2h-2zM8 14h2v2H8zm6 0h2v2h-2z" /></svg>
+                <span>Escáner</span>
+              </Link>
+            )}
           </header>
           <main id="panel-content" tabIndex={-1} className="relative isolate flex-1 overflow-y-auto overflow-x-hidden scroll-smooth">
             <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[480px] bg-[radial-gradient(ellipse_at_top_right,#087bd710,transparent_65%)] dark:bg-[radial-gradient(ellipse_at_top_right,#087bd71c,transparent_65%)]" />

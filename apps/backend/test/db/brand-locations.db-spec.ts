@@ -476,4 +476,22 @@ describe('handle_new_user', () => {
       ).toBeNull();
     });
   });
+
+  it('usa el nombre del negocio si se provee en metadata o recurre a "Mi Comercio"', async () => {
+    await inRollback(async (tx) => {
+      const idCustom = randomUUID();
+      await signUp(tx, idCustom, { business_name: 'Cafetería Don Pepe' });
+      const brandCustom = await tx.brand.findUnique({ where: { id: idCustom } });
+      const merchantCustom = await tx.merchant.findUnique({ where: { id: idCustom } });
+      expect(brandCustom?.name).toBe('Cafetería Don Pepe');
+      expect(merchantCustom?.name).toBe('Cafetería Don Pepe');
+
+      const idDefault = randomUUID();
+      await signUp(tx, idDefault, {});
+      const brandDefault = await tx.brand.findUnique({ where: { id: idDefault } });
+      const merchantDefault = await tx.merchant.findUnique({ where: { id: idDefault } });
+      expect(brandDefault?.name).toBe('Mi Comercio');
+      expect(merchantDefault?.name).toBe('Mi Comercio');
+    });
+  });
 });

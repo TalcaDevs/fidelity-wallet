@@ -20,6 +20,8 @@ export interface CustomerRow {
   activePoints?: number;
   stampsEnabled?: boolean;
   pointsEnabled?: boolean;
+  totalPurchases?: number;
+  purchasesCount?: number;
   nextExpiryAt: string | null;
   joinedAt: string;
   lastActivityAt: string;
@@ -61,11 +63,89 @@ export interface ListCustomersOptions {
   limit?: number;
 }
 
+export interface RawScanRow {
+  id?: string;
+  passId: string;
+  purchaseAmount: number | null;
+  createdAt?: string;
+}
+
 // Dos consultas en vez de un embed: PassStampBalance es una vista y PostgREST no
 // garantiza detectarle la relación con Pass, así que cruzamos por passId acá.
 // Consultamos los saldos para los passIds efectivamente seleccionados para garantizar
 // coherencia exacta entre pases y saldos sin importar orden o volumen de clientes.
 export const POSTGREST_PAGE_SIZE = 1000;
+
+/**
+ * Consulta las compras registradas no anuladas de la marca paginando de forma estable
+ * con clave inmutable (id) y cota temporal consistente (snapshotTime) para evitar que
+ * compras concurrentes desplacen offsets o dupliquen registros.
+ * Propaga cualquier error de consulta para evitar presentar totales en cero como datos válidos.
+ */
+export async function fetchBrandScans(brandId: string): Promise<RawScanRow[]> {
+  const allScans: RawScanRow[] = [];
+  let from = 0;
+  let lastScanId: string | null = null;
+  let hasMore = true;
+  const snapshotTime = new Date().toISOString();
+
+  while (hasMore) {
+    const to = from + POSTGREST_PAGE_SIZE - 1;
+
+    const scanTable: any = supabase.from('Scan');
+    if (typeof scanTable?.select !== 'function') {
+      break;
+    }
+
+    let scanQuery: any = scanTable.select('id, passId, purchaseAmount, createdAt');
+
+    if (typeof scanQuery?.eq === 'function') {
+      scanQuery = scanQuery.eq('brandId', brandId);
+    }
+
+    if (typeof scanQuery?.is === 'function' && typeof scanQuery?.not === 'function') {
+      scanQuery = scanQuery.is('voidedAt', null).not('purchaseAmount', 'is', null);
+    }
+
+    if (typeof scanQuery?.lte === 'function') {
+      scanQuery = scanQuery.lte('createdAt', snapshotTime);
+    }
+
+    // Paginación estable por id inmutable para evitar duplicados por actividad concurrente
+    if (typeof scanQuery?.order === 'function') {
+      scanQuery = scanQuery.order('id', { ascending: true });
+    }
+
+    const hasGt = typeof scanQuery?.gt === 'function';
+    const isRanged = typeof scanQuery?.range === 'function';
+
+    if (lastScanId && hasGt) {
+      scanQuery = scanQuery.gt('id', lastScanId);
+      if (typeof scanQuery?.limit === 'function') {
+        scanQuery = scanQuery.limit(POSTGREST_PAGE_SIZE);
+      }
+    } else if (isRanged) {
+      scanQuery = scanQuery.range(from, to);
+    } else if (typeof scanQuery?.limit === 'function') {
+      scanQuery = scanQuery.limit(POSTGREST_PAGE_SIZE);
+    }
+
+    const res = await scanQuery;
+    if (res?.error) throw res.error;
+
+    const batch = (res?.data ?? []) as RawScanRow[];
+    allScans.push(...batch);
+
+    if (batch.length < POSTGREST_PAGE_SIZE) {
+      hasMore = false;
+    } else {
+      lastScanId = batch[batch.length - 1]?.id ?? null;
+      from += batch.length;
+    }
+  }
+
+  return allScans;
+}
 
 export async function listCustomers(brandId: string, options?: ListCustomersOptions): Promise<CustomerRow[]> {
   const passes: RawPassRow[] = [];
@@ -102,9 +182,9 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
     }
 
     const passesRes = await passQuery;
-    if (passesRes.error) throw passesRes.error;
+    if (passesRes?.error) throw passesRes.error;
 
-    const batch = (passesRes.data ?? []) as RawPassRow[];
+    const batch = (passesRes?.data ?? []) as RawPassRow[];
     passes.push(...batch);
 
     if (
@@ -146,7 +226,12 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
     );
   }
 
-  const balanceResults = await Promise.all(balancePromises);
+  // Consultar compras registradas de forma paginada y en paralelo a los saldos
+  const [balanceResults, rawScans] = await Promise.all([
+    Promise.all(balancePromises),
+    fetchBrandScans(brandId),
+  ]);
+
   const failed = balanceResults.find((res) => res.error);
   if (failed?.error) throw failed.error;
 
@@ -157,9 +242,20 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
     }
   }
 
+  const purchases = new Map<string, { total: number; count: number }>();
+  for (const scan of ((rawScans ?? []) as RawScanRow[])) {
+    if (scan.passId && typeof scan.purchaseAmount === 'number' && scan.purchaseAmount > 0) {
+      const current = purchases.get(scan.passId) ?? { total: 0, count: 0 };
+      current.total += scan.purchaseAmount;
+      current.count += 1;
+      purchases.set(scan.passId, current);
+    }
+  }
+
   return passes.map((row) => {
     const customer = firstOrSelf(row.customer);
     const balance = balances.get(row.id);
+    const purchase = purchases.get(row.id);
     return {
       passId: row.id,
       customerId: row.customerId,
@@ -175,6 +271,8 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
       activePoints: balance?.activePoints ?? 0,
       stampsEnabled: balance?.stampsEnabled ?? true,
       pointsEnabled: balance?.pointsEnabled ?? false,
+      totalPurchases: purchase?.total ?? 0,
+      purchasesCount: purchase?.count ?? 0,
       nextExpiryAt: balance?.nextExpiryAt ?? null,
       joinedAt: row.createdAt,
       lastActivityAt: row.updatedAt,
