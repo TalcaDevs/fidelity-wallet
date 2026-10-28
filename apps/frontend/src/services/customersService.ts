@@ -57,33 +57,107 @@ function firstOrSelf<T>(value: T | T[] | null | undefined): T | null {
   return value ?? null;
 }
 
+export interface ListCustomersOptions {
+  limit?: number;
+}
+
 // Dos consultas en vez de un embed: PassStampBalance es una vista y PostgREST no
 // garantiza detectarle la relación con Pass, así que cruzamos por passId acá.
-export async function listCustomers(brandId: string): Promise<CustomerRow[]> {
-  const [passesRes, balancesRes] = await Promise.all([
-    // Pass.updatedAt cambia con cada sello, así que sirve como última actividad
-    // sin tener que traer la tabla Scan completa.
-    supabase
+// Consultamos los saldos para los passIds efectivamente seleccionados para garantizar
+// coherencia exacta entre pases y saldos sin importar orden o volumen de clientes.
+export const POSTGREST_PAGE_SIZE = 1000;
+
+export async function listCustomers(brandId: string, options?: ListCustomersOptions): Promise<CustomerRow[]> {
+  const passes: RawPassRow[] = [];
+  const maxLimit = typeof options?.limit === 'number' && options.limit > 0 ? options.limit : null;
+  let from = 0;
+  let lastPassId: string | null = null;
+  let hasMore = true;
+
+  while (hasMore) {
+    const remaining = maxLimit !== null ? maxLimit - passes.length : POSTGREST_PAGE_SIZE;
+    if (remaining <= 0) break;
+
+    const pageSize = Math.min(POSTGREST_PAGE_SIZE, remaining);
+    const to = from + pageSize - 1;
+
+    let passQuery: any = supabase
       .from('Pass')
       .select('id, customerId, createdAt, updatedAt, customer:Customer(rut, phone, name, email, birthDay, birthMonth, birthYear)')
       .eq('brandId', brandId)
-      .order('updatedAt', { ascending: false }),
-    supabase
-      .from('PassStampBalance')
-      .select('passId, activeStamps, activePoints, stampsEnabled, pointsEnabled, nextExpiryAt')
-      .eq('brandId', brandId),
-  ]);
+      .order('id', { ascending: true });
 
-  // supabase-js no lanza: devuelve { data, error }. Sin esto, un fallo del saldo
-  // dejaría la tabla en cero y el dueño creería que sus clientes no tienen sellos.
-  const failed = [passesRes, balancesRes].find((res) => res.error);
+    const hasGt = typeof passQuery?.gt === 'function';
+    const hasRange = typeof passQuery?.range === 'function';
+
+    if (lastPassId && hasGt) {
+      passQuery = passQuery.gt('id', lastPassId);
+      if (typeof passQuery?.limit === 'function') {
+        passQuery = passQuery.limit(pageSize);
+      }
+    } else if (hasRange) {
+      passQuery = passQuery.range(from, to);
+    } else if (maxLimit !== null && typeof passQuery?.limit === 'function') {
+      passQuery = passQuery.limit(maxLimit);
+    }
+
+    const passesRes = await passQuery;
+    if (passesRes.error) throw passesRes.error;
+
+    const batch = (passesRes.data ?? []) as RawPassRow[];
+    passes.push(...batch);
+
+    if (
+      !hasRange ||
+      batch.length < pageSize ||
+      (maxLimit !== null && passes.length >= maxLimit)
+    ) {
+      hasMore = false;
+    } else {
+      lastPassId = batch[batch.length - 1]?.id ?? null;
+      from += batch.length;
+    }
+  }
+
+  if (passes.length === 0) {
+    return [];
+  }
+
+  // Ordenar en memoria por actividad reciente (updatedAt descendente).
+  // La paginación por id inmutable evita perder clientes por actividad concurrente entre páginas.
+  passes.sort((a, b) => {
+    const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+    const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+    return timeB - timeA;
+  });
+
+  const passIds = passes.map((p) => p.id);
+
+  // Consultar saldos únicamente para los pases seleccionados, por lotes para evitar desbordar URLs
+  const CHUNK_SIZE = 100;
+  const balancePromises = [];
+  for (let i = 0; i < passIds.length; i += CHUNK_SIZE) {
+    const chunk = passIds.slice(i, i + CHUNK_SIZE);
+    balancePromises.push(
+      supabase
+        .from('PassStampBalance')
+        .select('passId, activeStamps, activePoints, stampsEnabled, pointsEnabled, nextExpiryAt')
+        .in('passId', chunk),
+    );
+  }
+
+  const balanceResults = await Promise.all(balancePromises);
+  const failed = balanceResults.find((res) => res.error);
   if (failed?.error) throw failed.error;
 
-  const balances = new Map(
-    ((balancesRes.data ?? []) as RawBalanceRow[]).map((row) => [row.passId, row]),
-  );
+  const balances = new Map<string, RawBalanceRow>();
+  for (const res of balanceResults) {
+    for (const row of ((res.data ?? []) as RawBalanceRow[])) {
+      balances.set(row.passId, row);
+    }
+  }
 
-  return ((passesRes.data ?? []) as RawPassRow[]).map((row) => {
+  return passes.map((row) => {
     const customer = firstOrSelf(row.customer);
     const balance = balances.get(row.id);
     return {
@@ -137,7 +211,6 @@ export async function deleteCustomer(merchantId: string, customerId: string): Pr
     throw new Error(extractApiError(errorData) ?? 'Error al eliminar los datos del cliente.');
   }
 }
-
 
 export const HISTORY_PAGE_SIZE = 20;
 

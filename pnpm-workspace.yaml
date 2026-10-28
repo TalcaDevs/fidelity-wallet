@@ -10,6 +10,14 @@ allowBuilds:
   prisma: true
   sharp: true
   workerd: true
+overrides:
+  body-parser: '>=2.4.0'
+  multer: '>=2.5.0'
+  joi: '>=17.13.7'
+  sharp: '>=0.35.5'
+  node-forge: '>=1.4.1'
 auditConfig:
   ignoreGhsas:
     - GHSA-ggr8-5vv4-36mx
+minimumReleaseAgeExclude:
+  - node-forge@1.4.1
