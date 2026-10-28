@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { Customers } from './Customers';
 import * as customersService from '../../services/customersService';
+import * as csvLib from '../../lib/csv';
 import * as toastHook from '../../hooks/useToast';
 
 describe('Customers page (Ley 19.628)', () => {
@@ -228,5 +229,184 @@ describe('Customers page (Ley 19.628)', () => {
     expect(screen.getByText(/11 - 15/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Página siguiente de clientes' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Página anterior de clientes' })).toBeEnabled();
+  });
+
+  it('displays summary KPI cards for total customers, total registered purchases, and average ticket', async () => {
+    vi.spyOn(customersService, 'listCustomers').mockResolvedValue([
+      {
+        passId: 'p-1',
+        customerId: 'c-1',
+        name: 'Ana Compradora',
+        rut: '11111111-1',
+        phone: '+56911111111',
+        activeStamps: 4,
+        nextExpiryAt: null,
+        joinedAt: '2026-09-20T12:00:00Z',
+        lastActivityAt: '2026-09-24T12:00:00Z',
+        totalPurchases: 30000,
+        purchasesCount: 2,
+      },
+      {
+        passId: 'p-2',
+        customerId: 'c-2',
+        name: 'Bernardo Comprador',
+        rut: '22222222-2',
+        phone: '+56922222222',
+        activeStamps: 2,
+        nextExpiryAt: null,
+        joinedAt: '2026-09-20T12:00:00Z',
+        lastActivityAt: '2026-09-24T12:00:00Z',
+        totalPurchases: 20000,
+        purchasesCount: 1,
+      },
+      {
+        passId: 'p-3',
+        customerId: 'c-3',
+        name: 'Carlos Sin Compras',
+        rut: '33333333-3',
+        phone: '+56933333333',
+        activeStamps: 1,
+        nextExpiryAt: null,
+        joinedAt: '2026-09-20T12:00:00Z',
+        lastActivityAt: '2026-09-24T12:00:00Z',
+        totalPurchases: 0,
+        purchasesCount: 0,
+      },
+    ]);
+
+    render(<MemoryRouter><Customers brandId="m-1" merchantId="m-1" /></MemoryRouter>);
+
+    await waitFor(() => {
+      expect(screen.getByText('Ana Compradora')).toBeInTheDocument();
+    });
+
+    // Check KPI cards
+    expect(screen.getByText('Total Clientes')).toBeInTheDocument();
+    expect(screen.getByText('Compras Registradas')).toBeInTheDocument();
+    expect(screen.getByText('Ticket Promedio')).toBeInTheDocument();
+
+    // Total purchases: 30.000 + 20.000 = $50.000
+    expect(screen.getByText('$50.000')).toBeInTheDocument();
+    // 2 customers with purchases
+    expect(screen.getByText(/2 clientes con compras/i)).toBeInTheDocument();
+    // Average ticket: 50.000 / 3 purchases = $16.667
+    expect(screen.getByText('$16.667')).toBeInTheDocument();
+  });
+
+  it('displays registered purchases per customer in table and renders CSV export button', async () => {
+    vi.spyOn(customersService, 'listCustomers').mockResolvedValue([
+      {
+        passId: 'p-1',
+        customerId: 'c-1',
+        name: 'Ana Compradora',
+        rut: '11111111-1',
+        phone: '+56911111111',
+        activeStamps: 4,
+        nextExpiryAt: null,
+        joinedAt: '2026-09-20T12:00:00Z',
+        lastActivityAt: '2026-09-24T12:00:00Z',
+        totalPurchases: 35000,
+        purchasesCount: 2,
+      },
+      {
+        passId: 'p-2',
+        customerId: 'c-2',
+        name: 'Carlos Sin Compras',
+        rut: '22222222-2',
+        phone: '+56922222222',
+        activeStamps: 1,
+        nextExpiryAt: null,
+        joinedAt: '2026-09-20T12:00:00Z',
+        lastActivityAt: '2026-09-24T12:00:00Z',
+        totalPurchases: 0,
+        purchasesCount: 0,
+      },
+    ]);
+
+    render(<MemoryRouter><Customers brandId="m-1" merchantId="m-1" /></MemoryRouter>);
+
+    await waitFor(() => {
+      expect(screen.getByText('Ana Compradora')).toBeInTheDocument();
+    });
+
+    // Check table header
+    expect(screen.getByText('Compras registradas')).toBeInTheDocument();
+
+    // Check customer row values
+    expect(screen.getAllByText('$35.000')).toHaveLength(2);
+    expect(screen.getByText('2 compras')).toBeInTheDocument();
+
+    // Verify CSV export button is present
+    expect(screen.getByRole('button', { name: /Exportar CSV/i })).toBeInTheDocument();
+  });
+
+  it('exports customers to CSV when clicking the export button', async () => {
+    const downloadSpy = vi.spyOn(csvLib, 'downloadCsv').mockImplementation(() => {});
+    vi.spyOn(customersService, 'listCustomers').mockResolvedValue([
+      {
+        passId: 'p-1',
+        customerId: 'c-1',
+        name: 'Ana Exportable',
+        rut: '11111111-1',
+        phone: '+56911111111',
+        activeStamps: 4,
+        nextExpiryAt: null,
+        joinedAt: '2026-09-20T12:00:00Z',
+        lastActivityAt: '2026-09-24T12:00:00Z',
+        totalPurchases: 25000,
+        purchasesCount: 1,
+      },
+    ]);
+
+    render(<MemoryRouter><Customers brandId="m-1" merchantId="m-1" /></MemoryRouter>);
+
+    await waitFor(() => {
+      expect(screen.getByText('Ana Exportable')).toBeInTheDocument();
+    });
+
+    const exportBtn = screen.getByRole('button', { name: /Exportar CSV/i });
+    expect(exportBtn).toBeInTheDocument();
+    fireEvent.click(exportBtn);
+
+    expect(downloadSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/^clientes-\d{4}-\d{2}-\d{2}\.csv$/),
+      expect.stringContaining('Ana Exportable'),
+    );
+    expect(mockNotifySuccess).toHaveBeenCalledWith(expect.stringContaining('Exportamos 1 cliente(s) a CSV.'));
+  });
+
+  it('displays error alert with retry button when fetching customers fails, and reloads on click', async () => {
+    const listSpy = vi.spyOn(customersService, 'listCustomers')
+      .mockRejectedValueOnce(new Error('database unavailable'))
+      .mockResolvedValueOnce([
+        {
+          passId: 'p-1',
+          customerId: 'c-1',
+          name: 'Cliente Recuperado',
+          rut: '11111111-1',
+          phone: '+56911111111',
+          activeStamps: 4,
+          nextExpiryAt: null,
+          joinedAt: '2026-09-20T12:00:00Z',
+          lastActivityAt: '2026-09-24T12:00:00Z',
+        },
+      ]);
+
+    render(<MemoryRouter><Customers brandId="m-1" merchantId="m-1" /></MemoryRouter>);
+
+    await waitFor(() => {
+      expect(screen.getByText('No pudimos cargar tus clientes.')).toBeInTheDocument();
+    });
+
+    const retryBtn = screen.getByRole('button', { name: 'Reintentar' });
+    expect(retryBtn).toBeInTheDocument();
+
+    fireEvent.click(retryBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Cliente Recuperado')).toBeInTheDocument();
+    });
+
+    expect(listSpy).toHaveBeenCalledTimes(2);
   });
 });
