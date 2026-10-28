@@ -1,5 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useDialogFocus } from '../../hooks/useDialogFocus';
+import { WALLET_THEME } from './walletTheme';
 
 const SIZES = { md: 'max-w-md', lg: 'max-w-2xl', xl: 'max-w-4xl' } as const;
 
@@ -29,28 +31,39 @@ export function Modal({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+  const modalContent = (
+    <div
+      className={`${WALLET_THEME} fw-admin fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-sm`}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div
         ref={dialogRef}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        className={`bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 ${SIZES[size]} w-full max-h-[90dvh] overflow-y-auto shadow-2xl border border-slate-200 dark:border-slate-800 relative`}
+        className={`bg-panel-surface text-panel-text rounded-3xl p-6 sm:p-8 ${SIZES[size]} w-full max-h-[min(90dvh,calc(100dvh-3rem))] overflow-y-auto shadow-2xl border border-panel-border relative motion-safe:animate-[fw-panel-enter_240ms_ease-out]`}
       >
         <button
           type="button"
           onClick={onClose}
           aria-label="Cerrar"
-          className="absolute top-6 right-6 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+          className="absolute top-5 right-5 sm:top-6 sm:right-6 p-2 rounded-xl text-panel-muted hover:text-panel-text hover:bg-panel-soft transition-colors focus-visible:outline-2 focus-visible:outline-panel-accent"
         >
-          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+          <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
         </button>
-        <h2 id="modal-title" className="text-2xl font-black text-slate-900 dark:text-white mb-2 pr-8">{title}</h2>
-        {description && <p className="text-slate-500 mb-6">{description}</p>}
+        <h2 id="modal-title" className="text-xl sm:text-2xl font-black text-panel-text mb-2 pr-10">
+          {title}
+        </h2>
+        {description && <p className="text-sm sm:text-base text-panel-muted mb-6">{description}</p>}
         {children}
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }

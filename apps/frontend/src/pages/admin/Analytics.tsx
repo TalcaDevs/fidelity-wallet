@@ -42,7 +42,7 @@ export function Analytics({ brandId, merchantId }: AnalyticsProps) {
       return;
     }
     let isMounted = true;
-    listBrandLocations(brandId)
+    void listBrandLocations(brandId)
       .then((locs) => {
         if (isMounted) setLocations(locs || []);
       })
@@ -103,40 +103,49 @@ export function Analytics({ brandId, merchantId }: AnalyticsProps) {
       ...(activeMerchantFilter ? { merchantId: activeMerchantFilter } : {}),
     };
 
-    Promise.allSettled([
+    void Promise.allSettled([
       fetchOverviewReport(targetId, queryParams, isBrand),
       fetchPromotionsReport(targetId, queryParams, isBrand),
       fetchStaffActivityReport(targetId, queryParams, isBrand),
-    ]).then(([resOverview, resPromotions, resStaff]) => {
-      if (!isMounted) return;
+    ])
+      .then(([resOverview, resPromotions, resStaff]) => {
+        if (!isMounted) return;
 
-      // Overview
-      if (resOverview.status === 'fulfilled') {
-        setOverview(resOverview.value);
-        setErrorOverview(null);
-      } else {
-        setErrorOverview(resOverview.reason?.message || 'Error al obtener el reporte general');
-      }
-      setLoadingOverview(false);
+        // Overview
+        if (resOverview.status === 'fulfilled') {
+          setOverview(resOverview.value);
+          setErrorOverview(null);
+        } else {
+          setErrorOverview(resOverview.reason?.message || 'Error al obtener el reporte general');
+        }
+        setLoadingOverview(false);
 
-      // Promotions
-      if (resPromotions.status === 'fulfilled') {
-        setPromotions(resPromotions.value);
-        setErrorPromotions(null);
-      } else {
-        setErrorPromotions(resPromotions.reason?.message || 'Error al obtener el reporte de promociones');
-      }
-      setLoadingPromotions(false);
+        // Promotions
+        if (resPromotions.status === 'fulfilled') {
+          setPromotions(resPromotions.value);
+          setErrorPromotions(null);
+        } else {
+          setErrorPromotions(resPromotions.reason?.message || 'Error al obtener el reporte de promociones');
+        }
+        setLoadingPromotions(false);
 
-      // Staff
-      if (resStaff.status === 'fulfilled') {
-        setStaff(resStaff.value);
-        setErrorStaff(null);
-      } else {
-        setErrorStaff(resStaff.reason?.message || 'Error al obtener el reporte de personal');
-      }
-      setLoadingStaff(false);
-    });
+        // Staff
+        if (resStaff.status === 'fulfilled') {
+          setStaff(resStaff.value);
+          setErrorStaff(null);
+        } else {
+          setErrorStaff(resStaff.reason?.message || 'Error al obtener el reporte de personal');
+        }
+        setLoadingStaff(false);
+      })
+      .catch((err: unknown) => {
+        if (!isMounted) return;
+        const msg = err instanceof Error ? err.message : 'Error al obtener los reportes';
+        setErrorOverview(msg);
+        setLoadingOverview(false);
+        setLoadingPromotions(false);
+        setLoadingStaff(false);
+      });
 
     return () => {
       isMounted = false;
@@ -151,7 +160,7 @@ export function Analytics({ brandId, merchantId }: AnalyticsProps) {
     setLoadingRetention(true);
     setErrorRetention(null);
 
-    fetchRetentionReport(
+    void fetchRetentionReport(
       targetId,
       {
         dormantDays,
@@ -215,17 +224,17 @@ export function Analytics({ brandId, merchantId }: AnalyticsProps) {
   }
 
   return (
-    <div className="min-w-0 space-y-8">
+    <div className="min-w-0 space-y-6 sm:space-y-8">
       {/* Header, Location selector & Date Preset Filters */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text"><PanelTitle text="Analítica y Reportes" /></h1>
-          <p className="text-sm text-panel-muted mt-1">
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-tight text-panel-text"><PanelTitle text="Analítica y Reportes" /></h1>
+          <p className="text-xs sm:text-sm text-panel-muted mt-1">
             Métricas de fidelización, retención de clientes y desempeño operativo
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3 w-full sm:w-auto">
           {locations.length > 1 && (
             <div className="flex items-center gap-2">
               <label htmlFor="analytics-location-select" className="text-xs font-semibold text-panel-muted">
@@ -249,36 +258,38 @@ export function Analytics({ brandId, merchantId }: AnalyticsProps) {
           )}
 
           {/* Date presets */}
-          <div className="flex items-center gap-1.5 p-1.5 bg-panel-soft rounded-2xl self-start sm:self-auto border border-panel-border">
+          <div className="flex items-center justify-between sm:justify-start gap-1 p-1 bg-panel-soft rounded-xl sm:rounded-2xl border border-panel-border w-full sm:w-auto">
             <button
               type="button"
               onClick={() => setPeriodPreset('7d')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              className={`flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 rounded-lg sm:rounded-xl text-xs font-bold transition-all text-center ${
                 periodPreset === '7d'
                   ? 'bg-panel-surface text-panel-text shadow-sm'
-                  : 'text-panel-muted hover:text-panel-text '
+                  : 'text-panel-muted hover:text-panel-text'
               }`}
             >
-              Últimos 7 días
+              <span className="sm:hidden">7 días</span>
+              <span className="hidden sm:inline">Últimos 7 días</span>
             </button>
             <button
               type="button"
               onClick={() => setPeriodPreset('30d')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              className={`flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 rounded-lg sm:rounded-xl text-xs font-bold transition-all text-center ${
                 periodPreset === '30d'
                   ? 'bg-panel-surface text-panel-text shadow-sm'
-                  : 'text-panel-muted hover:text-panel-text '
+                  : 'text-panel-muted hover:text-panel-text'
               }`}
             >
-              Últimos 30 días
+              <span className="sm:hidden">30 días</span>
+              <span className="hidden sm:inline">Últimos 30 días</span>
             </button>
             <button
               type="button"
               onClick={() => setPeriodPreset('this_month')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              className={`flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 rounded-lg sm:rounded-xl text-xs font-bold transition-all text-center ${
                 periodPreset === 'this_month'
                   ? 'bg-panel-surface text-panel-text shadow-sm'
-                  : 'text-panel-muted hover:text-panel-text '
+                  : 'text-panel-muted hover:text-panel-text'
               }`}
             >
               Este mes
@@ -288,11 +299,11 @@ export function Analytics({ brandId, merchantId }: AnalyticsProps) {
       </div>
 
       {/* Tabs Navigation */}
-      <div className="flex items-center gap-2 border-b border-panel-border pb-2 overflow-x-auto">
+      <div className="flex items-center gap-1.5 sm:gap-2 border-b border-panel-border pb-2 overflow-x-auto no-scrollbar scroll-smooth">
         <button
           type="button"
           onClick={() => setActiveTab('overview')}
-          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
+          className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
             activeTab === 'overview'
               ? 'bg-panel-primary text-white shadow-sm'
               : 'text-panel-muted hover:bg-panel-soft '
@@ -303,7 +314,7 @@ export function Analytics({ brandId, merchantId }: AnalyticsProps) {
         <button
           type="button"
           onClick={() => setActiveTab('retention')}
-          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
+          className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
             activeTab === 'retention'
               ? 'bg-panel-primary text-white shadow-sm'
               : 'text-panel-muted hover:bg-panel-soft '
@@ -314,7 +325,7 @@ export function Analytics({ brandId, merchantId }: AnalyticsProps) {
         <button
           type="button"
           onClick={() => setActiveTab('promotions')}
-          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
+          className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
             activeTab === 'promotions'
               ? 'bg-panel-primary text-white shadow-sm'
               : 'text-panel-muted hover:bg-panel-soft '
@@ -325,7 +336,7 @@ export function Analytics({ brandId, merchantId }: AnalyticsProps) {
         <button
           type="button"
           onClick={() => setActiveTab('staff')}
-          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
+          className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
             activeTab === 'staff'
               ? 'bg-panel-primary text-white shadow-sm'
               : 'text-panel-muted hover:bg-panel-soft '
