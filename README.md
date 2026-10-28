@@ -44,6 +44,8 @@ La mayor parte de los flujos usa `/api/*`. El dashboard y algunas consultas de c
 
 ## Flujos y rutas
 
+La ruta pública `/demo` ofrece un recorrido guiado en un solo dispositivo: personalizar nombre y estilo de una cafetería, presentar el QR del cliente, simular su lectura, confirmar compra, elegir un café de regalo y confirmar el canje. Distingue el teléfono del cliente de la caja y el panel del dueño; en móvil se alternan las vistas según la acción. El cierre permite explorar métricas y la ficha con historial. Las animaciones de lectura, sello y premio respetan movimiento reducido y tienen pausa manual. Reiniciar cancela la lectura pendiente y conserva el diseño elegido. Usa datos ficticios en memoria y una vista previa web; no registra operaciones ni emite pases Wallet. Se publica con el frontend existente. La sincronización entre tablet y celular queda para una etapa posterior. Diseño y validación: [demo guiada](docs/plans/guided-demo.md).
+
 | Ruta | Uso | Acceso |
 | --- | --- | --- |
 | `/`, `/terminos`, `/join/:slug` | Landing, términos y alta | Público |
