@@ -1,4 +1,4 @@
-import { PanelTitle } from '../../components/admin/PanelTitle';
+import { PageHeader } from '../../components/layout/PageHeader';
 import { useCallback, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
@@ -25,10 +25,10 @@ export function Settings({ session, brandId }: { session: Session | null; brandI
 
   return (
     <>
-      <header className="mb-8">
-        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text"><PanelTitle text="Configuración" /></h1>
-        <p className="text-panel-muted text-sm sm:text-base">Los datos de tu marca, que comparten todos tus locales.</p>
-      </header>
+      <PageHeader
+        title="Configuración"
+        description="Los datos de tu marca, que comparten todos tus locales."
+      />
 
       {loadError && <ErrorAlert message={loadError} />}
 

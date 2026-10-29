@@ -1,6 +1,7 @@
 import type { HeroSectionProps } from "../types/homeComponent.types.ts";
 import { HomeContainer } from "./HomeContainer";
 import { HomeIcon as Icon } from "./HomeIcon";
+import { ArrowIcon } from "../../../../components/ui/ArrowIcon";
 import { LoyaltyCardStage } from "./LoyaltyCardStage";
 export function HeroSection({
   introReady,
@@ -106,21 +107,17 @@ export function HeroSection({
             <span className="inline-flex items-center gap-[5px]">
               <Icon name="wallet" /> Guarda su tarjeta
             </span>
-            <i
-              className="not-italic [color:#d69e09] text-[12px] max-[350.001px]:hidden"
+            <ArrowIcon
+              className="w-3.5 h-3.5 text-[#d69e09] max-[350.001px]:hidden"
               aria-hidden="true"
-            >
-              →
-            </i>
+            />
             <span className="inline-flex items-center gap-[5px]">
               <Icon name="star" /> Suma visitas
             </span>
-            <i
-              className="not-italic [color:#d69e09] text-[12px] max-[350.001px]:hidden"
+            <ArrowIcon
+              className="w-3.5 h-3.5 text-[#d69e09] max-[350.001px]:hidden"
               aria-hidden="true"
-            >
-              →
-            </i>
+            />
             <span className="inline-flex items-center gap-[5px]">
               <Icon name="gift" /> Recibe su premio
             </span>

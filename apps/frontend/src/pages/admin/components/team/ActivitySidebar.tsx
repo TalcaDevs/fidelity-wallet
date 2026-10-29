@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import type { StaffActivityDto, StaffMemberDto } from '@fidelity/shared';
+import { EmptyState } from '../../../../components/ui/EmptyState';
 import { customerDetailPath } from '../../../../components/routing/routePaths';
 import { ErrorAlert } from '../../../../components/ui/ErrorAlert';
 import { WALLET_THEME } from '../../../../components/ui/walletTheme';
@@ -163,26 +164,26 @@ export function ActivitySidebar({
   const renderOperationsList = () => {
     if (timeFilteredActivity.length === 0) {
       return (
-        <div className="text-center py-10 px-4 bg-panel-soft/30 rounded-2xl border border-dashed border-panel-border">
-          <div className="mx-auto w-10 h-10 rounded-xl bg-panel-soft flex items-center justify-center text-xl mb-2">
-            📅
-          </div>
-          <p className="font-bold text-panel-text text-sm">Sin actividad en este período</p>
-          <p className="text-xs text-panel-muted mt-1 max-w-xs mx-auto">
-            No se registraron operaciones {timeFilter === 'today' ? 'hoy' : timeFilter === 'week' ? 'en esta semana' : 'en este mes'}. Prueba seleccionando otro período o "Todo".
-          </p>
-        </div>
+        <EmptyState
+          variant="dashed"
+          icon={<span className="text-xl">📅</span>}
+          title="Sin actividad en este período"
+          subtitle={`No se registraron operaciones ${timeFilter === 'today' ? 'hoy' : timeFilter === 'week' ? 'en esta semana' : 'en este mes'}. Prueba seleccionando otro período o "Todo".`}
+          titleClassName="font-bold text-panel-text text-sm"
+          subtitleClassName="text-xs text-panel-muted mt-1 max-w-xs mx-auto"
+        />
       );
     }
 
     if (filteredActivity.length === 0) {
       return (
-        <div className="text-center py-8 px-4 bg-panel-soft/30 rounded-2xl border border-dashed border-panel-border">
-          <p className="font-semibold text-panel-text text-sm">Sin resultados para este filtro</p>
-          <p className="text-xs text-panel-muted mt-1">
-            No se encontraron operaciones de este tipo en el historial reciente.
-          </p>
-        </div>
+        <EmptyState
+          variant="dashed"
+          title="Sin resultados para este filtro"
+          subtitle="No se encontraron operaciones de este tipo en el historial reciente."
+          titleClassName="font-semibold text-panel-text text-sm"
+          subtitleClassName="text-xs text-panel-muted mt-1"
+        />
       );
     }
 

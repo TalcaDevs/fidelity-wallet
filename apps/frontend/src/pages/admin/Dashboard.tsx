@@ -3,6 +3,8 @@ import { useEffect, useState, useMemo } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { StatCard } from '../../components/ui/StatCard';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Pagination } from '../../components/ui/Pagination';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
 import { maskIdentifier } from '../../lib/maskIdentifier';
@@ -98,10 +100,13 @@ export function Dashboard({ session, brandId }: { session: Session | null; brand
     if (filteredScans.length === 0) {
       const emptyMsg = getEmptyActivityMessage(recentScans.length > 0, activityFilter);
       return (
-        <div className="py-8 text-center">
-          <p className="text-sm font-semibold text-panel-text">{emptyMsg.title}</p>
-          <p className="text-xs text-panel-muted mt-1">{emptyMsg.subtitle}</p>
-        </div>
+        <EmptyState
+          title={emptyMsg.title}
+          subtitle={emptyMsg.subtitle}
+          className="py-8"
+          titleClassName="text-sm font-semibold text-panel-text"
+          subtitleClassName="text-xs text-panel-muted mt-1"
+        />
       );
     }
 
@@ -307,41 +312,16 @@ export function Dashboard({ session, brandId }: { session: Session | null; brand
         </div>
 
         {/* Pasar página (Paginación) en Actividad Reciente */}
-        {!loading && filteredScans.length > 0 && totalPages > 1 && (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-panel-border/60 mt-4">
-            <p className="text-xs text-panel-muted font-medium text-center sm:text-left">
-              Mostrando <span className="font-semibold text-panel-text">{(currentPage - 1) * SCANS_PAGE_SIZE + 1} - {Math.min(currentPage * SCANS_PAGE_SIZE, filteredScans.length)}</span> de <span className="font-semibold text-panel-text">{filteredScans.length}</span> movimientos
-            </p>
-            <div className="flex items-center justify-center gap-2">
-              <button
-                type="button"
-                disabled={currentPage === 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                aria-label="Página anterior de movimientos"
-                className="px-3 py-1.5 text-xs font-bold rounded-xl border border-panel-border bg-panel-surface text-panel-text hover:bg-panel-soft disabled:opacity-40 disabled:cursor-not-allowed transition-all inline-flex items-center gap-1 shadow-2xs"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-                </svg>
-                <span>Anterior</span>
-              </button>
-              <span className="text-xs font-semibold text-panel-muted px-2">
-                Página <strong className="text-panel-text">{currentPage}</strong> de <strong className="text-panel-text">{totalPages}</strong>
-              </span>
-              <button
-                type="button"
-                disabled={currentPage >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                aria-label="Página siguiente de movimientos"
-                className="px-3 py-1.5 text-xs font-bold rounded-xl border border-panel-border bg-panel-surface text-panel-text hover:bg-panel-soft disabled:opacity-40 disabled:cursor-not-allowed transition-all inline-flex items-center gap-1 shadow-2xs"
-              >
-                <span>Siguiente</span>
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
-            </div>
-          </div>
+        {!loading && filteredScans.length > 0 && (
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={filteredScans.length}
+            pageSize={SCANS_PAGE_SIZE}
+            itemLabel="movimientos"
+            variant="ghost"
+            onPageChange={setPage}
+          />
         )}
       </div>
     </>

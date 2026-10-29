@@ -1,4 +1,5 @@
 import { PanelTitle } from '../../components/admin/PanelTitle';
+import { SegmentedTabs } from '../../components/ui/SegmentedTabs';
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   fetchOverviewReport,
@@ -258,43 +259,36 @@ export function Analytics({ brandId, merchantId }: AnalyticsProps) {
           )}
 
           {/* Date presets */}
-          <div className="flex items-center justify-between sm:justify-start gap-1 p-1 bg-panel-soft rounded-xl sm:rounded-2xl border border-panel-border w-full sm:w-auto">
-            <button
-              type="button"
-              onClick={() => setPeriodPreset('7d')}
-              className={`flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 rounded-lg sm:rounded-xl text-xs font-bold transition-all text-center ${
-                periodPreset === '7d'
-                  ? 'bg-panel-surface text-panel-text shadow-sm'
-                  : 'text-panel-muted hover:text-panel-text'
-              }`}
-            >
-              <span className="sm:hidden">7 días</span>
-              <span className="hidden sm:inline">Últimos 7 días</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setPeriodPreset('30d')}
-              className={`flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 rounded-lg sm:rounded-xl text-xs font-bold transition-all text-center ${
-                periodPreset === '30d'
-                  ? 'bg-panel-surface text-panel-text shadow-sm'
-                  : 'text-panel-muted hover:text-panel-text'
-              }`}
-            >
-              <span className="sm:hidden">30 días</span>
-              <span className="hidden sm:inline">Últimos 30 días</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setPeriodPreset('this_month')}
-              className={`flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 rounded-lg sm:rounded-xl text-xs font-bold transition-all text-center ${
-                periodPreset === 'this_month'
-                  ? 'bg-panel-surface text-panel-text shadow-sm'
-                  : 'text-panel-muted hover:text-panel-text'
-              }`}
-            >
-              Este mes
-            </button>
-          </div>
+          <SegmentedTabs<PeriodPreset>
+            value={periodPreset}
+            onChange={setPeriodPreset}
+            variant="soft"
+            size="sm"
+            fullWidth
+            ariaLabel="Período de analítica"
+            className="border border-panel-border"
+            options={[
+              {
+                value: '7d',
+                label: (
+                  <>
+                    <span className="sm:hidden">7 días</span>
+                    <span className="hidden sm:inline">Últimos 7 días</span>
+                  </>
+                ),
+              },
+              {
+                value: '30d',
+                label: (
+                  <>
+                    <span className="sm:hidden">30 días</span>
+                    <span className="hidden sm:inline">Últimos 30 días</span>
+                  </>
+                ),
+              },
+              { value: 'this_month', label: 'Este mes' },
+            ]}
+          />
         </div>
       </div>
 

@@ -1,5 +1,8 @@
 import { useRef, useState } from 'react';
 import { ErrorAlert } from '../../../components/ui/ErrorAlert';
+import { ArrowIcon } from '../../../components/ui/ArrowIcon';
+import { PageHeader } from '../../../components/layout/PageHeader';
+import { StatusBadge } from '../../../components/ui/StatusBadge';
 import { Skeleton } from '../../../components/ui/Skeleton';
 import { useToast } from '../../../hooks/useToast';
 import { CardPreview } from './CardPreview';
@@ -109,15 +112,17 @@ function CardEditorPage({ brandId }: { brandId: string }) {
   const nav = (
     <div className="flex items-center justify-between gap-3">
       {step > 0 ? (
-        <button type="button" onClick={() => goTo(step - 1)} className="px-4 py-2.5 rounded-xl font-bold text-panel-muted hover:bg-panel-soft">
-          ← Atrás
+        <button type="button" onClick={() => goTo(step - 1)} className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-bold text-panel-muted hover:bg-panel-soft">
+          <ArrowIcon direction="left" className="h-4 w-4" />
+          <span>Atrás</span>
         </button>
       ) : (
         <span />
       )}
       {step < STEPS.length - 1 ? (
-        <button type="button" onClick={() => goTo(step + 1)} className="px-6 py-3 rounded-xl bg-panel-primary text-white font-bold">
-          Continuar →
+        <button type="button" onClick={() => goTo(step + 1)} className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-panel-primary text-white font-bold">
+          <span>Continuar</span>
+          <ArrowIcon className="h-4 w-4" />
         </button>
       ) : (
         <button
@@ -134,40 +139,37 @@ function CardEditorPage({ brandId }: { brandId: string }) {
 
   return (
     <>
-      <header className="flex flex-wrap items-start justify-between gap-4 mb-8">
-        <div>
-          <h1 ref={headingRef} className="scroll-mt-6 text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text break-words">{config.name || 'Tu tarjeta'}</h1>
-          <p className="text-panel-muted text-sm sm:text-base mt-1">
-            {(config.stampsEnabled && config.pointsEnabled) ? 'Sellos y Puntos' : TYPE_LABEL[config.type]} · la tarjeta que tus clientes guardan en su billetera
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <span
-            role="status"
-            className={`inline-flex items-center gap-1.5 text-xs font-bold rounded-full px-3 py-1 ${
-              dirty
-                ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200'
-                : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200'
-            }`}
-          >
-            <span className={`w-1.5 h-1.5 rounded-full ${dirty ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-            {dirty ? 'Cambios sin guardar' : 'Publicada'}
-          </span>
-          {dirty && (
-            <button type="button" onClick={editor.discard} disabled={saving} className="px-4 py-2.5 rounded-xl font-bold text-panel-muted hover:bg-panel-soft">
-              Descartar
+      <PageHeader
+        headingRef={headingRef}
+        title={config.name || 'Tu tarjeta'}
+        animated={false}
+        description={`${config.stampsEnabled && config.pointsEnabled ? 'Sellos y Puntos' : TYPE_LABEL[config.type]} · la tarjeta que tus clientes guardan en su billetera`}
+        actions={
+          <>
+            <StatusBadge tone={dirty ? 'warning' : 'success'} dot role="status">
+              {dirty ? 'Cambios sin guardar' : 'Publicada'}
+            </StatusBadge>
+            {dirty && (
+              <button
+                type="button"
+                onClick={editor.discard}
+                disabled={saving}
+                className="px-4 py-2.5 rounded-xl font-bold text-panel-muted hover:bg-panel-soft"
+              >
+                Descartar
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || !dirty}
+              className="px-5 py-2.5 rounded-xl bg-panel-primary hover:bg-panel-primary/90 text-white font-bold shadow-lg shadow-brand-blue/20 disabled:opacity-50"
+            >
+              {saving ? 'Guardando…' : 'Guardar'}
             </button>
-          )}
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving || !dirty}
-            className="px-5 py-2.5 rounded-xl bg-panel-primary hover:bg-panel-primary/90 text-white font-bold shadow-lg shadow-brand-blue/20 disabled:opacity-50"
-          >
-            {saving ? 'Guardando…' : 'Guardar'}
-          </button>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       <nav aria-label="Pasos del editor" className="mb-6">
         <Stepper current={step} onSelect={goTo} />
@@ -218,10 +220,10 @@ function CardEditorPage({ brandId }: { brandId: string }) {
                 </p>
                 <Link
                   to={ROUTES.locations}
-                  className="inline-flex items-center gap-1 text-xs font-bold text-panel-accent hover:underline mt-2"
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-panel-accent hover:underline mt-2"
                 >
                   <span>Ver en Sucursales</span>
-                  <span>→</span>
+                  <ArrowIcon className="h-3.5 w-3.5" />
                 </Link>
               </div>
             </div>

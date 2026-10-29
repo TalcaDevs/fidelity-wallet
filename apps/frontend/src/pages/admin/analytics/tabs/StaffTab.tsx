@@ -1,4 +1,5 @@
 import type { StaffActivityReport } from '../../../../services/reportsService';
+import { EmptyState } from '../../../../components/ui/EmptyState';
 
 export interface StaffTabProps {
   staff: StaffActivityReport;
@@ -79,9 +80,7 @@ export function StaffTab({ staff }: StaffTabProps) {
         </p>
 
         {staff.staff.length === 0 ? (
-          <p className="text-sm text-panel-muted py-6 text-center">
-            No hay actividad de miembros del equipo registrada.
-          </p>
+          <EmptyState variant="simple" title="No hay actividad de miembros del equipo registrada." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm min-w-[540px]">
