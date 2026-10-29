@@ -1,10 +1,18 @@
-import { PanelTitle } from '../../components/admin/PanelTitle';
+import { PageHeader } from '../../components/layout/PageHeader';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { listCustomers, deleteCustomer, type CustomerRow } from '../../services/customersService';
+import { listBrandLocations, type LocationOption } from '../../services/locationsService';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
+import { SegmentedTabs } from '../../components/ui/SegmentedTabs';
+import { Pagination } from '../../components/ui/Pagination';
+import { StatusBadge, type BadgeTone } from '../../components/ui/StatusBadge';
+import { StatCard } from '../../components/ui/StatCard';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { ArrowIcon } from '../../components/ui/ArrowIcon';
+import { SearchInput } from '../../components/ui/SearchInput';
 import { maskIdentifier } from '../../lib/maskIdentifier';
 import { formatStampExpiry } from '../../lib/stampExpiry';
 import { downloadCsv, toCsv, type CsvColumn } from '../../lib/csv';
@@ -16,13 +24,19 @@ const DATE_FORMAT: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digi
 const PAGE_SIZE = 10;
 const clp = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
 
-// La exportación lleva el dato completo: es la base de datos del comercio y el
-// dueño la está pidiendo explícitamente. En pantalla se muestra enmascarado.
-const CSV_COLUMNS: CsvColumn<CustomerRow>[] = [
+export const getCsvColumns = (locationNameMap?: Map<string, string>): CsvColumn<CustomerRow>[] => [
   { header: 'Nombre', value: (row) => row.name ?? null },
   { header: 'Correo', value: (row) => row.email ?? null },
   { header: 'RUT', value: (row) => row.rut },
   { header: 'Teléfono', value: (row) => row.phone },
+  ...(locationNameMap && locationNameMap.size > 1
+    ? [
+        {
+          header: 'Sucursal de registro',
+          value: (row: CustomerRow) => (row.merchantId ? locationNameMap.get(row.merchantId) ?? null : null),
+        },
+      ]
+    : []),
   { header: 'Cumpleaños', value: (row) => formatBirthday(row.birthDay, row.birthMonth, row.birthYear) },
   { header: 'Sellos vigentes', value: (row) => (row.stampsEnabled === false ? '' : row.activeStamps) },
   { header: 'Puntos vigentes', value: (row) => (row.pointsEnabled ? (row.activePoints ?? 0) : '') },
@@ -38,14 +52,14 @@ export type CustomerFilter = 'all' | 'frequent' | 'new' | 'inactive';
 export function getCustomerStatus(row: CustomerRow, now: Date): {
   key: 'new' | 'frequent' | 'inactive' | 'regular';
   label: string;
-  badgeClass: string;
+  tone: BadgeTone;
 } {
   const joinedDays = (now.getTime() - new Date(row.joinedAt).getTime()) / 86400000;
   if (joinedDays <= 7) {
     return {
       key: 'new',
       label: 'Nuevo',
-      badgeClass: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800',
+      tone: 'success',
     };
   }
 
@@ -54,7 +68,7 @@ export function getCustomerStatus(row: CustomerRow, now: Date): {
     return {
       key: 'inactive',
       label: 'Inactivo',
-      badgeClass: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800',
+      tone: 'warning',
     };
   }
 
@@ -63,14 +77,14 @@ export function getCustomerStatus(row: CustomerRow, now: Date): {
     return {
       key: 'frequent',
       label: 'Frecuente',
-      badgeClass: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800',
+      tone: 'info',
     };
   }
 
   return {
     key: 'regular',
     label: 'Al día',
-    badgeClass: 'bg-panel-soft text-panel-muted',
+    tone: 'neutral',
   };
 }
 
@@ -78,6 +92,8 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
   const { notifySuccess, notifyError } = useToast();
 
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
+  const [locations, setLocations] = useState<LocationOption[]>([]);
+  const [selectedLocationId, setSelectedLocationId] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -99,14 +115,86 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
     }
   }, []);
 
-    const handleExport = () => {
-    if (customers.length === 0) {
+  const fetchLocations = useCallback(async (id: string) => {
+    try {
+      setLocations(await listBrandLocations(id));
+    } catch {
+      setLocations([]);
+    }
+  }, []);
+
+  const locationNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const loc of locations) {
+      map.set(loc.id, loc.name);
+    }
+    return map;
+  }, [locations]);
+
+  const branchFiltered = useMemo(() => {
+    if (selectedLocationId === 'all') return customers;
+    return customers.filter((c) => {
+      if (c.merchantId === selectedLocationId) return true;
+      return Boolean(c.locationIds?.includes(selectedLocationId));
+    });
+  }, [customers, selectedLocationId]);
+
+  const now = useMemo(() => new Date(), []);
+
+  const counts = useMemo(() => {
+    let frequent = 0;
+    let newCust = 0;
+    let inactive = 0;
+    for (const c of branchFiltered) {
+      const st = getCustomerStatus(c, now);
+      if (st.key === 'new') newCust++;
+      else if (st.key === 'frequent') frequent++;
+      else if (st.key === 'inactive') inactive++;
+    }
+    return { all: branchFiltered.length, frequent, new: newCust, inactive };
+  }, [branchFiltered, now]);
+
+  const purchaseMetrics = useMemo(() => {
+    let totalPurchases = 0;
+    let totalPurchasesCount = 0;
+    let customersWithPurchases = 0;
+
+    for (const c of branchFiltered) {
+      const amount = c.totalPurchases ?? 0;
+      const count = c.purchasesCount ?? 0;
+      totalPurchases += amount;
+      totalPurchasesCount += count;
+      if (amount > 0) customersWithPurchases++;
+    }
+
+    const averageTicket = totalPurchasesCount > 0 ? Math.round(totalPurchases / totalPurchasesCount) : 0;
+    return { totalPurchases, totalPurchasesCount, customersWithPurchases, averageTicket };
+  }, [branchFiltered]);
+
+  const term = search.trim().toLowerCase();
+  const visible = useMemo(() => {
+    return branchFiltered.filter((row) => {
+      const matchesSearch =
+        !term ||
+        [row.name, row.email, row.rut, row.phone].some((value) =>
+          (value ?? '').toLowerCase().includes(term),
+        );
+      if (!matchesSearch) return false;
+
+      if (statusFilter === 'all') return true;
+      const st = getCustomerStatus(row, now);
+      return st.key === statusFilter;
+    });
+  }, [branchFiltered, term, statusFilter, now]);
+
+  const handleExport = () => {
+    if (visible.length === 0) {
       notifyError('Todavía no tienes clientes para exportar.');
       return;
     }
     const stamp = new Date().toISOString().slice(0, 10);
-    downloadCsv(`clientes-${stamp}.csv`, toCsv(customers, CSV_COLUMNS));
-    notifySuccess(`Exportamos ${customers.length} cliente(s) a CSV.`);
+    downloadCsv(`clientes-${stamp}.csv`, toCsv(visible, getCsvColumns(locationNameMap)));
+    notifySuccess(`Exportamos ${visible.length} cliente(s) a CSV.`);
   };
 
   const handleConfirmDelete = async () => {
@@ -125,58 +213,11 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
   };
 
   useEffect(() => {
-    if (brandId) fetchCustomers(brandId);
-  }, [brandId, fetchCustomers]);
-
-  // Un único "ahora" para todo el render: si cada fila creara el suyo, dos filas
-  // con la misma fecha podrían quedar con textos distintos al cruzar la medianoche.
-  const now = useMemo(() => new Date(), []);
-
-  const counts = useMemo(() => {
-    let frequent = 0;
-    let newCust = 0;
-    let inactive = 0;
-    for (const c of customers) {
-      const st = getCustomerStatus(c, now);
-      if (st.key === 'new') newCust++;
-      else if (st.key === 'frequent') frequent++;
-      else if (st.key === 'inactive') inactive++;
+    if (brandId) {
+      fetchCustomers(brandId);
+      fetchLocations(brandId);
     }
-    return { all: customers.length, frequent, new: newCust, inactive };
-  }, [customers, now]);
-
-  const purchaseMetrics = useMemo(() => {
-    let totalPurchases = 0;
-    let totalPurchasesCount = 0;
-    let customersWithPurchases = 0;
-
-    for (const c of customers) {
-      const amount = c.totalPurchases ?? 0;
-      const count = c.purchasesCount ?? 0;
-      totalPurchases += amount;
-      totalPurchasesCount += count;
-      if (amount > 0) customersWithPurchases++;
-    }
-
-    const averageTicket = totalPurchasesCount > 0 ? Math.round(totalPurchases / totalPurchasesCount) : 0;
-    return { totalPurchases, totalPurchasesCount, customersWithPurchases, averageTicket };
-  }, [customers]);
-
-  const term = search.trim().toLowerCase();
-  const visible = useMemo(() => {
-    return customers.filter((row) => {
-      const matchesSearch =
-        !term ||
-        [row.name, row.email, row.rut, row.phone].some((value) =>
-          (value ?? '').toLowerCase().includes(term),
-        );
-      if (!matchesSearch) return false;
-
-      if (statusFilter === 'all') return true;
-      const st = getCustomerStatus(row, now);
-      return st.key === statusFilter;
-    });
-  }, [customers, term, statusFilter, now]);
+  }, [brandId, fetchCustomers, fetchLocations]);
 
   const totalPages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -191,6 +232,13 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
       return {
         title: 'Aún no tienes clientes registrados.',
         subtitle: 'Aparecerán aquí en cuanto empiecen a guardar su tarjeta.',
+      };
+    }
+    if (selectedLocationId !== 'all' && branchFiltered.length === 0) {
+      const locName = locationNameMap.get(selectedLocationId) ?? 'esta sucursal';
+      return {
+        title: `No hay clientes registrados o con compras en ${locName}.`,
+        subtitle: 'Prueba seleccionando "Todas las sucursales" o cambiando los filtros.',
       };
     }
     if (statusFilter !== 'all') {
@@ -220,14 +268,17 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
       const empty = getEmptyMessage();
       return (
         <tr>
-          <td colSpan={6} className="p-16 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-panel-soft text-panel-muted mb-4">
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </div>
-            <p className="text-lg font-bold text-panel-muted">{empty.title}</p>
-            <p className="text-panel-muted mt-1">{empty.subtitle}</p>
+          <td colSpan={6} className="p-8 sm:p-12 text-center">
+            <EmptyState
+              icon={
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              }
+              title={empty.title}
+              subtitle={empty.subtitle}
+              titleClassName="text-lg font-bold text-panel-muted"
+            />
           </td>
         </tr>
       );
@@ -248,7 +299,7 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
 
       return (
         <tr key={row.passId} className="hover:bg-panel-soft transition-colors">
-          <td className="p-4 sm:p-5">
+          <td className="p-4 sm:p-5 align-middle">
             <div className="flex items-center gap-2 flex-wrap">
               <Link
                 to={customerDetailPath(row.customerId)}
@@ -257,11 +308,9 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
                 {displayName}
               </Link>
               {status.key !== 'regular' && (
-                <span
-                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${status.badgeClass}`}
-                >
+                <StatusBadge tone={status.tone} size="sm">
                   {status.label}
-                </span>
+                </StatusBadge>
               )}
             </div>
             {secondaryIdentifier && (
@@ -269,8 +318,17 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
                 {secondaryIdentifier}
               </span>
             )}
+            {locations.length > 1 && row.merchantId && locationNameMap.get(row.merchantId) && (
+              <span className="inline-flex items-center gap-1 text-xs text-panel-muted font-medium mt-0.5">
+                <svg className="w-3 h-3 text-panel-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span>{locationNameMap.get(row.merchantId)}</span>
+              </span>
+            )}
           </td>
-          <td className="p-4 sm:p-5 whitespace-nowrap">
+          <td className="p-4 sm:p-5 whitespace-nowrap align-middle">
             <div className="flex flex-col items-start gap-1">
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-panel-accent/10 dark:bg-panel-accent/20 text-panel-accent font-bold text-xs sm:text-sm whitespace-nowrap">
                 {row.stampsEnabled !== false && (
@@ -292,7 +350,7 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
               )}
             </div>
           </td>
-          <td className="p-4 sm:p-5 whitespace-nowrap">
+          <td className="p-4 sm:p-5 whitespace-nowrap align-middle">
             <div className="font-extrabold text-panel-text tabular-nums text-xs sm:text-sm">
               {(row.totalPurchases ?? 0) > 0 ? clp.format(row.totalPurchases!) : '—'}
             </div>
@@ -302,30 +360,33 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
               </span>
             )}
           </td>
-          <td className="p-4 sm:p-5 text-panel-muted font-medium text-xs sm:text-sm whitespace-nowrap">
+          <td className="p-4 sm:p-5 text-panel-muted font-medium text-xs sm:text-sm whitespace-nowrap align-middle">
             {new Date(row.joinedAt).toLocaleDateString([], DATE_FORMAT)}
           </td>
-          <td className="p-4 sm:p-5 text-panel-muted font-medium text-xs sm:text-sm whitespace-nowrap">
+          <td className="p-4 sm:p-5 text-panel-muted font-medium text-xs sm:text-sm whitespace-nowrap align-middle">
             {new Date(row.lastActivityAt).toLocaleDateString([], DATE_FORMAT)}
           </td>
-          <td className="p-4 sm:p-5 text-right whitespace-nowrap">
-            <Link
-              to={customerDetailPath(row.customerId)}
-              className="mr-2 px-3 py-1.5 text-panel-accent bg-panel-accent/10 hover:bg-panel-accent/20 rounded-xl transition-all inline-flex items-center text-xs font-semibold"
-            >
-              Historial
-            </Link>
-            <button
-              type="button"
-              onClick={() => setCustomerToDelete(row)}
-              title="Eliminar datos personales (Ley 19.628)"
-              className="px-3 py-1.5 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 bg-red-50 hover:bg-red-100/80 dark:bg-red-950/40 dark:hover:bg-red-900/40 border border-red-200/60 dark:border-red-900/60 rounded-xl transition-all inline-flex items-center gap-1.5 text-xs font-semibold shadow-xs"
-            >
-              <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              <span>Eliminar</span>
-            </button>
+          <td className="p-4 sm:p-5 text-right whitespace-nowrap align-middle">
+            <div className="inline-flex items-center justify-end gap-2">
+              <Link
+                to={customerDetailPath(row.customerId)}
+                className="h-8 px-3 text-panel-accent bg-panel-accent/10 hover:bg-panel-accent/20 border border-transparent rounded-xl transition-all inline-flex items-center justify-center gap-1.5 text-xs font-semibold"
+              >
+                <span>Historial</span>
+                <ArrowIcon className="w-3.5 h-3.5" />
+              </Link>
+              <button
+                type="button"
+                onClick={() => setCustomerToDelete(row)}
+                title="Eliminar datos personales (Ley 19.628)"
+                className="h-8 px-3 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 bg-red-50 hover:bg-red-100/80 dark:bg-red-950/40 dark:hover:bg-red-900/40 border border-red-200/60 dark:border-red-900/60 rounded-xl transition-all inline-flex items-center justify-center gap-1.5 text-xs font-semibold shadow-2xs cursor-pointer"
+              >
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                <span>Eliminar</span>
+              </button>
+            </div>
           </td>
         </tr>
       );
@@ -334,135 +395,105 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
 
   return (
     <>
-      <header className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text"><PanelTitle text="Clientes" /></h1>
-          <p className="text-panel-muted text-sm sm:text-base">Tu base de datos: quién vuelve y cuántos sellos lleva.</p>
-        </div>
-        <button
-          type="button"
-          onClick={handleExport}
-          className="px-4 py-2.5 bg-panel-primary hover:bg-panel-primary/90 text-white shadow-md shadow-brand-blue/20 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 shrink-0 self-start sm:self-auto cursor-pointer active:scale-95"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
-          <span>Exportar CSV</span>
-        </button>
-      </header>
+      <PageHeader
+        title="Clientes"
+        description="Tu base de datos: quién vuelve y cuántos sellos lleva."
+        actions={
+          <button
+            type="button"
+            onClick={handleExport}
+            className="px-4 py-2.5 bg-panel-primary hover:bg-panel-primary/90 text-white shadow-md shadow-brand-blue/20 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 shrink-0 self-start sm:self-auto cursor-pointer active:scale-95"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            <span>Exportar CSV</span>
+          </button>
+        }
+      />
 
       {error && <ErrorAlert message={error} onRetry={brandId ? () => fetchCustomers(brandId) : undefined} />}
 
-      {/* Tarjetas resumen de clientes y compras registradas */}
       {!loading && customers.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6" aria-label="Resumen de clientes y compras">
-          <div className="bg-panel-surface p-5 rounded-2xl border border-panel-border shadow-2xs">
-            <span className="text-xs font-bold uppercase tracking-wider text-panel-muted block mb-2">Total Clientes</span>
-            <div className="text-2xl font-extrabold text-panel-text tabular-nums">
-              {counts.all}
-            </div>
-            <p className="text-xs text-panel-muted mt-1">
-              {counts.frequent} frecuentes · {counts.new} nuevos
-            </p>
-          </div>
-
-          <div className="bg-panel-surface p-5 rounded-2xl border border-panel-border shadow-2xs">
-            <span className="text-xs font-bold uppercase tracking-wider text-panel-muted block mb-2">Compras Registradas</span>
-            <div className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums">
-              {clp.format(purchaseMetrics.totalPurchases)}
-            </div>
-            <p className="text-xs text-panel-muted mt-1">
-              {purchaseMetrics.customersWithPurchases} {purchaseMetrics.customersWithPurchases === 1 ? 'cliente con compras' : 'clientes con compras'}
-            </p>
-          </div>
-
-          <div className="bg-panel-surface p-5 rounded-2xl border border-panel-border shadow-2xs">
-            <span className="text-xs font-bold uppercase tracking-wider text-panel-muted block mb-2">Ticket Promedio</span>
-            <div className="text-2xl font-extrabold text-panel-text tabular-nums">
-              {purchaseMetrics.averageTicket > 0 ? clp.format(purchaseMetrics.averageTicket) : '—'}
-            </div>
-            <p className="text-xs text-panel-muted mt-1">
-              Por compra registrada en caja
-            </p>
-          </div>
+          <StatCard
+            title="Total Clientes"
+            value={counts.all}
+            footnote={`${counts.frequent} frecuentes · ${counts.new} nuevos`}
+            footnoteTone="subtle"
+            valueClassName="text-2xl font-extrabold text-panel-text tabular-nums"
+          />
+          <StatCard
+            title="Compras Registradas"
+            value={clp.format(purchaseMetrics.totalPurchases)}
+            footnote={`${purchaseMetrics.customersWithPurchases} ${purchaseMetrics.customersWithPurchases === 1 ? 'cliente con compras' : 'clientes con compras'}`}
+            footnoteTone="subtle"
+            valueClassName="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums"
+          />
+          <StatCard
+            title="Ticket Promedio"
+            value={purchaseMetrics.averageTicket > 0 ? clp.format(purchaseMetrics.averageTicket) : '—'}
+            footnote="Por compra registrada en caja"
+            footnoteTone="subtle"
+            valueClassName="text-2xl font-extrabold text-panel-text tabular-nums"
+          />
         </div>
       )}
 
       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="w-full md:max-w-sm">
-          <label htmlFor="customer-search" className="sr-only">Buscar por nombre, correo, RUT o teléfono</label>
-          <input
-            id="customer-search"
-            type="search"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            placeholder="Buscar por nombre, correo, RUT o teléfono..."
-            className="w-full px-5 py-3 bg-panel-surface rounded-2xl border border-panel-border focus:outline-none focus:ring-4 focus:ring-panel-accent/20 focus:border-panel-accent transition-all text-panel-text font-medium text-sm"
-          />
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:max-w-xl">
+          <div className="flex-1 min-w-0">
+            <SearchInput
+              id="customer-search"
+              value={search}
+              onChange={(val) => {
+                setSearch(val);
+                setPage(1);
+              }}
+              placeholder="Buscar por nombre, correo, RUT o teléfono..."
+              ariaLabel="Buscar por nombre, correo, RUT o teléfono"
+            />
+          </div>
+
+          {locations.length > 1 && (
+            <div className="sm:w-56 shrink-0">
+              <select
+                id="location-filter"
+                value={selectedLocationId}
+                onChange={(e) => {
+                  setSelectedLocationId(e.target.value);
+                  setPage(1);
+                }}
+                aria-label="Filtrar por sucursal"
+                className="w-full h-11 px-3 rounded-xl bg-panel-surface border border-panel-border text-panel-text text-xs sm:text-sm font-semibold focus:outline-hidden focus:border-panel-accent transition-colors cursor-pointer"
+              >
+                <option value="all">Todas las sucursales ({customers.length})</option>
+                {locations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Filtros por estado / frecuencia */}
-        <div className="inline-flex items-center bg-panel-surface border border-panel-border p-1 rounded-2xl self-start md:self-auto gap-1 overflow-x-auto max-w-full">
-          <button
-            type="button"
-            onClick={() => {
-              setStatusFilter('all');
-              setPage(1);
-            }}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-xl whitespace-nowrap transition-all ${
-              statusFilter === 'all'
-                ? 'bg-panel-primary text-white shadow-xs'
-                : 'text-panel-muted hover:text-panel-text'
-            }`}
-          >
-            Todos ({counts.all})
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setStatusFilter('frequent');
-              setPage(1);
-            }}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-xl whitespace-nowrap transition-all ${
-              statusFilter === 'frequent'
-                ? 'bg-panel-primary text-white shadow-xs'
-                : 'text-panel-muted hover:text-panel-text'
-            }`}
-          >
-            ⭐ Frecuentes ({counts.frequent})
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setStatusFilter('new');
-              setPage(1);
-            }}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-xl whitespace-nowrap transition-all ${
-              statusFilter === 'new'
-                ? 'bg-panel-primary text-white shadow-xs'
-                : 'text-panel-muted hover:text-panel-text'
-            }`}
-          >
-            🟢 Nuevos ({counts.new})
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setStatusFilter('inactive');
-              setPage(1);
-            }}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-xl whitespace-nowrap transition-all ${
-              statusFilter === 'inactive'
-                ? 'bg-panel-primary text-white shadow-xs'
-                : 'text-panel-muted hover:text-panel-text'
-            }`}
-          >
-            💤 Inactivos ({counts.inactive})
-          </button>
-        </div>
+        <SegmentedTabs<CustomerFilter>
+          value={statusFilter}
+          onChange={(newVal) => {
+            setStatusFilter(newVal);
+            setPage(1);
+          }}
+          className="self-start md:self-auto"
+          ariaLabel="Filtro de clientes por estado"
+          options={[
+            { value: 'all', label: 'Todos', count: counts.all },
+            { value: 'frequent', label: 'Frecuentes', count: counts.frequent },
+            { value: 'new', label: 'Nuevos', count: counts.new },
+            { value: 'inactive', label: 'Inactivos', count: counts.inactive },
+          ]}
+        />
       </div>
 
       <div data-panel-reveal className="bg-panel-surface rounded-2xl border border-panel-border shadow-panel overflow-hidden">
@@ -484,42 +515,15 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
           </table>
         </div>
 
-        {/* Pasar página (Paginación) */}
-        {!loading && visible.length > 0 && totalPages > 1 && (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-panel-soft/60 border-t border-panel-border">
-            <p className="text-xs text-panel-muted font-medium text-center sm:text-left">
-              Mostrando <span className="font-semibold text-panel-text">{(currentPage - 1) * PAGE_SIZE + 1} - {Math.min(currentPage * PAGE_SIZE, visible.length)}</span> de <span className="font-semibold text-panel-text">{visible.length}</span> clientes
-            </p>
-            <div className="flex items-center justify-center gap-2">
-              <button
-                type="button"
-                disabled={currentPage === 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                aria-label="Página anterior de clientes"
-                className="px-3 py-1.5 text-xs font-bold rounded-xl border border-panel-border bg-panel-surface text-panel-text hover:bg-panel-soft disabled:opacity-40 disabled:cursor-not-allowed transition-all inline-flex items-center gap-1 shadow-2xs"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-                </svg>
-                <span>Anterior</span>
-              </button>
-              <span className="text-xs font-semibold text-panel-muted px-2">
-                Página <strong className="text-panel-text">{currentPage}</strong> de <strong className="text-panel-text">{totalPages}</strong>
-              </span>
-              <button
-                type="button"
-                disabled={currentPage >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                aria-label="Página siguiente de clientes"
-                className="px-3 py-1.5 text-xs font-bold rounded-xl border border-panel-border bg-panel-surface text-panel-text hover:bg-panel-soft disabled:opacity-40 disabled:cursor-not-allowed transition-all inline-flex items-center gap-1 shadow-2xs"
-              >
-                <span>Siguiente</span>
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
-            </div>
-          </div>
+        {!loading && visible.length > 0 && (
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={visible.length}
+            pageSize={PAGE_SIZE}
+            itemLabel="clientes"
+            onPageChange={setPage}
+          />
         )}
       </div>
 
