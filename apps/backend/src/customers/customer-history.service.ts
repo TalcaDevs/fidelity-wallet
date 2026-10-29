@@ -119,6 +119,25 @@ export class CustomerHistoryService {
       : [];
     const consumedByScan = new Map(consumed.map((c) => [`${c.consumedByScanId}:${c.currency}`, c._sum.amount ?? 0]));
 
+    // Identificar qué cargas de sellos ya fueron consumidas en algún canje
+    const stampScanIds = scans
+      .filter((s) => s.type === ScanType.STAMP_ADDED)
+      .map((s) => s.id);
+    const consumedLoads =
+      stampScanIds.length && typeof this.prisma.stamp.findMany === 'function'
+        ? await this.prisma.stamp.findMany({
+            where: {
+              sourceScanId: { in: stampScanIds },
+              consumedAt: { not: null },
+            },
+            select: { sourceScanId: true },
+            distinct: ['sourceScanId'],
+          })
+        : [];
+    const consumedScanIdSet = new Set(
+      consumedLoads.map((c) => c.sourceScanId).filter(Boolean) as string[],
+    );
+
     const staff = await this.users.lookup(
       scans.flatMap((s) => (s.createdByUserId ? [s.createdByUserId] : [])),
     );
@@ -126,22 +145,31 @@ export class CustomerHistoryService {
       scans.flatMap((s) => (s.receipt ? [s.receipt.storagePath] : [])),
     );
 
-    const items: PurchaseHistoryEntryDto[] = scans.map((s) => ({
-      id: s.id,
-      type: s.type,
-      createdAt: s.createdAt.toISOString(),
-      method: s.method,
-      locationName: s.merchant.name,
-      staffEmail: s.createdByUserId ? (staff.get(s.createdByUserId)?.email ?? null) : null,
-      stamps: s.type === ScanType.STAMP_ADDED ? s.stampCount : (consumedByScan.get(`${s.id}:STAMPS`) ?? 0),
-      points: s.type === ScanType.STAMP_ADDED ? s.pointsEarned : (consumedByScan.get(`${s.id}:POINTS`) ?? 0),
-      purchaseAmount: s.purchaseAmount,
-      note: s.note,
-      rewardName: s.promotion?.rewardName ?? null,
-      receiptUrl: s.receipt ? (receiptUrls.get(s.receipt.storagePath) ?? null) : null,
-      voidedAt: s.voidedAt ? s.voidedAt.toISOString() : null,
-      voidReason: s.voidReason ?? null,
-    }));
+    const items: PurchaseHistoryEntryDto[] = scans.map((s) => {
+      const isStamp = s.type === ScanType.STAMP_ADDED;
+      const isVoided = Boolean(s.voidedAt);
+      const isConsumed = isStamp ? consumedScanIdSet.has(s.id) : false;
+      const canVoid = isStamp && !isVoided && !isConsumed;
+
+      return {
+        id: s.id,
+        type: s.type,
+        createdAt: s.createdAt.toISOString(),
+        method: s.method,
+        locationName: s.merchant.name,
+        staffEmail: s.createdByUserId ? (staff.get(s.createdByUserId)?.email ?? null) : null,
+        stamps: isStamp ? s.stampCount : (consumedByScan.get(`${s.id}:STAMPS`) ?? 0),
+        points: isStamp ? s.pointsEarned : (consumedByScan.get(`${s.id}:POINTS`) ?? 0),
+        purchaseAmount: s.purchaseAmount,
+        note: s.note,
+        rewardName: s.promotion?.rewardName ?? null,
+        receiptUrl: s.receipt ? (receiptUrls.get(s.receipt.storagePath) ?? null) : null,
+        voidedAt: s.voidedAt ? s.voidedAt.toISOString() : null,
+        voidReason: s.voidReason ?? null,
+        canVoid,
+        isConsumed,
+      };
+    });
 
     return {
       customer: this.profile(pass, balances, maskIdentifiers),

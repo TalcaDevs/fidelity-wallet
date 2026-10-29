@@ -59,6 +59,10 @@ export interface PurchaseHistoryEntryDto {
   voidedAt?: string | null;
   /** Motivo de anulación registrado en auditoría. */
   voidReason?: string | null;
+  /** Indica si la carga puede ser anulada. Es falso si los sellos/puntos ya fueron consumidos en un canje o si ya está anulada. */
+  canVoid?: boolean;
+  /** Indica si los sellos o puntos de esta carga ya fueron consumidos en un canje de recompensa. */
+  isConsumed?: boolean;
 }
 
 export interface CustomerProfileDto {
