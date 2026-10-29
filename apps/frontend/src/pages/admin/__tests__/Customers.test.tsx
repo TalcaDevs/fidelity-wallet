@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { Customers } from '../Customers';
 import * as customersService from '../../../services/customersService';
+import * as locationsService from '../../../services/locationsService';
 import * as csvLib from '../../../lib/csv';
 import * as toastHook from '../../../hooks/useToast';
 
@@ -408,5 +409,68 @@ describe('Customers page (Ley 19.628)', () => {
     });
 
     expect(listSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('filters customers by location when brand has multiple branches', async () => {
+    vi.spyOn(locationsService, 'listBrandLocations').mockResolvedValue([
+      { id: 'loc-1', name: 'Sucursal Providencia', isActive: true },
+      { id: 'loc-2', name: 'Sucursal Centro', isActive: true },
+    ]);
+
+    vi.spyOn(customersService, 'listCustomers').mockResolvedValue([
+      {
+        passId: 'p-1',
+        customerId: 'c-1',
+        name: 'Cliente Providencia',
+        merchantId: 'loc-1',
+        locationIds: ['loc-1'],
+        rut: '11111111-1',
+        phone: '+56911111111',
+        activeStamps: 3,
+        nextExpiryAt: null,
+        joinedAt: '2026-09-20T12:00:00Z',
+        lastActivityAt: '2026-09-24T12:00:00Z',
+      },
+      {
+        passId: 'p-2',
+        customerId: 'c-2',
+        name: 'Cliente Centro',
+        merchantId: 'loc-2',
+        locationIds: ['loc-2'],
+        rut: '22222222-2',
+        phone: '+56922222222',
+        activeStamps: 5,
+        nextExpiryAt: null,
+        joinedAt: '2026-09-20T12:00:00Z',
+        lastActivityAt: '2026-09-24T12:00:00Z',
+      },
+    ]);
+
+    render(<MemoryRouter><Customers brandId="m-1" merchantId="m-1" /></MemoryRouter>);
+
+    await waitFor(() => {
+      expect(screen.getByText('Cliente Providencia')).toBeInTheDocument();
+      expect(screen.getByText('Cliente Centro')).toBeInTheDocument();
+    });
+
+    const locationSelect = await screen.findByRole('combobox', { name: 'Filtrar por sucursal' });
+    expect(locationSelect).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Sucursal Providencia' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Sucursal Centro' })).toBeInTheDocument();
+
+    fireEvent.change(locationSelect, { target: { value: 'loc-1' } });
+
+    expect(screen.getByText('Cliente Providencia')).toBeInTheDocument();
+    expect(screen.queryByText('Cliente Centro')).not.toBeInTheDocument();
+
+    fireEvent.change(locationSelect, { target: { value: 'loc-2' } });
+
+    expect(screen.getByText('Cliente Centro')).toBeInTheDocument();
+    expect(screen.queryByText('Cliente Providencia')).not.toBeInTheDocument();
+
+    fireEvent.change(locationSelect, { target: { value: 'all' } });
+
+    expect(screen.getByText('Cliente Providencia')).toBeInTheDocument();
+    expect(screen.getByText('Cliente Centro')).toBeInTheDocument();
   });
 });

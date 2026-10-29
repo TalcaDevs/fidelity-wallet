@@ -119,4 +119,37 @@ describe('PurchaseHistory Component', () => {
     // Only 1 Anular button should exist (from active load), redemptions can't be voided
     expect(screen.getAllByRole('button', { name: 'Anular' })).toHaveLength(1);
   });
+
+  it('displays behavior metrics: Ticket promedio and Actividad', () => {
+    render(<PurchaseHistory data={mockData} onPage={vi.fn()} />);
+
+    expect(screen.getByText('Ticket promedio')).toBeInTheDocument();
+    expect(screen.getByText('$5.000')).toBeInTheDocument();
+    expect(screen.getByText('Actividad')).toBeInTheDocument();
+  });
+
+  it('displays customer summary stats in Totales section without progress meter', () => {
+    render(<PurchaseHistory data={mockData} onPage={vi.fn()} />);
+
+    const totalesSection = screen.getByRole('region', { name: 'Totales' });
+    expect(totalesSection).toBeInTheDocument();
+    expect(totalesSection).toHaveTextContent('Sellos vigentes');
+    expect(totalesSection).toHaveTextContent('Visitas');
+    expect(totalesSection).toHaveTextContent('Canjes');
+    expect(screen.queryByText('Progreso hacia el premio')).not.toBeInTheDocument();
+  });
+
+  it('allows filtering timeline by Purchases and Rewards', () => {
+    render(<PurchaseHistory data={mockData} onPage={vi.fn()} />);
+
+    expect(screen.getByText('Canje: Café de especialidad gratis')).toBeInTheDocument();
+
+    const comprasBtn = screen.getByRole('button', { name: /Compras \(2\)/i });
+    fireEvent.click(comprasBtn);
+    expect(screen.queryByText('Canje: Café de especialidad gratis')).not.toBeInTheDocument();
+
+    const canjesBtn = screen.getByRole('button', { name: /Canjes \(1\)/i });
+    fireEvent.click(canjesBtn);
+    expect(screen.getByText('Canje: Café de especialidad gratis')).toBeInTheDocument();
+  });
 });

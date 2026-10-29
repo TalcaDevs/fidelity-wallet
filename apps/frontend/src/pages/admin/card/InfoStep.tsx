@@ -138,33 +138,40 @@ export function InfoStep({ editor }: { editor: CardEditor }) {
                 </button>
               </div>
               {!enabled && <p className={HINT}>Oculta para los clientes mientras esta modalidad está desactivada.</p>}
-              <div className="flex flex-wrap items-center gap-3 mt-3">
-                <label className="text-sm text-panel-muted">
-                  Moneda
+              <div className="flex flex-wrap items-end gap-3 sm:gap-4 mt-3">
+                <label className="flex flex-col text-xs font-semibold text-panel-muted">
+                  <span className="mb-1.5">Moneda</span>
                   <select
                     aria-label={`Moneda de la recompensa ${i + 1}`}
                     value={currency}
                     disabled={!!reward.id}
                     title={reward.id ? 'La moneda de un premio existente se conserva. Crea otro premio para usar otra moneda.' : undefined}
                     onChange={(e) => setReward(i, { currency: e.target.value as CardType })}
-                    className={`${INPUT} w-auto mt-1`}
+                    className="h-11 px-3 py-2 bg-panel-surface rounded-xl border border-panel-border text-panel-text font-medium text-sm focus:outline-hidden focus:ring-4 focus:ring-panel-accent/20 focus:border-panel-accent cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <option value="STAMPS" disabled={!enabled && currency !== 'STAMPS' && config.stampsEnabled && activeRewards >= rewardLimit}>Sellos</option>
                     <option value="POINTS" disabled={currency !== 'POINTS' && (!saved.points.enabled || (!enabled && config.pointsEnabled && activeRewards >= rewardLimit))}>Puntos</option>
                   </select>
                 </label>
-                <span className="text-sm text-panel-muted">A los</span>
-                <NumberStepper
-                  label={`${unit} de la recompensa ${i + 1}`}
-                  value={reward.target}
-                  min={1}
-                  max={rewardPoints ? POINTS_TARGET_MAX : STAMPS_TARGET_MAX}
-                  step={rewardPoints ? 10 : 1}
-                  onChange={(target) => setReward(i, { target })}
-                />
-                <span className="text-sm text-panel-muted">{unit}</span>
+                <div className="flex flex-col text-xs font-semibold text-panel-muted">
+                  <span className="mb-1.5">Meta para canjear</span>
+                  <div className="flex items-center gap-2 h-11">
+                    <span className="text-sm font-medium text-panel-muted">A los</span>
+                    <NumberStepper
+                      label={`${unit} de la recompensa ${i + 1}`}
+                      value={reward.target}
+                      min={1}
+                      max={rewardPoints ? POINTS_TARGET_MAX : STAMPS_TARGET_MAX}
+                      step={rewardPoints ? 10 : 1}
+                      onChange={(target) => setReward(i, { target })}
+                    />
+                    <span className="text-sm font-medium text-panel-muted">{unit}</span>
+                  </div>
+                </div>
                 {rewardPoints && (
-                  <span className="text-xs text-panel-muted">≈ ${clp.format(reward.target * pesosPerPoint)} en compras</span>
+                  <div className="flex items-center h-11 text-xs text-panel-muted">
+                    <span>≈ ${clp.format(reward.target * pesosPerPoint)} en compras</span>
+                  </div>
                 )}
               </div>
             </li>
