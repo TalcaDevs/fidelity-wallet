@@ -30,7 +30,14 @@ export class UserDirectoryService {
     const rows = await this.prisma.$queryRaw<
       { id: string; email: string | null; name: string | null }[]
     >`
-      SELECT id::text AS id, email, COALESCE(raw_user_meta_data ->> 'full_name', raw_user_meta_data ->> 'name') AS name
+      SELECT id::text AS id, email,
+        COALESCE(
+          NULLIF(TRIM(raw_user_meta_data ->> 'full_name'), ''),
+          NULLIF(TRIM(raw_user_meta_data ->> 'name'), ''),
+          NULLIF(TRIM(CONCAT(raw_user_meta_data ->> 'first_name', ' ', raw_user_meta_data ->> 'last_name')), ''),
+          NULLIF(TRIM(raw_user_meta_data ->> 'first_name'), ''),
+          NULLIF(TRIM(raw_user_meta_data ->> 'last_name'), '')
+        ) AS name
       FROM auth.users
       WHERE id = ANY(${unique}::uuid[])`;
 
