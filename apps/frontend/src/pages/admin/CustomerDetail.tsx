@@ -1,14 +1,14 @@
 import { useCallback, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { balanceUnit, type PanelStampsResultDto, type PurchaseHistoryEntryDto, type VoidScanResultDto } from '@fidelity/shared';
 import { PurchaseHistory } from '../../components/customers/PurchaseHistory';
-import { ROUTES } from '../../components/routing/routePaths';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { useToast } from '../../hooks/useToast';
 import { getCustomerHistory } from '../../services/customersService';
 import { AddStampsModal } from './components/customers/AddStampsModal';
+import { PageHeader } from '../../components/layout/PageHeader';
 import { VoidScanModal } from './components/customers/VoidScanModal';
 
 /** Ficha del cliente con su historial de compras en la marca (solo el dueño). */
@@ -53,29 +53,25 @@ export function CustomerDetail({ brandId }: { brandId: string | null }) {
 
   return (
     <>
-      <Link to={ROUTES.customers} className="inline-block mb-6 text-sm font-bold text-panel-accent hover:underline">
-        ← Clientes
-      </Link>
-      <header className="mb-8 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="break-words text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text">{customerName}</h1>
-          <p className="text-panel-muted text-sm sm:text-base">
-            Sus compras validadas en caja, con el monto, la nota y la foto de la boleta cuando se registraron.
-          </p>
-        </div>
-        {data && brandId && (
-          <button
-            type="button"
-            onClick={() => setAdding(true)}
-            className="shrink-0 px-6 py-3 bg-panel-primary hover:bg-panel-primary/90 text-white shadow-lg shadow-brand-blue/20 rounded-xl font-bold transition-all inline-flex items-center justify-center gap-2"
-          >
-            <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 5v14m-7-7h14" />
-            </svg>
-            Sumar {data.stampsEnabled && data.pointsEnabled ? 'sellos o puntos' : balanceUnit(data.cardType)}
-          </button>
-        )}
-      </header>
+      <PageHeader
+        title={customerName}
+        animated={false}
+        description="Sus compras validadas en caja, con el monto, la nota y la foto de la boleta cuando se registraron."
+        actions={
+          data && brandId ? (
+            <button
+              type="button"
+              onClick={() => setAdding(true)}
+              className="shrink-0 px-6 py-3 bg-panel-primary hover:bg-panel-primary/90 text-white shadow-lg shadow-brand-blue/20 rounded-xl font-bold transition-all inline-flex items-center justify-center gap-2"
+            >
+              <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 5v14m-7-7h14" />
+              </svg>
+              Sumar {data.stampsEnabled && data.pointsEnabled ? 'sellos o puntos' : balanceUnit(data.cardType)}
+            </button>
+          ) : undefined
+        }
+      />
 
       {error && <ErrorAlert message={error} />}
 
@@ -89,7 +85,6 @@ export function CustomerDetail({ brandId }: { brandId: string | null }) {
           data={data}
           onPage={setPage}
           onVoid={setScanToVoid}
-          className="[&_section]:bg-panel-surface [&_section]:border-panel-border [&_section]:shadow-panel [&_[aria-label=Totales]>div]:bg-panel-surface [&_[aria-label=Totales]>div]:border-panel-border [&_dt]:text-panel-muted [&_dd]:text-panel-text [&_h2]:text-panel-text [&_p]:text-panel-muted [&_p.font-bold]:text-panel-text [&_p.font-black]:text-panel-text [&_time]:text-panel-muted [&_button]:bg-panel-soft [&_button]:text-panel-text [&_ol]:divide-panel-border"
         />
       )}
 
