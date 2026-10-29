@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
 import type { CardConfigDto, LocationDto } from '@fidelity/shared';
 import { Modal } from '../ui/Modal';
+import { ArrowIcon } from '../ui/ArrowIcon';
 import { useToast } from '../../hooks/useToast';
 import { publicJoinUrl } from '../../services/merchantService';
 import {
@@ -441,7 +442,7 @@ export function PrintCounterKitModal({
                   </span>
                   <span className="text-[8px] font-bold leading-none">Abre tu cámara</span>
                 </div>
-                <span className="text-[10px] text-slate-300 font-bold">→</span>
+                <ArrowIcon className="w-3.5 h-3.5 text-slate-400" />
                 <div className="flex flex-col items-center">
                   <span
                     className="w-4 h-4 rounded-full text-white text-[9px] font-black flex items-center justify-center mb-0.5"
@@ -451,7 +452,7 @@ export function PrintCounterKitModal({
                   </span>
                   <span className="text-[8px] font-bold leading-none">Escanea el QR</span>
                 </div>
-                <span className="text-[10px] text-slate-300 font-bold">→</span>
+                <ArrowIcon className="w-3.5 h-3.5 text-slate-400" />
                 <div className="flex flex-col items-center">
                   <span
                     className="w-4 h-4 rounded-full text-white text-[9px] font-black flex items-center justify-center mb-0.5"

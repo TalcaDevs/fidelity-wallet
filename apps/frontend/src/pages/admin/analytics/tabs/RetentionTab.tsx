@@ -1,3 +1,5 @@
+import { Pagination } from '../../../../components/ui/Pagination';
+import { EmptyState } from '../../../../components/ui/EmptyState';
 import { useState, useMemo, useEffect } from 'react';
 import type { RetentionReport } from '../../../../services/reportsService';
 
@@ -168,7 +170,7 @@ export function RetentionTab({
         </div>
 
         {retention.dormantCustomers.customers.length === 0 ? (
-          <p className="text-sm text-panel-muted py-6 text-center">¡Excelente! No hay clientes dormidos con este umbral.</p>
+          <EmptyState variant="simple" title="¡Excelente! No hay clientes dormidos con este umbral." />
         ) : (
           <>
             <div className="overflow-x-auto">
@@ -197,42 +199,15 @@ export function RetentionTab({
             </div>
 
             {/* Pasar página (Paginación) en Clientes Dormidos */}
-            {totalDormantPages > 1 && (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-panel-border/60 mt-3">
-                <p className="text-xs text-panel-muted font-medium text-center sm:text-left">
-                  Mostrando <span className="font-semibold text-panel-text">{(page - 1) * DORMANT_PAGE_SIZE + 1} - {Math.min(page * DORMANT_PAGE_SIZE, retention.dormantCustomers.customers.length)}</span> de <span className="font-semibold text-panel-text">{retention.dormantCustomers.customers.length}</span> clientes dormidos
-                </p>
-                <div className="flex items-center justify-center gap-2">
-                  <button
-                    type="button"
-                    disabled={page === 1}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    aria-label="Página anterior de clientes dormidos"
-                    className="px-3 py-1.5 text-xs font-bold rounded-xl border border-panel-border bg-panel-surface text-panel-text hover:bg-panel-soft disabled:opacity-40 disabled:cursor-not-allowed transition-all inline-flex items-center gap-1 shadow-2xs"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-                    </svg>
-                    <span>Anterior</span>
-                  </button>
-                  <span className="text-xs font-semibold text-panel-muted px-2">
-                    Página <strong className="text-panel-text">{page}</strong> de <strong className="text-panel-text">{totalDormantPages}</strong>
-                  </span>
-                  <button
-                    type="button"
-                    disabled={page >= totalDormantPages}
-                    onClick={() => setPage((p) => Math.min(totalDormantPages, p + 1))}
-                    aria-label="Página siguiente de clientes dormidos"
-                    className="px-3 py-1.5 text-xs font-bold rounded-xl border border-panel-border bg-panel-surface text-panel-text hover:bg-panel-soft disabled:opacity-40 disabled:cursor-not-allowed transition-all inline-flex items-center gap-1 shadow-2xs"
-                  >
-                    <span>Siguiente</span>
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            )}
+            <Pagination
+                currentPage={page}
+                totalPages={totalDormantPages}
+                totalItems={retention.dormantCustomers.customers.length}
+                pageSize={DORMANT_PAGE_SIZE}
+                itemLabel="clientes dormidos"
+                onPageChange={setPage}
+                className="mt-3 !pt-4 !border-panel-border/60"
+              />
           </>
         )}
       </div>

@@ -9,6 +9,7 @@ import {
   pointsForAmount,
 } from '@fidelity/shared';
 import { useFilePreview } from '../../hooks/useFilePreview';
+import { StatusBadge } from '../../components/ui/StatusBadge';
 import { formatStampExpiry } from '../../lib/stampExpiry';
 import { prepareReceiptPhoto } from '../../lib/receiptPhoto';
 import type { ScanValidation as Validation, StampExtras } from '../../services/scanService';
@@ -157,12 +158,9 @@ export function ScanValidation({ validation, onAddStamp, onScanAnother, onRedeem
               {hasStamps && <span>{validation.stampsCount} {balanceUnit('STAMPS', validation.stampsCount)} vigentes</span>}
               {hasPoints && <span>{clp.format(validation.pointsCount)} {balanceUnit('POINTS', validation.pointsCount)} vigentes</span>}
               {expiryLabel && (
-                <span
-                  data-testid="expiry-badge"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30"
-                >
+                <StatusBadge tone="warning" data-testid="expiry-badge">
                   <span aria-hidden="true">⏳</span> {expiryLabel}
-                </span>
+                </StatusBadge>
               )}
             </div>
             <div className="flex items-baseline justify-between mb-2">

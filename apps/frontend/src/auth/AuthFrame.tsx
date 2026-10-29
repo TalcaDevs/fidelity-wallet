@@ -4,6 +4,7 @@ import { useTheme } from '../hooks/useTheme';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { ROUTES } from '../components/routing/routePaths';
 import { WALLET_THEME } from '../components/ui/walletTheme';
+import { ArrowIcon } from '../components/ui/ArrowIcon';
 import WalletIcon from '../assets/home/wallet.svg?react';
 import SunIcon from '../assets/home/sun.svg?react';
 import MoonIcon from '../assets/home/moon.svg?react';
@@ -27,7 +28,10 @@ export function AuthFrame({ title, description, children }: { title: string; des
           <span className="text-lg font-extrabold tracking-[-0.8px] sm:text-xl">fidelity<span className="font-medium">wallet</span><span className="text-panel-gold">.</span></span>
         </Link>
         <div className="flex items-center gap-3 sm:gap-6">
-          <Link to={ROUTES.home} className="hidden text-xs font-semibold text-panel-muted transition-colors hover:text-panel-accent sm:inline-flex">← Volver al inicio</Link>
+          <Link to={ROUTES.home} className="hidden items-center gap-1.5 text-xs font-semibold text-panel-muted transition-colors hover:text-panel-accent sm:inline-flex">
+            <ArrowIcon direction="left" className="h-3.5 w-3.5" />
+            <span>Volver al inicio</span>
+          </Link>
           <button type="button" onClick={toggleDarkMode} aria-label={isDarkMode ? 'Activar modo claro' : 'Activar modo oscuro'} className="grid h-10 w-10 place-items-center rounded-xl border border-panel-border bg-panel-surface/70 text-panel-muted transition-colors hover:bg-panel-soft">
             {isDarkMode ? <SunIcon className="h-4 w-4" aria-hidden="true" /> : <MoonIcon className="h-4 w-4" aria-hidden="true" />}
           </button>

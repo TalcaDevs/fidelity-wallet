@@ -1,4 +1,5 @@
-import { PanelTitle } from '../../components/admin/PanelTitle';
+import { PageHeader } from '../../components/layout/PageHeader';
+import { PlanLimitNotice } from '../../components/billing/PlanLimitNotice';
 import { useState } from 'react';
 import { getPlan, type StaffMemberDto } from '@fidelity/shared';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -41,21 +42,22 @@ export function Team({ brandId }: { brandId: string | null }) {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text"><PanelTitle text="Equipo" /></h1>
-          <p className="text-panel-muted mt-2 text-sm sm:text-base">Administra el acceso de tus cajeros y meseros.</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setDialog({ kind: 'invite' })}
-          disabled={atLimit}
-          title={atLimit ? 'Llegaste al límite de usuarios de tu plan' : undefined}
-          className="px-6 py-3 rounded-xl bg-panel-primary hover:bg-panel-primary/90 text-white font-bold transition-all shadow-lg shadow-brand-blue/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-panel-primary"
-        >
-          Agregar usuario
-        </button>
-      </div>
+      <PageHeader
+        title="Equipo"
+        description="Administra el acceso de tus cajeros y meseros."
+        className="mb-0"
+        actions={
+          <button
+            type="button"
+            onClick={() => setDialog({ kind: 'invite' })}
+            disabled={atLimit}
+            title={atLimit ? 'Llegaste al límite de usuarios de tu plan' : undefined}
+            className="px-6 py-3 rounded-xl bg-panel-primary hover:bg-panel-primary/90 text-white font-bold transition-all shadow-lg shadow-brand-blue/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-panel-primary"
+          >
+            Agregar usuario
+          </button>
+        }
+      />
 
       <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 p-4 rounded-xl flex gap-3 items-start border border-blue-100 dark:border-blue-800/30">
         <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -67,12 +69,12 @@ export function Team({ brandId }: { brandId: string | null }) {
       <section data-panel-reveal className="bg-panel-surface rounded-2xl p-6 md:p-8 border border-panel-border shadow-panel">
         <div className="flex flex-wrap items-baseline justify-between gap-2 mb-6">
           <h2 className="text-xl font-bold text-panel-text">Usuarios</h2>
-          {teamLimit !== null && (
-            <p className={`text-sm font-bold ${atLimit ? 'text-orange-600' : 'text-panel-muted'}`}>
-              {teamUsers} de {teamLimit} usuarios de equipo
-              {atLimit ? ' · llegaste al límite: sube de plan para agregar más' : ''}
-            </p>
-          )}
+          <PlanLimitNotice
+            current={teamUsers}
+            limit={teamLimit}
+            resourceName="usuarios de equipo"
+            actionVerb="agregar más"
+          />
         </div>
 
         {team.error ? (

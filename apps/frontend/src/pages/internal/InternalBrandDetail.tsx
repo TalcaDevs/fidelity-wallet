@@ -12,6 +12,7 @@ import {
 import { LocationForm } from '../../components/locations/LocationForm';
 import { LocationMap, type MapPin } from '../../components/map/LocationMap';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
+import { ArrowIcon } from '../../components/ui/ArrowIcon';
 import { Modal } from '../../components/ui/Modal';
 import { errorMessage, useAsyncData } from '../../hooks/useAsyncData';
 import { useToast } from '../../hooks/useToast';
@@ -241,7 +242,10 @@ export function InternalBrandDetail() {
 
   return (
     <div className="space-y-6">
-      <Link to="/internal/brands" className="text-sm font-bold text-panel-accent hover:underline">← Marcas</Link>
+      <Link to="/internal/brands" className="inline-flex items-center gap-1.5 text-sm font-bold text-panel-accent hover:underline">
+        <ArrowIcon direction="left" className="h-3.5 w-3.5" />
+        <span>Marcas</span>
+      </Link>
       <PageHeader
         title={brand.name}
         subtitle={`${brand.ownerEmail ?? 'Sin dueño'} · alta ${formatDate(brand.createdAt)}`}

@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { PurchaseHistory } from '../../components/customers/PurchaseHistory';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
+import { ArrowIcon } from '../../components/ui/ArrowIcon';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { getInternalCustomerHistory } from '../../services/internalService';
 import { Empty, PageHeader, SECONDARY } from './ui';
@@ -24,7 +25,12 @@ export function InternalCustomerHistory() {
       <PageHeader
         title={data?.customer.name ?? 'Historial del cliente'}
         subtitle="Compras validadas en caja. Esta consulta queda registrada en la auditoría."
-        actions={<Link to="/internal/customers" className={SECONDARY}>← Clientes</Link>}
+        actions={
+          <Link to="/internal/customers" className={`${SECONDARY} inline-flex items-center gap-1.5`}>
+            <ArrowIcon direction="left" className="h-3.5 w-3.5" />
+            <span>Clientes</span>
+          </Link>
+        }
       />
       {!brandId ? (
         <Empty>Entra desde la lista de clientes, en la tarjeta de una marca.</Empty>

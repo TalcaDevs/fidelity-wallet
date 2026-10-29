@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ROUTES } from '../../../components/routing/routePaths';
+import { ArrowIcon } from '../../../components/ui/ArrowIcon';
 
 interface OnboardingChecklistProps {
   brandId: string | null;
@@ -97,8 +98,9 @@ export function OnboardingChecklist({ brandId }: OnboardingChecklistProps) {
               Colores, logo y regla de sellos
             </p>
           </div>
-          <span className="text-xs font-bold text-panel-accent shrink-0 group-hover:translate-x-0.5 transition-transform">
-            Ir →
+          <span className="inline-flex items-center gap-1 text-xs font-bold text-panel-accent shrink-0 group-hover:translate-x-0.5 transition-transform">
+            <span>Ir</span>
+            <ArrowIcon className="w-3.5 h-3.5" />
           </span>
         </Link>
 
@@ -115,8 +117,9 @@ export function OnboardingChecklist({ brandId }: OnboardingChecklistProps) {
               Póster con código QR para la caja
             </p>
           </div>
-          <span className="text-xs font-bold text-panel-accent shrink-0 group-hover:translate-x-0.5 transition-transform">
-            Ver →
+          <span className="inline-flex items-center gap-1 text-xs font-bold text-panel-accent shrink-0 group-hover:translate-x-0.5 transition-transform">
+            <span>Ver</span>
+            <ArrowIcon className="w-3.5 h-3.5" />
           </span>
         </Link>
 
@@ -133,8 +136,9 @@ export function OnboardingChecklist({ brandId }: OnboardingChecklistProps) {
               Agrega meseros y cajeros
             </p>
           </div>
-          <span className="text-xs font-bold text-panel-accent shrink-0 group-hover:translate-x-0.5 transition-transform">
-            Invitar →
+          <span className="inline-flex items-center gap-1 text-xs font-bold text-panel-accent shrink-0 group-hover:translate-x-0.5 transition-transform">
+            <span>Invitar</span>
+            <ArrowIcon className="w-3.5 h-3.5" />
           </span>
         </Link>
       </div>
