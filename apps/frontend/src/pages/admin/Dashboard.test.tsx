@@ -152,4 +152,50 @@ describe('Dashboard', () => {
 
     expect(screen.getByRole('heading', { name: /Primeros pasos/ })).toBeInTheDocument();
   });
+
+  it('renders voided scan badge and points/multi-stamp counts accurately', () => {
+    vi.spyOn(useDashboardStatsModule, 'useDashboardStats').mockReturnValue({
+      stats: {
+        activePasses: 10,
+        stampsDelivered: 50,
+        rewardsRedeemed: 5,
+        recentScans: [
+          {
+            id: 'scan-voided',
+            type: 'STAMP_ADDED',
+            createdAt: '2026-09-25T12:00:00Z',
+            method: 'QR',
+            voidedAt: '2026-09-25T12:30:00Z',
+            customer: { rut: '12345678-5', phone: null },
+          },
+          {
+            id: 'scan-points',
+            type: 'STAMP_ADDED',
+            createdAt: '2026-09-25T12:05:00Z',
+            method: 'QR',
+            pointsEarned: 150,
+            customer: { rut: '98765432-1', phone: null },
+          },
+          {
+            id: 'scan-multi',
+            type: 'STAMP_ADDED',
+            createdAt: '2026-09-25T12:10:00Z',
+            method: 'QR',
+            stampCount: 3,
+            customer: { rut: null, phone: '+56987654321' },
+          },
+        ],
+      },
+      loading: false,
+      error: null,
+      fetchStats: vi.fn(),
+    });
+
+    render(<Dashboard session={null} brandId="merchant-1" />);
+
+    expect(screen.getByText('Carga Anulada')).toBeInTheDocument();
+    expect(screen.getAllByText('Anulado').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('+150 Pts').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('+3 Sellos').length).toBeGreaterThan(0);
+  });
 });

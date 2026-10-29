@@ -12,6 +12,9 @@ export interface ScanWithCustomer {
   createdAt: string;
   customer: ScanCustomer | null;
   method?: ScanMethodName;
+  stampCount?: number;
+  pointsEarned?: number;
+  voidedAt?: string | null;
 }
 
 export interface DashboardStats {
@@ -40,6 +43,9 @@ interface RawScanRow {
   type: string;
   createdAt: string;
   method?: ScanMethodName;
+  stampCount?: number;
+  pointsEarned?: number;
+  voidedAt?: string | null;
   pass?: { customer?: ScanCustomer | ScanCustomer[] | null } | { customer?: ScanCustomer | ScanCustomer[] | null }[] | null;
 }
 
@@ -50,6 +56,9 @@ export function toScan(row: RawScanRow): ScanWithCustomer {
     type: row.type,
     createdAt: row.createdAt,
     method: row.method,
+    stampCount: row.stampCount,
+    pointsEarned: row.pointsEarned,
+    voidedAt: row.voidedAt,
     customer: firstOrSelf(pass?.customer),
   };
 }
@@ -57,9 +66,25 @@ export function toScan(row: RawScanRow): ScanWithCustomer {
 export async function fetchDashboardStats(brandId: string): Promise<DashboardStats> {
   const [passesRes, stampsRes, rewardsRes, scansRes] = await Promise.all([
     supabase.from('Pass').select('id', { count: 'exact', head: true }).eq('brandId', brandId),
-    supabase.from('Scan').select('*', { count: 'exact', head: true }).eq('brandId', brandId).eq('type', 'STAMP_ADDED'),
-    supabase.from('Scan').select('*', { count: 'exact', head: true }).eq('brandId', brandId).eq('type', 'REWARD_REDEEMED'),
-    supabase.from('Scan').select('id, type, createdAt, method, pass:Pass(customer:Customer(rut, phone))').eq('brandId', brandId).order('createdAt', { ascending: false }).limit(30),
+    supabase
+      .from('Scan')
+      .select('*', { count: 'exact', head: true })
+      .eq('brandId', brandId)
+      .eq('type', 'STAMP_ADDED')
+      .is('voidedAt', null)
+      .neq('method', 'WELCOME'),
+    supabase
+      .from('Scan')
+      .select('*', { count: 'exact', head: true })
+      .eq('brandId', brandId)
+      .eq('type', 'REWARD_REDEEMED')
+      .is('voidedAt', null),
+    supabase
+      .from('Scan')
+      .select('id, type, createdAt, method, stampCount, pointsEarned, voidedAt, pass:Pass(customer:Customer(rut, phone))')
+      .eq('brandId', brandId)
+      .order('createdAt', { ascending: false })
+      .limit(30),
   ]);
 
   // supabase-js no lanza: devuelve { data, count, error }. Sin esta comprobación

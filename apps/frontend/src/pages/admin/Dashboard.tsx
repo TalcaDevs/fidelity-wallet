@@ -111,6 +111,24 @@ export function Dashboard({ session, brandId }: { session: Session | null; brand
       const isReward = scan.type === 'REWARD_REDEEMED';
       const isManual = scan.method === 'MANUAL' || scan.method === 'PANEL';
       const methodLabel = getScanMethodLabel(scan.method, isManual);
+      const isVoided = Boolean(scan.voidedAt);
+
+      let resultLabel = isReward ? 'Premio' : '+1 Sello';
+      if (isVoided) {
+        resultLabel = 'Anulado';
+      } else if (isReward) {
+        resultLabel = 'Premio';
+      } else if (scan.pointsEarned && scan.pointsEarned > 0) {
+        resultLabel = `+${scan.pointsEarned} Pts`;
+      } else if (scan.stampCount && scan.stampCount > 1) {
+        resultLabel = `+${scan.stampCount} Sellos`;
+      }
+
+      const badgeColor = isVoided
+        ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400'
+        : isReward
+        ? 'bg-panel-orange/10 text-panel-orange'
+        : 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400';
 
       return (
         <div
@@ -123,15 +141,19 @@ export function Dashboard({ session, brandId }: { session: Session | null; brand
               <div
                 aria-hidden="true"
                 className={`w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-xl flex items-center justify-center [&>svg]:h-5 [&>svg]:w-5 ${
-                  isReward ? 'bg-panel-orange/10 text-panel-orange' : 'bg-panel-accent/10 text-panel-accent'
+                  isVoided
+                    ? 'bg-rose-500/10 text-rose-600'
+                    : isReward
+                    ? 'bg-panel-orange/10 text-panel-orange'
+                    : 'bg-panel-accent/10 text-panel-accent'
                 }`}
               >
                 {isReward ? REWARDS_ICON : STAMPS_ICON}
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 sm:gap-2">
-                  <p className="font-semibold text-xs sm:text-sm text-panel-text truncate">
-                    {isReward ? 'Premio Canjeado' : 'Cliente escaneado'}
+                  <p className={`font-semibold text-xs sm:text-sm truncate ${isVoided ? 'line-through text-panel-muted' : 'text-panel-text'}`}>
+                    {isVoided ? 'Carga Anulada' : isReward ? 'Premio Canjeado' : 'Cliente escaneado'}
                   </p>
                   {scan.method && (
                     <span
@@ -154,13 +176,9 @@ export function Dashboard({ session, brandId }: { session: Session | null; brand
             {/* En móvil: Badge de resultado a la derecha en la fila superior */}
             <div className="sm:hidden shrink-0">
               <span
-                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                  isReward
-                    ? 'bg-panel-orange/10 text-panel-orange'
-                    : 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'
-                }`}
+                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${badgeColor}`}
               >
-                {isReward ? 'Premio' : '+1 Sello'}
+                {resultLabel}
               </span>
             </div>
           </div>
@@ -171,13 +189,9 @@ export function Dashboard({ session, brandId }: { session: Session | null; brand
               {identifier}
             </span>
             <span
-              className={`hidden sm:inline-flex items-center px-3 py-1 rounded-full text-xs sm:text-sm font-bold ${
-                isReward
-                  ? 'bg-panel-orange/10 text-panel-orange'
-                  : 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'
-              }`}
+              className={`hidden sm:inline-flex items-center px-3 py-1 rounded-full text-xs sm:text-sm font-bold ${badgeColor}`}
             >
-              {isReward ? 'Premio' : '+1 Sello'}
+              {resultLabel}
             </span>
             <p className="text-[11px] sm:text-xs text-panel-muted sm:mt-1 font-medium tabular-nums">
               {new Date(scan.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

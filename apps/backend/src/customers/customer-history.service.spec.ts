@@ -74,6 +74,7 @@ describe('CustomerHistoryService', () => {
       stamp: {
         aggregate: vi.fn(async ({ where }: { where: { currency: string } }) => ({ _sum: { amount: where.currency === 'POINTS' ? 30 : 3 } })),
         findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue([]),
         groupBy: vi.fn().mockResolvedValue([{ consumedByScanId: 'scan-2', currency: 'STAMPS', _sum: { amount: 5 } }]),
       },
       auditLog: { create: vi.fn() },
@@ -179,6 +180,18 @@ describe('CustomerHistoryService', () => {
       id: 'scan-voided-1',
       voidedAt: '2026-10-04T12:00:00.000Z',
       voidReason: 'Error en caja al cargar sello duplicado',
+    });
+  });
+
+  it('marks canVoid as false and isConsumed as true when stamps were already consumed in a redemption', async () => {
+    prisma.stamp.findMany.mockResolvedValue([{ sourceScanId: 'scan-1' }]);
+
+    const result = await service.forOwner(customerId, query, ownerId);
+
+    const activeScanItem = result.history.items.find((item) => item.id === 'scan-1');
+    expect(activeScanItem).toMatchObject({
+      canVoid: false,
+      isConsumed: true,
     });
   });
 });

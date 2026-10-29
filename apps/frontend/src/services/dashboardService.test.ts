@@ -69,6 +69,8 @@ describe('dashboardService', () => {
             return builder;
           }),
           eq: vi.fn(() => builder),
+          is: vi.fn(() => builder),
+          neq: vi.fn(() => builder),
           order: vi.fn(() => builder),
           limit: vi.fn(() =>
             Promise.resolve({
@@ -94,7 +96,7 @@ describe('dashboardService', () => {
 
       const stats = await fetchDashboardStats('merchant-123');
       expect(selectCalls).toContain(
-        'id, type, createdAt, method, pass:Pass(customer:Customer(rut, phone))',
+        'id, type, createdAt, method, stampCount, pointsEarned, voidedAt, pass:Pass(customer:Customer(rut, phone))',
       );
       expect(stats.recentScans[0].method).toBe('QR');
     });
