@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useDialogFocus } from '../../hooks/useDialogFocus';
 import { WALLET_THEME } from './walletTheme';
+import { Button } from './Button';
 
 export function ConfirmDialog({
   title,
@@ -34,10 +35,6 @@ export function ConfirmDialog({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onCancel]);
 
-  const confirmClasses = tone === 'danger'
-    ? 'bg-red-600 hover:bg-red-700 shadow-red-600/20'
-    : 'bg-brand-blue hover:bg-blue-600 shadow-brand-blue/20';
-
   const dialogContent = (
     <div
       className={`${WALLET_THEME} fw-admin fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 backdrop-blur-sm p-4`}
@@ -59,22 +56,23 @@ export function ConfirmDialog({
         <p className="text-sm sm:text-base text-panel-muted mb-8">{message}</p>
 
         <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
-          <button
+          <Button
             type="button"
+            variant="secondary"
             onClick={onCancel}
             disabled={isBusy}
-            className="px-5 py-3 rounded-xl font-bold text-panel-text bg-panel-soft hover:bg-panel-border/30 transition-colors disabled:opacity-50"
           >
             {cancelLabel}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant={tone === 'danger' ? 'danger' : 'primary'}
+            isLoading={isBusy}
+            loadingText="Procesando..."
             onClick={onConfirm}
-            disabled={isBusy}
-            className={`px-5 py-3 rounded-xl font-bold text-white shadow-lg transition-colors disabled:opacity-50 ${confirmClasses}`}
           >
-            {isBusy ? 'Procesando...' : confirmLabel}
-          </button>
+            {confirmLabel}
+          </Button>
         </div>
       </div>
     </div>
