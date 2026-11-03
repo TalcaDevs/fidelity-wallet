@@ -30,6 +30,7 @@ import { WalletLoading } from './components/ui/WalletLoading';
 
 // El panel interno no viaja en el bundle del panel, del escáner ni de /join.
 const InternalApp = lazy(() => import('./pages/internal/InternalApp'));
+const Demo = lazy(() => import('./pages/public/Demo'));
 // Sucursales trae Leaflet: se carga al abrirla, no con el resto del panel.
 const Locations = lazy(() => import('./pages/admin/Locations').then((m) => ({ default: m.Locations })));
 
@@ -54,6 +55,7 @@ export default function App() {
         <Routes>
           {/* Públicas: funcionan con y sin sesión */}
           <Route path={ROUTES.home} element={<Home />} />
+          <Route path={ROUTES.demo} element={<Suspense fallback={<WalletLoading />}><Demo /></Suspense>} />
           <Route path="/join/:merchantName" element={<Join />} />
           <Route path={ROUTES.terms} element={<Terms />} />
           <Route path={ROUTES.resetPassword} element={<PasswordResetRoute onDone={finishPasswordRecovery} />} />
