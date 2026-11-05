@@ -1,8 +1,20 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PlanLimitNotice, PlanUsageBar } from '../PlanLimitNotice';
 
+let mockBillingEnabled = true;
+
+vi.mock('../../../config/features', () => ({
+  get isBillingEnabled() {
+    return mockBillingEnabled;
+  },
+}));
+
 describe('PlanLimitNotice Component', () => {
+  beforeEach(() => {
+    mockBillingEnabled = true;
+  });
+
   it('no renderiza nada cuando el límite es null y showWhenUnlimited es false', () => {
     const { container } = render(
       <PlanLimitNotice current={2} limit={null} resourceName="sucursales" />,
@@ -38,7 +50,8 @@ describe('PlanLimitNotice Component', () => {
     expect(screen.queryByText(/llegaste al límite/i)).not.toBeInTheDocument();
   });
 
-  it('muestra aviso en naranja con link para subir de plan cuando se alcanza el límite', () => {
+  it('muestra aviso en naranja con link para subir de plan cuando se alcanza el límite y facturación está activa', () => {
+    mockBillingEnabled = true;
     render(
       <PlanLimitNotice
         current={3}
@@ -58,7 +71,28 @@ describe('PlanLimitNotice Component', () => {
     expect(screen.getByText(/para agregar o activar más/)).toBeInTheDocument();
   });
 
-  it('permite deshabilitar el link interactivo con showUpgradeLink={false}', () => {
+  it('oculta el link y solo muestra texto cuando se alcanza el límite y facturación está desactivada por feature flag', () => {
+    mockBillingEnabled = false;
+    render(
+      <PlanLimitNotice
+        current={3}
+        limit={3}
+        resourceName="sucursales activas de tu plan"
+        actionVerb="agregar o activar más"
+      />,
+    );
+
+    const notice = screen.getByText(/3 de 3 sucursales activas de tu plan/);
+    expect(notice).toBeInTheDocument();
+    expect(notice).toHaveClass('text-orange-600');
+
+    // No debe haber link navegable a /admin/billing porque la ruta está deshabilitada
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.getByText(/llegaste al límite: sube de plan para agregar o activar más/)).toBeInTheDocument();
+  });
+
+  it('permite deshabilitar el link interactivo con showUpgradeLink={false} aun con facturación activa', () => {
+    mockBillingEnabled = true;
     render(
       <PlanLimitNotice
         current={2}
@@ -72,7 +106,25 @@ describe('PlanLimitNotice Component', () => {
     expect(screen.getByText(/llegaste al límite: sube de plan para agregar más/)).toBeInTheDocument();
   });
 
-  it('renderiza la variante banner cuando se alcanza el límite', () => {
+  it('permite forzar el link con showUpgradeLink={true} aun con flag desactivado si apunta a otra ruta', () => {
+    mockBillingEnabled = false;
+    render(
+      <PlanLimitNotice
+        current={2}
+        limit={2}
+        resourceName="usuarios de equipo"
+        upgradeHref="/soporte"
+        showUpgradeLink={true}
+      />,
+    );
+
+    const link = screen.getByRole('link', { name: 'sube de plan' });
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute('href', '/soporte');
+  });
+
+  it('renderiza la variante banner cuando se alcanza el límite y muestra el botón si facturación está activa', () => {
+    mockBillingEnabled = true;
     render(
       <PlanLimitNotice
         variant="banner"
@@ -87,6 +139,24 @@ describe('PlanLimitNotice Component', () => {
     expect(banner).toBeInTheDocument();
     expect(screen.getByText(/Llegaste al límite de sucursales \(4 de 4\)/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Subir de plan' })).toBeInTheDocument();
+  });
+
+  it('renderiza la variante banner sin botón de subida cuando facturación está desactivada', () => {
+    mockBillingEnabled = false;
+    render(
+      <PlanLimitNotice
+        variant="banner"
+        current={4}
+        limit={4}
+        resourceName="sucursales"
+        actionVerb="activar más locales"
+      />,
+    );
+
+    const banner = screen.getByRole('alert');
+    expect(banner).toBeInTheDocument();
+    expect(screen.getByText(/Llegaste al límite de sucursales \(4 de 4\)/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Subir de plan' })).not.toBeInTheDocument();
   });
 
   it('no muestra la variante banner cuando aún quedan recursos disponibles', () => {

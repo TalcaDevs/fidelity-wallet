@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { ROUTES } from '../routing/routePaths';
+import { isBillingEnabled } from '../../config/features';
 
 export interface PlanLimitNoticeProps {
   current: number;
@@ -19,7 +20,7 @@ export function PlanLimitNotice({
   resourceName,
   actionVerb = 'agregar más',
   upgradeHref = ROUTES.billing,
-  showUpgradeLink = true,
+  showUpgradeLink,
   showWhenUnlimited = false,
   variant = 'inline',
   className = '',
@@ -29,6 +30,7 @@ export function PlanLimitNotice({
   }
 
   const atLimit = limit !== null && current >= limit;
+  const canUpgrade = showUpgradeLink ?? (upgradeHref === ROUTES.billing ? isBillingEnabled : true);
 
   if (variant === 'banner') {
     if (!atLimit) return null;
@@ -51,7 +53,7 @@ export function PlanLimitNotice({
             </p>
           </div>
         </div>
-        {showUpgradeLink && (
+        {canUpgrade && (
           <a
             href={upgradeHref}
             className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white text-xs font-bold shrink-0 text-center transition-all shadow-xs"
@@ -75,7 +77,7 @@ export function PlanLimitNotice({
           {atLimit && (
             <>
               {' · llegaste al límite: '}
-              {showUpgradeLink ? (
+              {canUpgrade ? (
                 <a
                   href={upgradeHref}
                   className="underline underline-offset-2 hover:text-orange-700 dark:hover:text-orange-300 transition-colors"
