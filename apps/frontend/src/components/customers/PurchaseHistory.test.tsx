@@ -119,4 +119,35 @@ describe('PurchaseHistory Component', () => {
     // Only 1 Anular button should exist (from active load), redemptions can't be voided
     expect(screen.getAllByRole('button', { name: 'Anular' })).toHaveLength(1);
   });
+
+  it('does NOT render "Anular" button and displays "Canjeado" badge when load was consumed', () => {
+    const dataWithConsumed: CustomerHistoryDto = {
+      ...mockData,
+      history: {
+        ...mockData.history,
+        items: [
+          {
+            id: 'scan-consumed-1',
+            type: 'STAMP_ADDED',
+            createdAt: '2026-10-01T10:00:00Z',
+            method: 'QR',
+            locationName: 'Sucursal Centro',
+            staffEmail: 'cajero@cafe.cl',
+            stamps: 1,
+            purchaseAmount: 3000,
+            note: null,
+            rewardName: null,
+            receiptUrl: null,
+            isConsumed: true,
+            canVoid: false,
+          },
+        ],
+      },
+    };
+
+    render(<PurchaseHistory data={dataWithConsumed} onPage={vi.fn()} onVoid={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: 'Anular' })).not.toBeInTheDocument();
+    expect(screen.getByText('Canjeado')).toBeInTheDocument();
+  });
 });

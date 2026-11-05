@@ -57,7 +57,7 @@ export class RetentionAnalyticsService {
           createdAt: true,
           customer: { select: { rut: true, phone: true } },
           scans: {
-            where: { ...scopeFilter },
+            where: { ...scopeFilter, ...VISIT_SCANS },
             select: { createdAt: true },
             orderBy: { createdAt: 'desc' },
             take: 1,

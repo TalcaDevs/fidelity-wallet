@@ -92,7 +92,14 @@ function EntryRow({
         )}
       </div>
       <div className="shrink-0 flex items-center gap-2 self-start">
-        {onVoid && isStamp && !isVoided && (
+        {entry.isConsumed ? (
+          <span
+            className="px-2.5 py-1 text-xs font-semibold text-panel-muted bg-panel-soft rounded-lg border border-panel-border/50 select-none"
+            title="Los sellos o puntos de esta carga ya fueron utilizados en un canje y no pueden anularse"
+          >
+            Canjeado
+          </span>
+        ) : onVoid && isStamp && !isVoided && entry.canVoid !== false ? (
           <button
             type="button"
             onClick={() => onVoid(entry)}
@@ -101,7 +108,7 @@ function EntryRow({
           >
             Anular
           </button>
-        )}
+        ) : null}
         {entry.receiptUrl && (
           <a
             href={entry.receiptUrl}
