@@ -184,6 +184,15 @@ describe('Dashboard', () => {
             stampCount: 3,
             customer: { rut: null, phone: '+56987654321' },
           },
+          {
+            id: 'scan-hybrid',
+            type: 'STAMP_ADDED',
+            createdAt: '2026-09-25T12:15:00Z',
+            method: 'QR',
+            stampCount: 1,
+            pointsEarned: 150,
+            customer: { rut: '11223344-5', phone: null },
+          },
         ],
       },
       loading: false,
@@ -197,5 +206,6 @@ describe('Dashboard', () => {
     expect(screen.getAllByText('Anulado').length).toBeGreaterThan(0);
     expect(screen.getAllByText('+150 Pts').length).toBeGreaterThan(0);
     expect(screen.getAllByText('+3 Sellos').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('+1 Sello · +150 Pts').length).toBeGreaterThan(0);
   });
 });

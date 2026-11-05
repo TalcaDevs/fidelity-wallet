@@ -118,10 +118,19 @@ export function Dashboard({ session, brandId }: { session: Session | null; brand
         resultLabel = 'Anulado';
       } else if (isReward) {
         resultLabel = 'Premio';
-      } else if (scan.pointsEarned && scan.pointsEarned > 0) {
-        resultLabel = `+${scan.pointsEarned} Pts`;
-      } else if (scan.stampCount && scan.stampCount > 1) {
-        resultLabel = `+${scan.stampCount} Sellos`;
+      } else {
+        const points = scan.pointsEarned ?? 0;
+        const stamps = scan.stampCount ?? (points > 0 ? 0 : 1);
+
+        if (stamps > 0 && points > 0) {
+          resultLabel = `+${stamps} ${stamps === 1 ? 'Sello' : 'Sellos'} · +${points} Pts`;
+        } else if (points > 0) {
+          resultLabel = `+${points} Pts`;
+        } else if (stamps > 1) {
+          resultLabel = `+${stamps} Sellos`;
+        } else {
+          resultLabel = '+1 Sello';
+        }
       }
 
       const badgeColor = isVoided
