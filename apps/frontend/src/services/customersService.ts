@@ -7,6 +7,8 @@ import { jsonBody, requestJson } from './httpJson';
 export interface CustomerRow {
   passId: string;
   customerId: string;
+  merchantId?: string | null;
+  locationIds?: string[];
   rut: string | null;
   phone: string | null;
   name?: string | null;
@@ -22,6 +24,7 @@ export interface CustomerRow {
   pointsEnabled?: boolean;
   totalPurchases?: number;
   purchasesCount?: number;
+  purchasesByLocation?: Record<string, { total: number; count: number }>;
   nextExpiryAt: string | null;
   joinedAt: string;
   lastActivityAt: string;
@@ -40,6 +43,7 @@ interface RawCustomer {
 interface RawPassRow {
   id: string;
   customerId: string;
+  merchantId?: string | null;
   createdAt: string;
   updatedAt: string;
   customer?: RawCustomer | RawCustomer[] | null;
@@ -66,6 +70,7 @@ export interface ListCustomersOptions {
 export interface RawScanRow {
   id?: string;
   passId: string;
+  merchantId?: string | null;
   purchaseAmount: number | null;
   createdAt?: string;
 }
@@ -97,7 +102,7 @@ export async function fetchBrandScans(brandId: string): Promise<RawScanRow[]> {
       break;
     }
 
-    let scanQuery: any = scanTable.select('id, passId, purchaseAmount, createdAt');
+    let scanQuery: any = scanTable.select('id, passId, purchaseAmount, createdAt, merchantId');
 
     if (typeof scanQuery?.eq === 'function') {
       scanQuery = scanQuery.eq('brandId', brandId);
@@ -163,7 +168,7 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
 
     let passQuery: any = supabase
       .from('Pass')
-      .select('id, customerId, createdAt, updatedAt, customer:Customer(rut, phone, name, email, birthDay, birthMonth, birthYear)')
+      .select('id, customerId, merchantId, createdAt, updatedAt, customer:Customer(rut, phone, name, email, birthDay, birthMonth, birthYear)')
       .eq('brandId', brandId)
       .order('id', { ascending: true });
 
@@ -242,12 +247,36 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
     }
   }
 
-  const purchases = new Map<string, { total: number; count: number }>();
+  const purchases = new Map<
+    string,
+    {
+      total: number;
+      count: number;
+      locationIds: Set<string>;
+      byLocation: Map<string, { total: number; count: number }>;
+    }
+  >();
   for (const scan of ((rawScans ?? []) as RawScanRow[])) {
-    if (scan.passId && typeof scan.purchaseAmount === 'number' && scan.purchaseAmount > 0) {
-      const current = purchases.get(scan.passId) ?? { total: 0, count: 0 };
-      current.total += scan.purchaseAmount;
-      current.count += 1;
+    if (scan.passId) {
+      const current = purchases.get(scan.passId) ?? {
+        total: 0,
+        count: 0,
+        locationIds: new Set<string>(),
+        byLocation: new Map<string, { total: number; count: number }>(),
+      };
+      if (typeof scan.purchaseAmount === 'number' && scan.purchaseAmount > 0) {
+        current.total += scan.purchaseAmount;
+        current.count += 1;
+        if (scan.merchantId) {
+          const loc = current.byLocation.get(scan.merchantId) ?? { total: 0, count: 0 };
+          loc.total += scan.purchaseAmount;
+          loc.count += 1;
+          current.byLocation.set(scan.merchantId, loc);
+        }
+      }
+      if (scan.merchantId) {
+        current.locationIds.add(scan.merchantId);
+      }
       purchases.set(scan.passId, current);
     }
   }
@@ -256,9 +285,19 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
     const customer = firstOrSelf(row.customer);
     const balance = balances.get(row.id);
     const purchase = purchases.get(row.id);
+    const locSet = new Set<string>();
+    if (row.merchantId) locSet.add(row.merchantId);
+    if (purchase?.locationIds) {
+      for (const locId of purchase.locationIds) {
+        locSet.add(locId);
+      }
+    }
+
     return {
       passId: row.id,
       customerId: row.customerId,
+      merchantId: row.merchantId ?? null,
+      locationIds: Array.from(locSet),
       rut: customer?.rut ?? null,
       phone: customer?.phone ?? null,
       name: customer?.name ?? null,
@@ -273,6 +312,7 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
       pointsEnabled: balance?.pointsEnabled ?? false,
       totalPurchases: purchase?.total ?? 0,
       purchasesCount: purchase?.count ?? 0,
+      purchasesByLocation: purchase?.byLocation ? Object.fromEntries(purchase.byLocation) : {},
       nextExpiryAt: balance?.nextExpiryAt ?? null,
       joinedAt: row.createdAt,
       lastActivityAt: row.updatedAt,

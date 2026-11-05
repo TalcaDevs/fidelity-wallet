@@ -75,6 +75,7 @@ export interface CustomerProfileDto {
   activePoints?: number;
   /** Local donde se registró: el que se propone al sumar sellos desde el panel. */
   homeLocationId: string;
+  lastActivityAt?: string | null;
 }
 
 export interface CustomerHistoryDto {

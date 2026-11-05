@@ -67,6 +67,7 @@ export class CustomerHistoryService {
     customerId: string,
     { brandId, page, pageSize }: CustomerHistoryQueryDto,
     maskIdentifiers: boolean,
+    lastActivityAt?: Date | null,
   ): Promise<CustomerHistoryDto> {
     const program = await findBrandProgram(this.prisma, brandId);
     const pass = program
@@ -80,7 +81,7 @@ export class CustomerHistoryService {
     }
 
     const now = new Date();
-    const [scans, totalCount, totalsByType, balances] = await Promise.all([
+    const [scans, totalCount, totalsByType, balances, latestValidScan] = await Promise.all([
       this.prisma.scan.findMany({
         where: { passId: pass.id },
         orderBy: { createdAt: 'desc' },
@@ -100,6 +101,13 @@ export class CustomerHistoryService {
         _sum: { purchaseAmount: true },
       }),
       readCardBalance(this.prisma, pass.id, toCardView(program), now),
+      typeof this.prisma.scan.findFirst === 'function'
+        ? this.prisma.scan.findFirst({
+            where: { passId: pass.id, voidedAt: null },
+            orderBy: { createdAt: 'desc' },
+            select: { createdAt: true },
+          })
+        : Promise.resolve(null),
     ]);
 
     const total = totalCount;
@@ -144,7 +152,7 @@ export class CustomerHistoryService {
     }));
 
     return {
-      customer: this.profile(pass, balances, maskIdentifiers),
+      customer: this.profile(pass, balances, maskIdentifiers, latestValidScan?.createdAt),
       totals: {
         visits: purchases.reduce((sum, g) => sum + g._count._all, 0),
         redemptions: redemptions.reduce((sum, g) => sum + g._count._all, 0),
@@ -163,6 +171,7 @@ export class CustomerHistoryService {
     { customer, createdAt, merchantId }: { customer: Customer; createdAt: Date; merchantId: string },
     balances: { activeStamps: number; activePoints: number },
     maskIdentifiers: boolean,
+    lastActivityAt?: Date | null,
   ): CustomerHistoryDto['customer'] {
     const mask = <T extends string | null>(value: T, masker: (v: string) => string) =>
       value && maskIdentifiers ? masker(value) : value;
@@ -178,6 +187,7 @@ export class CustomerHistoryService {
       joinedAt: createdAt.toISOString(),
       ...balances,
       homeLocationId: merchantId,
+      lastActivityAt: (lastActivityAt ?? createdAt).toISOString(),
     };
   }
 

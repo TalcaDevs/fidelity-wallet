@@ -65,6 +65,7 @@ describe('CustomerHistoryService', () => {
       },
       scan: {
         findMany: vi.fn().mockResolvedValue([redeemScan, stampScan]),
+        findFirst: vi.fn().mockResolvedValue({ createdAt: stampScan.createdAt }),
         count: vi.fn().mockResolvedValue(2),
         groupBy: vi.fn().mockResolvedValue([
           { type: 'STAMP_ADDED', _count: { _all: 1 }, _sum: { purchaseAmount: 12500 } },

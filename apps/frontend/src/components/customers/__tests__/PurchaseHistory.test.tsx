@@ -119,4 +119,79 @@ describe('PurchaseHistory Component', () => {
     // Only 1 Anular button should exist (from active load), redemptions can't be voided
     expect(screen.getAllByRole('button', { name: 'Anular' })).toHaveLength(1);
   });
+
+  it('displays behavior metrics: Ticket promedio and Actividad', () => {
+    render(<PurchaseHistory data={mockData} onPage={vi.fn()} />);
+
+    expect(screen.getByText('Ticket promedio')).toBeInTheDocument();
+    expect(screen.getByText('$5.000')).toBeInTheDocument();
+    expect(screen.getByText('Actividad')).toBeInTheDocument();
+  });
+
+  it('displays customer summary stats in Totales section without progress meter', () => {
+    render(<PurchaseHistory data={mockData} onPage={vi.fn()} />);
+
+    const totalesSection = screen.getByRole('region', { name: 'Totales' });
+    expect(totalesSection).toBeInTheDocument();
+    expect(totalesSection).toHaveTextContent('Sellos vigentes');
+    expect(totalesSection).toHaveTextContent('Visitas');
+    expect(totalesSection).toHaveTextContent('Canjes');
+    expect(screen.queryByText('Progreso hacia el premio')).not.toBeInTheDocument();
+  });
+
+  it('allows filtering timeline by Purchases and Rewards', () => {
+    render(<PurchaseHistory data={mockData} onPage={vi.fn()} />);
+
+    expect(screen.getByText('Canje: Café de especialidad gratis')).toBeInTheDocument();
+
+    const comprasBtn = screen.getByRole('button', { name: /Compras \(2\)/i });
+    fireEvent.click(comprasBtn);
+    expect(screen.queryByText('Canje: Café de especialidad gratis')).not.toBeInTheDocument();
+
+    const canjesBtn = screen.getByRole('button', { name: /Canjes \(1\)/i });
+    fireEvent.click(canjesBtn);
+    expect(screen.getByText('Canje: Café de especialidad gratis')).toBeInTheDocument();
+  });
+  it('renders branch location names in metadata for movements across multiple branches', () => {
+    render(<PurchaseHistory data={mockData} onPage={vi.fn()} />);
+
+    expect(screen.getByText('Sucursal Providencia')).toBeInTheDocument();
+    expect(screen.getAllByText('Sucursal Centro').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('maintains activity status consistent across pages based on customer lastActivityAt', () => {
+    const today = new Date().toISOString();
+    const dataWithActivity: CustomerHistoryDto = {
+      ...mockData,
+      customer: {
+        ...mockData.customer,
+        lastActivityAt: today,
+      },
+      history: {
+        page: 2,
+        pageSize: 20,
+        total: 40,
+        items: [
+          {
+            id: 'scan-old',
+            type: 'STAMP_ADDED',
+            createdAt: '2026-05-01T10:00:00Z',
+            method: 'QR',
+            locationName: 'Sucursal Centro',
+            staffEmail: null,
+            stamps: 1,
+            points: 0,
+            purchaseAmount: 2000,
+            note: null,
+            rewardName: null,
+            receiptUrl: null,
+          },
+        ],
+      },
+    };
+
+    render(<PurchaseHistory data={dataWithActivity} onPage={vi.fn()} />);
+
+    expect(screen.getByText('Activo hoy')).toBeInTheDocument();
+  });
 });

@@ -112,13 +112,13 @@ export function NumberStepper({
 }) {
   const clamp = (n: number) => Math.max(min, Math.min(max, n));
   return (
-    <div className="inline-flex items-center rounded-xl border border-panel-border bg-panel-surface">
+    <div className="inline-flex items-center h-11 rounded-xl border border-panel-border bg-panel-surface">
       <button
         type="button"
         aria-label={`${label}: menos`}
         disabled={value <= min}
         onClick={() => onChange(clamp(value - step))}
-        className="w-10 h-11 text-xl font-bold text-panel-muted disabled:opacity-30"
+        className="w-10 h-full text-xl font-bold text-panel-muted disabled:opacity-30"
       >
         −
       </button>
@@ -137,7 +137,7 @@ export function NumberStepper({
         aria-label={`${label}: más`}
         disabled={value >= max}
         onClick={() => onChange(clamp(value + step))}
-        className="w-10 h-11 text-xl font-bold text-panel-muted disabled:opacity-30"
+        className="w-10 h-full text-xl font-bold text-panel-muted disabled:opacity-30"
       >
         +
       </button>
