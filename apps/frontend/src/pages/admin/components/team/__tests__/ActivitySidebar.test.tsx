@@ -288,9 +288,13 @@ describe('ActivitySidebar (Modal)', () => {
   });
 
   it('filters activity by timeframe (Hoy, Esta semana, Este mes, Todo) and shows unique customers', async () => {
-    const todayIso = new Date().toISOString();
-    const tenDaysAgoIso = new Date(Date.now() - 10 * 86400000).toISOString();
-    const fortyDaysAgoIso = new Date(Date.now() - 40 * 86400000).toISOString();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date('2026-10-24T12:00:00Z'));
+
+    try {
+      const todayIso = new Date().toISOString();
+      const tenDaysAgoIso = new Date(Date.now() - 10 * 86400000).toISOString();
+      const fortyDaysAgoIso = new Date(Date.now() - 40 * 86400000).toISOString();
 
     const dateScans: StaffActivityDto[] = [
       {
@@ -359,6 +363,9 @@ describe('ActivitySidebar (Modal)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Este mes' }));
     expect(screen.getByText('2 clientes')).toBeInTheDocument();
     expect(screen.getByText('3 operaciones en este período')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('explicitly discloses that metrics and activity correspond to the latest 50 recorded operations', async () => {
