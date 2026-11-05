@@ -9,6 +9,7 @@ import {
   setLastActivity,
 } from '../utils/sessionActivity';
 import { AuthFrame } from './AuthFrame';
+import { ArrowIcon } from '../components/ui/ArrowIcon';
 import { PasswordRequirements, evaluatePassword } from './PasswordRequirements';
 import { translateAuthError } from './authErrorTranslator';
 
@@ -433,7 +434,7 @@ export function SupabaseAuth({ initialMode }: { initialMode?: AuthMode }) {
               : isLoading
                 ? 'Enviando enlace…'
                 : 'Enviar enlace de recuperación'}
-          {!isLoading && <span aria-hidden="true">→</span>}
+          {!isLoading && <ArrowIcon className="h-4 w-4" />}
         </button>
 
         {mode === 'login' && (
@@ -472,9 +473,10 @@ export function SupabaseAuth({ initialMode }: { initialMode?: AuthMode }) {
               type="button"
               onClick={() => switchMode('login')}
               disabled={isLoading || isGoogleLoading}
-              className="mx-auto block py-1 text-xs font-semibold text-panel-accent hover:underline disabled:opacity-60"
+              className="mx-auto inline-flex items-center gap-1.5 py-1 text-xs font-semibold text-panel-accent hover:underline disabled:opacity-60"
             >
-              ← Volver a iniciar sesión
+              <ArrowIcon direction="left" className="h-3.5 w-3.5" />
+              <span>Volver a iniciar sesión</span>
             </button>
           </div>
         )}

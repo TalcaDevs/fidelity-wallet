@@ -1,4 +1,5 @@
 import type { StaffActivityDto } from '@fidelity/shared';
+import { ArrowIcon } from '../../../../components/ui/ArrowIcon';
 import { formatDateTime } from '../../../../lib/formatDate';
 
 const METHOD_CONFIG: Record<
@@ -178,9 +179,7 @@ export function ActivityOperationCard({
         {hasCustomerLink && (
           <span className="inline-flex items-center gap-1 text-xs font-bold text-panel-accent group-hover:underline">
             <span>Ver compras</span>
-            <svg className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" />
-            </svg>
+            <ArrowIcon className="w-3.5 h-3.5 group-hover:translate-x-0.5" />
           </span>
         )}
       </div>

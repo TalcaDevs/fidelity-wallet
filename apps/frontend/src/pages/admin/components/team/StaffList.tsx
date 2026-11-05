@@ -1,14 +1,16 @@
 import type { StaffMemberDto, StaffStatus } from '@fidelity/shared';
 import { formatDate } from '../../../../lib/formatDate';
+import { StatusBadge, type BadgeTone } from '../../../../components/ui/StatusBadge';
+import { EmptyState } from '../../../../components/ui/EmptyState';
 
-const STATUS_BADGE: Record<StaffStatus, { label: string; className: string }> = {
+const STATUS_CONFIG: Record<StaffStatus, { label: string; tone: BadgeTone }> = {
   ACTIVE: {
     label: 'Activo',
-    className: 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400',
+    tone: 'success',
   },
   INVITED: {
     label: 'Invitado',
-    className: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400',
+    tone: 'warning',
   },
 };
 
@@ -22,12 +24,12 @@ export interface StaffActions {
 const ACTION_CLASSES =
   'whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold text-panel-muted bg-panel-soft hover:bg-panel-accent/10 hover:text-panel-accent transition-colors';
 
-function StatusBadge({ status }: { status: StaffStatus }) {
-  const badge = STATUS_BADGE[status];
+function StaffStatusBadge({ status }: { status: StaffStatus }) {
+  const badge = STATUS_CONFIG[status];
   return (
-    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${badge.className}`}>
+    <StatusBadge tone={badge.tone}>
       {badge.label}
-    </span>
+    </StatusBadge>
   );
 }
 
@@ -93,6 +95,17 @@ const lastSignIn = (member: StaffMemberDto) =>
 
 /** Tabla en pantallas anchas y tarjetas en el resto (§6.4): con el menú lateral, la tabla no cabe antes de xl. */
 export function StaffList({ staff, actions }: { staff: StaffMemberDto[]; actions: StaffActions }) {
+  if (staff.length === 0) {
+    return (
+      <EmptyState
+        variant="simple"
+        title="Aún no tienes miembros en tu equipo."
+        subtitle="Invita a tus cajeros o meseros usando el botón de arriba."
+        className="py-10"
+      />
+    );
+  }
+
   return (
     <>
       <ul className="xl:hidden grid gap-3 md:grid-cols-2">
@@ -103,7 +116,7 @@ export function StaffList({ staff, actions }: { staff: StaffMemberDto[]; actions
               <dt className="text-panel-muted">Local</dt>
               <dd className="text-panel-text font-medium truncate">{member.locationName ?? 'Todos los locales'}</dd>
               <dt className="text-panel-muted">Estado</dt>
-              <dd><StatusBadge status={member.status} /></dd>
+              <dd><StaffStatusBadge status={member.status} /></dd>
               <dt className="text-panel-muted">Último ingreso</dt>
               <dd className="text-panel-text font-medium">{lastSignIn(member)}</dd>
             </dl>
@@ -130,7 +143,7 @@ export function StaffList({ staff, actions }: { staff: StaffMemberDto[]; actions
               <tr key={member.userId} className="hover:bg-panel-soft transition-colors">
                 <td className="py-4 pl-4 max-w-[260px]"><MemberIdentity member={member} /></td>
                 <td className="py-4 px-4 text-panel-text">{member.locationName ?? 'Todos los locales'}</td>
-                <td className="py-4 px-4"><StatusBadge status={member.status} /></td>
+                <td className="py-4 px-4"><StaffStatusBadge status={member.status} /></td>
                 <td className="py-4 px-4 text-sm text-panel-muted whitespace-nowrap">{lastSignIn(member)}</td>
                 <td className="py-4 pr-4"><MemberActions member={member} actions={actions} align="end" /></td>
               </tr>

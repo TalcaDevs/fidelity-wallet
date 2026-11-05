@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
+import { SegmentedTabs } from '../../../components/ui/SegmentedTabs';
 import {
   STAMP_ICON_PATHS,
   autoTextColor,
@@ -338,22 +339,19 @@ export function CardPreview({ config, brandName, face }: { config: CardConfig; b
         </p>
       </div>
       <div className="p-5">
-        <div role="tablist" aria-label="Billetera" className="flex justify-center gap-1 p-1 rounded-xl bg-panel-surface w-fit mx-auto mb-5">
-          {(['ANDROID', 'APPLE'] as const).map((p) => (
-            <button
-              key={p}
-              type="button"
-              role="tab"
-              aria-selected={platform === p}
-              onClick={() => setPlatform(p)}
-              className={`px-4 py-1.5 rounded-lg text-sm font-bold ${
-                platform === p ? 'bg-panel-primary text-white' : 'text-panel-muted'
-              }`}
-            >
-              {p === 'ANDROID' ? 'Google Wallet' : 'Apple Wallet'}
-            </button>
-          ))}
-        </div>
+        <SegmentedTabs<Platform>
+          value={platform}
+          onChange={setPlatform}
+          variant="surface"
+          size="sm"
+          buttonRole="tab"
+          ariaLabel="Billetera"
+          className="w-fit mx-auto mb-5"
+          options={[
+            { value: 'ANDROID', label: 'Google Wallet' },
+            { value: 'APPLE', label: 'Apple Wallet' },
+          ]}
+        />
         <div className="max-w-[320px] mx-auto">
           {platform === 'ANDROID' ? (
             <AndroidPass config={config} brandName={brandName} face={face} />

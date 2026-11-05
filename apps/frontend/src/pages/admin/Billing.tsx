@@ -1,4 +1,4 @@
-import { PanelTitle } from '../../components/admin/PanelTitle';
+import { PageHeader } from '../../components/layout/PageHeader';
 import { useState } from 'react';
 import {
   CATALOG_PLANS,
@@ -10,7 +10,10 @@ import {
 import { Link } from 'react-router-dom';
 import { ROUTES } from '../../components/routing/routePaths';
 import { ErrorAlert } from '../../components/ui/ErrorAlert';
+import { SegmentedTabs } from '../../components/ui/SegmentedTabs';
 import { Skeleton } from '../../components/ui/Skeleton';
+import { StatusBadge } from '../../components/ui/StatusBadge';
+import { PlanUsageBar } from '../../components/billing/PlanLimitNotice';
 import { useSubscription } from '../../hooks/useSubscription';
 import { formatDate } from '../../lib/formatDate';
 
@@ -51,26 +54,7 @@ function planFeatures(plan: Plan): string[] {
   ];
 }
 
-function UsageBar({ label, used, limit }: { label: string; used: number; limit: number | null }) {
-  const percent = limit === null ? 0 : Math.min(100, (used / limit) * 100);
-  const nearLimit = limit !== null && percent >= 80;
-  return (
-    <div className="bg-panel-soft rounded-2xl p-5 border border-panel-border">
-      <div className="flex justify-between items-center mb-3 gap-2">
-        <span className="text-sm font-bold text-panel-muted">{label}</span>
-        <span className="text-sm font-black text-panel-text whitespace-nowrap">
-          {used} <span className="text-panel-muted font-medium">de {limit ?? '∞'}</span>
-        </span>
-      </div>
-      <div className="h-2.5 w-full bg-panel-muted/20 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full ${nearLimit ? 'bg-orange-500' : 'bg-panel-primary'}`}
-          style={{ width: `${limit === null ? 100 : percent}%` }}
-        />
-      </div>
-    </div>
-  );
-}
+
 
 function PlanCard({ plan, isAnnual, isCurrent }: { plan: Plan; isAnnual: boolean; isCurrent: boolean }) {
   const price = isAnnual && plan.priceClpMonthlyAnnual !== null ? plan.priceClpMonthlyAnnual : plan.priceClpMonthly;
@@ -150,10 +134,11 @@ export function Billing({
 
   return (
     <div className="space-y-10">
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-panel-text"><PanelTitle text="Facturación y planes" /></h1>
-        <p className="text-panel-muted mt-2 text-sm sm:text-base">Tu plan, el uso de tu cuenta y tus boletas.</p>
-      </div>
+      <PageHeader
+        title="Facturación y planes"
+        description="Tu plan, el uso de tu cuenta y tus boletas."
+        className="mb-0"
+      />
 
       {isSuspended && (
         <div
@@ -232,7 +217,7 @@ export function Billing({
         <h3 className="text-lg font-bold text-panel-text mb-6">Uso de tu plan</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {USAGE_ROWS.map(({ key, label }) => (
-            <UsageBar key={key} label={label} used={subscription.usage[key]} limit={currentPlan.limits[key]} />
+            <PlanUsageBar key={key} label={label} used={subscription.usage[key]} limit={currentPlan.limits[key]} />
           ))}
         </div>
       </section>
@@ -243,19 +228,18 @@ export function Billing({
           <p className="text-panel-muted max-w-2xl mx-auto mb-6">
             Cada programa de lealtad es una tarjeta distinta en tu panel. El límite es de programas activos; tus clientes son ilimitados desde el plan Pro.
           </p>
-          <div className="inline-flex items-center p-1.5 bg-panel-soft rounded-2xl" role="group" aria-label="Ciclo de facturación">
-            {[false, true].map((annual) => (
-              <button
-                key={String(annual)}
-                type="button"
-                aria-pressed={isAnnual === annual}
-                onClick={() => setIsAnnual(annual)}
-                className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${isAnnual === annual ? 'bg-panel-surface text-panel-text shadow-sm' : 'text-panel-muted hover:text-panel-text '}`}
-              >
-                {annual ? 'Anual' : 'Mensual'}
-              </button>
-            ))}
-          </div>
+          <SegmentedTabs<boolean>
+            value={isAnnual}
+            onChange={setIsAnnual}
+            variant="soft"
+            activeTone="surface"
+            size="md"
+            ariaLabel="Ciclo de facturación"
+            options={[
+              { value: false, label: 'Mensual' },
+              { value: true, label: 'Anual' },
+            ]}
+          />
         </div>
         <div data-panel-stagger className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
           {CATALOG_PLANS.map((plan) => (
@@ -285,7 +269,7 @@ export function Billing({
                   <td className="py-4 text-panel-muted font-bold">{invoice.plan}</td>
                   <td className="py-4 text-panel-muted">$ {invoice.amountClp.toLocaleString('es-CL')}</td>
                   <td className="py-4">
-                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400">{invoice.status}</span>
+                    <StatusBadge tone="success">{invoice.status}</StatusBadge>
                   </td>
                   <td className="py-4 pr-4 text-right">
                     <button type="button" disabled title={SOON} className="px-3 py-1.5 rounded-lg text-sm font-bold text-panel-muted bg-panel-soft cursor-not-allowed">

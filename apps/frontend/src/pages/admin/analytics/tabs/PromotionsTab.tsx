@@ -1,4 +1,5 @@
 import type { PromotionPerformanceReport } from '../../../../services/reportsService';
+import { EmptyState } from '../../../../components/ui/EmptyState';
 
 export interface PromotionsTabProps {
   promotions: PromotionPerformanceReport;
@@ -14,7 +15,7 @@ export function PromotionsTab({ promotions }: PromotionsTabProps) {
         </p>
 
         {promotions.promotions.length === 0 ? (
-          <p className="text-sm text-panel-muted py-6 text-center">No hay promociones configuradas.</p>
+          <EmptyState variant="simple" title="No hay promociones configuradas." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm min-w-[560px]">

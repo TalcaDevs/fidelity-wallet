@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { getPlan, type BrandStatus, type PlanId } from '@fidelity/shared';
+import { EmptyState } from '../../components/ui/EmptyState';
 
 export const CARD = 'bg-panel-surface rounded-2xl border border-panel-border shadow-panel';
 export const INPUT =
@@ -49,5 +50,12 @@ export function Pager({ page, pageSize, total, onPage }: { page: number; pageSiz
 }
 
 export function Empty({ children }: { children: ReactNode }) {
-  return <p className="text-center text-panel-muted py-10">{children}</p>;
+  return (
+    <EmptyState
+      variant="simple"
+      title={typeof children === 'string' ? children : ''}
+      description={typeof children !== 'string' ? children : undefined}
+      className="py-10"
+    />
+  );
 }

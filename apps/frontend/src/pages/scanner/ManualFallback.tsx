@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { IdentifierInput, IdentifierValue } from '../../components/ui/IdentifierInput';
+import { ArrowIcon } from '../../components/ui/ArrowIcon';
 
 interface ManualFallbackProps {
   /** Recibe el tipo y el valor: RUT formateado ("12.345.678-5"), teléfono completo ("+56912345678") o correo. */
@@ -45,9 +46,10 @@ export function ManualFallback({ onSubmit, onCancel }: ManualFallbackProps) {
 
         <button 
           onClick={onCancel}
-          className="mt-8 py-4 font-bold text-panel-muted hover:text-panel-accent transition-colors"
+          className="mt-8 py-4 font-bold text-panel-muted hover:text-panel-accent transition-colors inline-flex items-center gap-2"
         >
-          ← Volver a la cámara
+          <ArrowIcon direction="left" className="h-4 w-4" />
+          <span>Volver a la cámara</span>
         </button>
       </div>
     </div>
