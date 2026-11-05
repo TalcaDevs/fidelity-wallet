@@ -107,6 +107,12 @@ function EntryRow({
             <time dateTime={entry.createdAt} className="tabular-nums font-medium">
               {formatDateTime(entry.createdAt)}
             </time>
+            {entry.locationName && (
+              <>
+                <span>·</span>
+                <span className="font-medium text-panel-text">{entry.locationName}</span>
+              </>
+            )}
             {entry.staffEmail && (
               <>
                 <span>·</span>
@@ -190,17 +196,17 @@ export function PurchaseHistory({
     if (totals.visits === 0) {
       return { title: 'Nuevo', subtext: 'Aún no registra compras' };
     }
-    const lastActive = history.items.find((i) => !i.voidedAt);
-    if (!lastActive) {
+    const lastActiveDate = customer.lastActivityAt ?? history.items.find((i) => !i.voidedAt)?.createdAt;
+    if (!lastActiveDate) {
       return { title: 'Regular', subtext: 'Sin visitas recientes' };
     }
-    const days = Math.max(0, Math.floor((Date.now() - new Date(lastActive.createdAt).getTime()) / (1000 * 60 * 60 * 24)));
+    const days = Math.max(0, Math.floor((Date.now() - new Date(lastActiveDate).getTime()) / (1000 * 60 * 60 * 24)));
     if (days === 0) return { title: 'Activo hoy', subtext: 'Vino hoy' };
     if (days === 1) return { title: 'Activo ayer', subtext: 'Vino ayer' };
     if (days <= 14) return { title: 'Al día', subtext: `Última visita: hace ${days}d` };
     if (days <= 30) return { title: 'Enfriándose', subtext: `Hace ${days}d sin venir` };
     return { title: 'En riesgo', subtext: `Hace ${days}d sin venir` };
-  }, [totals.visits, history.items]);
+  }, [totals.visits, customer.lastActivityAt, history.items]);
 
   const isStampsActive = data.stampsEnabled ?? data.cardType !== 'POINTS';
 

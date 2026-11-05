@@ -473,4 +473,49 @@ describe('Customers page (Ley 19.628)', () => {
     expect(screen.getByText('Cliente Providencia')).toBeInTheDocument();
     expect(screen.getByText('Cliente Centro')).toBeInTheDocument();
   });
+  it('calculates KPIs and row purchases scoped to the selected location for multi-location customers', async () => {
+    vi.spyOn(locationsService, 'listBrandLocations').mockResolvedValue([
+      { id: 'loc-1', name: 'Sucursal A', isActive: true },
+      { id: 'loc-2', name: 'Sucursal B', isActive: true },
+    ]);
+
+    vi.spyOn(customersService, 'listCustomers').mockResolvedValue([
+      {
+        passId: 'p-1',
+        customerId: 'c-1',
+        name: 'Cliente Multilocal',
+        merchantId: 'loc-1',
+        locationIds: ['loc-1', 'loc-2'],
+        rut: '12345678-5',
+        phone: '+56912345678',
+        activeStamps: 4,
+        nextExpiryAt: null,
+        joinedAt: '2026-09-20T12:00:00Z',
+        lastActivityAt: '2026-09-24T12:00:00Z',
+        totalPurchases: 10000,
+        purchasesCount: 3,
+        purchasesByLocation: {
+          'loc-1': { total: 1000, count: 1 },
+          'loc-2': { total: 9000, count: 2 },
+        },
+      },
+    ]);
+
+    render(<MemoryRouter><Customers brandId="m-1" merchantId="m-1" /></MemoryRouter>);
+
+    await waitFor(() => {
+      expect(screen.getByText('Cliente Multilocal')).toBeInTheDocument();
+    });
+
+    const summaryRegion = screen.getByLabelText('Resumen de clientes y compras');
+    expect(summaryRegion).toHaveTextContent('$10.000');
+
+    const locationSelect = await screen.findByRole('combobox', { name: 'Filtrar por sucursal' });
+
+    fireEvent.change(locationSelect, { target: { value: 'loc-1' } });
+    expect(summaryRegion).toHaveTextContent('$1.000');
+
+    fireEvent.change(locationSelect, { target: { value: 'loc-2' } });
+    expect(summaryRegion).toHaveTextContent('$9.000');
+  });
 });

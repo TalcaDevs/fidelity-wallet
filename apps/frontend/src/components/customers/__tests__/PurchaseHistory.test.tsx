@@ -152,4 +152,46 @@ describe('PurchaseHistory Component', () => {
     fireEvent.click(canjesBtn);
     expect(screen.getByText('Canje: Café de especialidad gratis')).toBeInTheDocument();
   });
+  it('renders branch location names in metadata for movements across multiple branches', () => {
+    render(<PurchaseHistory data={mockData} onPage={vi.fn()} />);
+
+    expect(screen.getByText('Sucursal Providencia')).toBeInTheDocument();
+    expect(screen.getAllByText('Sucursal Centro').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('maintains activity status consistent across pages based on customer lastActivityAt', () => {
+    const today = new Date().toISOString();
+    const dataWithActivity: CustomerHistoryDto = {
+      ...mockData,
+      customer: {
+        ...mockData.customer,
+        lastActivityAt: today,
+      },
+      history: {
+        page: 2,
+        pageSize: 20,
+        total: 40,
+        items: [
+          {
+            id: 'scan-old',
+            type: 'STAMP_ADDED',
+            createdAt: '2026-05-01T10:00:00Z',
+            method: 'QR',
+            locationName: 'Sucursal Centro',
+            staffEmail: null,
+            stamps: 1,
+            points: 0,
+            purchaseAmount: 2000,
+            note: null,
+            rewardName: null,
+            receiptUrl: null,
+          },
+        ],
+      },
+    };
+
+    render(<PurchaseHistory data={dataWithActivity} onPage={vi.fn()} />);
+
+    expect(screen.getByText('Activo hoy')).toBeInTheDocument();
+  });
 });

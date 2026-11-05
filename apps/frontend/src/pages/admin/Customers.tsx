@@ -160,8 +160,15 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
     let customersWithPurchases = 0;
 
     for (const c of branchFiltered) {
-      const amount = c.totalPurchases ?? 0;
-      const count = c.purchasesCount ?? 0;
+      let amount = c.totalPurchases ?? 0;
+      let count = c.purchasesCount ?? 0;
+
+      if (selectedLocationId !== 'all') {
+        const locData = c.purchasesByLocation?.[selectedLocationId];
+        amount = locData?.total ?? 0;
+        count = locData?.count ?? 0;
+      }
+
       totalPurchases += amount;
       totalPurchasesCount += count;
       if (amount > 0) customersWithPurchases++;
@@ -169,7 +176,7 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
 
     const averageTicket = totalPurchasesCount > 0 ? Math.round(totalPurchases / totalPurchasesCount) : 0;
     return { totalPurchases, totalPurchasesCount, customersWithPurchases, averageTicket };
-  }, [branchFiltered]);
+  }, [branchFiltered, selectedLocationId]);
 
   const term = search.trim().toLowerCase();
   const visible = useMemo(() => {
@@ -351,14 +358,26 @@ export function Customers({ brandId, merchantId }: { brandId: string | null; mer
             </div>
           </td>
           <td className="p-4 sm:p-5 whitespace-nowrap align-middle">
-            <div className="font-extrabold text-panel-text tabular-nums text-xs sm:text-sm">
-              {(row.totalPurchases ?? 0) > 0 ? clp.format(row.totalPurchases!) : '—'}
-            </div>
-            {(row.purchasesCount ?? 0) > 0 && (
-              <span className="block text-[11px] text-panel-muted font-medium mt-0.5">
-                {row.purchasesCount} {row.purchasesCount === 1 ? 'compra' : 'compras'}
-              </span>
-            )}
+            {(() => {
+              const rowPurchases = selectedLocationId === 'all'
+                ? (row.totalPurchases ?? 0)
+                : (row.purchasesByLocation?.[selectedLocationId]?.total ?? 0);
+              const rowPurchasesCount = selectedLocationId === 'all'
+                ? (row.purchasesCount ?? 0)
+                : (row.purchasesByLocation?.[selectedLocationId]?.count ?? 0);
+              return (
+                <>
+                  <div className="font-extrabold text-panel-text tabular-nums text-xs sm:text-sm">
+                    {rowPurchases > 0 ? clp.format(rowPurchases) : '—'}
+                  </div>
+                  {rowPurchasesCount > 0 && (
+                    <span className="block text-[11px] text-panel-muted font-medium mt-0.5">
+                      {rowPurchasesCount} {rowPurchasesCount === 1 ? 'compra' : 'compras'}
+                    </span>
+                  )}
+                </>
+              );
+            })()}
           </td>
           <td className="p-4 sm:p-5 text-panel-muted font-medium text-xs sm:text-sm whitespace-nowrap align-middle">
             {new Date(row.joinedAt).toLocaleDateString([], DATE_FORMAT)}

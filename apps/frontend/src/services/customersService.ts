@@ -24,6 +24,7 @@ export interface CustomerRow {
   pointsEnabled?: boolean;
   totalPurchases?: number;
   purchasesCount?: number;
+  purchasesByLocation?: Record<string, { total: number; count: number }>;
   nextExpiryAt: string | null;
   joinedAt: string;
   lastActivityAt: string;
@@ -246,13 +247,32 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
     }
   }
 
-  const purchases = new Map<string, { total: number; count: number; locationIds: Set<string> }>();
+  const purchases = new Map<
+    string,
+    {
+      total: number;
+      count: number;
+      locationIds: Set<string>;
+      byLocation: Map<string, { total: number; count: number }>;
+    }
+  >();
   for (const scan of ((rawScans ?? []) as RawScanRow[])) {
     if (scan.passId) {
-      const current = purchases.get(scan.passId) ?? { total: 0, count: 0, locationIds: new Set<string>() };
+      const current = purchases.get(scan.passId) ?? {
+        total: 0,
+        count: 0,
+        locationIds: new Set<string>(),
+        byLocation: new Map<string, { total: number; count: number }>(),
+      };
       if (typeof scan.purchaseAmount === 'number' && scan.purchaseAmount > 0) {
         current.total += scan.purchaseAmount;
         current.count += 1;
+        if (scan.merchantId) {
+          const loc = current.byLocation.get(scan.merchantId) ?? { total: 0, count: 0 };
+          loc.total += scan.purchaseAmount;
+          loc.count += 1;
+          current.byLocation.set(scan.merchantId, loc);
+        }
       }
       if (scan.merchantId) {
         current.locationIds.add(scan.merchantId);
@@ -292,6 +312,7 @@ export async function listCustomers(brandId: string, options?: ListCustomersOpti
       pointsEnabled: balance?.pointsEnabled ?? false,
       totalPurchases: purchase?.total ?? 0,
       purchasesCount: purchase?.count ?? 0,
+      purchasesByLocation: purchase?.byLocation ? Object.fromEntries(purchase.byLocation) : {},
       nextExpiryAt: balance?.nextExpiryAt ?? null,
       joinedAt: row.createdAt,
       lastActivityAt: row.updatedAt,
